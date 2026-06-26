@@ -1,6 +1,6 @@
 # Game Design Status
 
-## Phase: 2
+## Phase: 3
 
 ## Concept: agreed
 
@@ -8,8 +8,8 @@
 
 | Element | Status |
 |---------|--------|
-| Core loop | pending |
-| Prestige system | pending |
+| Core loop | agreed |
+| Prestige system | in-discussion |
 | Economy | pending |
 | Zone / space design | pending |
 | Visitor simulation | pending |
