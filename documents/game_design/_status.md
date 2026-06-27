@@ -9,9 +9,9 @@
 | Element | Status |
 |---------|--------|
 | Core loop | agreed |
-| Prestige system | in-discussion |
-| Economy | pending |
-| Zone / space design | pending |
+| Prestige system | agreed |
+| Economy | agreed |
+| Zone / space design | in-discussion |
 | Visitor simulation | pending |
 | Tenant / shop system | pending |
 | Metrics & data visualization | pending |
