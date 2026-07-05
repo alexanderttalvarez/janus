@@ -25,6 +25,18 @@ Janus uses two independent timers that scale together with speed controls:
 - Both clocks **pause** when the player pauses the game. No time passes visually or logically during pause.
 - Both clocks scale proportionally with speed controls.
 
+### Visitor Tick
+
+A third, faster clock drives individual visitor behavior (need decay, decision-making, movement updates).
+
+| Tick | Duration | Real Time (1x) | Drives |
+|------|----------|----------------|--------|
+| **Visitor Tick** | 5 sim minutes | 5 seconds | Visitor need decay, decision triggers, pathfinding updates, queue position checks |
+
+**Need decay:** Each state need decreases by 1 point per visitor tick. A visitor starting at 40 hunger will reach the 30 threshold after 10 ticks (50 sim minutes).
+
+**Design rationale:** Visitor behavior updates faster than the simulation clock to create responsive, believable agents. The 5-minute interval is frequent enough to feel alive but infrequent enough to avoid performance issues.
+
 ### Time Scale
 
 | Speed | Simulation: 1 hour | Simulation: 1 day | Visual: 1 day | Visual: 1 season (10 days) |

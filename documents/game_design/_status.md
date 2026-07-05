@@ -12,8 +12,8 @@
 | Prestige system | agreed |
 | Economy | agreed |
 | Zone / space design | agreed |
-| Visitor simulation | in-discussion |
-| Tenant / shop system | pending |
+| Visitor simulation | agreed |
+| Tenant / shop system | in-discussion |
 | Metrics & data visualization | pending |
 | Mall levels & tech tree | pending |
 | Building & structure system | pending |
