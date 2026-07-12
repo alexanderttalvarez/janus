@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "plugin": ["godot-prompter@git+https://github.com/jame581/GodotPrompter.git"],
   "mcp": {
     "trello": {
       "type": "local",
