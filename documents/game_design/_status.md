@@ -15,8 +15,8 @@
 | Visitor simulation | agreed |
 | Tenant / shop system | agreed |
 | Metrics & data visualization | agreed |
-| Mall levels & tech tree | in-discussion |
-| Building & structure system | pending |
+| Mall levels & tech tree | agreed |
+| Building & structure system | in-discussion |
 | Transit & circulation | pending |
 | Wall system | draft |
 | Synergy system | pending |
