@@ -16,8 +16,9 @@
 | Tenant / shop system | agreed |
 | Metrics & data visualization | agreed |
 | Mall levels & tech tree | agreed |
-| Building & structure system | in-discussion |
-| Transit & circulation | pending |
+| Building & structure system | agreed |
+| Structural system (columns) | draft |
+| Transit & circulation | in-discussion |
 | Wall system | draft |
 | Synergy system | pending |
 | Staff system | pending |
