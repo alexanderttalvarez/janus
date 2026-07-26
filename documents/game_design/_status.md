@@ -23,6 +23,6 @@
 | 13 | Terrace system | agreed | `13_terrace_system.md` |
 | 14 | Synergy system | agreed | `14_synergy_system.md` |
 | 15 | Staff system | agreed | `15_staff_system.md` |
-| 16 | Maintenance system | in-discussion | — |
-| 17 | UI / HUD system | pending | — |
+| 16 | Maintenance system | agreed | `16_maintenance_system.md` |
+| 17 | UI / HUD system | in-discussion | — |
 | 18 | Notifications system | pending | — |

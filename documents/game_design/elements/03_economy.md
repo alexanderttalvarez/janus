@@ -62,14 +62,13 @@ One-time cost per tile. Price scales with floor level (above or below ground). B
 | **Floor 2 (F2)** | 1.2x | 1,200 Kreds |
 | **Floor 3 (F3)** | 1.4x | 1,400 Kreds |
 | **Floor 4 (F4)** | 1.6x | 1,600 Kreds |
-| **Floor 5+ (F5+)** | 1.8x | 1,800 Kreds |
+| **Floor 5 (F5)** | 1.8x | 1,800 Kreds |
+| **Floor 10 (F10)** | 2.8x | 2,800 Kreds |
 | **Underground 1 (U1)** | 1.2x | 1,200 Kreds |
 | **Underground 2 (U2)** | 1.4x | 1,400 Kreds |
 | **Underground 3 (U3)** | 1.6x | 1,600 Kreds |
-| **Underground 4 (U4)** | 1.8x | 1,800 Kreds |
-| **Underground 5 (U5)** | 2.0x | 2,000 Kreds |
 
-**Maximum floors:** 5 above ground + 5 underground = 11 total levels.
+**Maximum floors:** 10 above ground + 3 underground = 14 total levels.
 
 ### Construction
 
@@ -81,22 +80,7 @@ Flat rate per employee. **500 Kreds/week/employee** (MVP). Post-MVP: wages may s
 
 ### Maintenance
 
-Monthly upkeep per tile. Scales with floor level.
-
-| Floor | Maintenance Cost |
-|-------|-----------------|
-| **F1** | 10 Kreds/tile/month |
-| **F2** | 12 Kreds/tile/month |
-| **F3** | 14 Kreds/tile/month |
-| **F4** | 16 Kreds/tile/month |
-| **F5+** | 18 Kreds/tile/month |
-| **U1** | 12 Kreds/tile/month |
-| **U2** | 14 Kreds/tile/month |
-| **U3** | 16 Kreds/tile/month |
-| **U4** | 18 Kreds/tile/month |
-| **U5** | 20 Kreds/tile/month |
-
-Maintenance increases further as the building degrades (see Maintenance System).
+Maintenance is handled through the Maintenance System (post-MVP). There is no recurring tile-based maintenance cost in the MVP. Repair costs are paid per action when maintenance staff perform repairs.
 
 ### Transportation Fees
 
