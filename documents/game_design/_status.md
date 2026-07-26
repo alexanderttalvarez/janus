@@ -21,8 +21,8 @@
 | 11 | Transit & circulation | agreed | `11_transit_circulation.md` |
 | 12 | Wall system | agreed | `12_wall_system.md` |
 | 13 | Terrace system | agreed | `13_terrace_system.md` |
-| 14 | Synergy system | in-discussion | — |
-| 15 | Staff system | pending | — |
+| 14 | Synergy system | agreed | `14_synergy_system.md` |
+| 15 | Staff system | in-discussion | — |
 | 16 | Maintenance system | pending | — |
 | 17 | UI / HUD system | pending | — |
 | 18 | Notifications system | pending | — |
