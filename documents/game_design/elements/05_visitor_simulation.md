@@ -203,8 +203,8 @@ Satisfaction = Base (50) + Goal Fulfillment + Experience Modifiers + Exploration
 | **Long wait times** | -5 to -20 |
 | **Fair prices** | +5 to +10 |
 | **Expensive prices** | -5 to -15 |
-| **Clean, comfortable environment** | +5 to +15 |
-| **Dirty, uncomfortable environment** | -5 to -15 |
+| **Cleanliness score** (Staff System) | +5 to +15 (Cleanliness 80–100) / -5 to -15 (Cleanliness 0–19) |
+| **Comfort score** (Security/Insecurity, Staff System) | +5 to +15 (Insecurity 0–10) / -5 to -15 (Insecurity 36+) |
 | **Easy navigation** | +5 to +10 |
 | **Confusing layout, dead ends** | -5 to -10 |
 

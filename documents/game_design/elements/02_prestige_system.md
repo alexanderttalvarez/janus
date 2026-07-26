@@ -75,7 +75,7 @@ Quality measures how well the district functions and looks. It is composed of si
 | **Tenant Quality** | 25 | 25% | Higher-tier tenants (premium brands, specialty shops) | Tenants close, downgrade, or are replaced by low-tier |
 | **Tenant Satisfaction** | 20 | 20% | Strong foot traffic, revenue exceeds costs, good working conditions | Poor sales, long customer wait times, understaffing |
 | **Visitor Volume** | 15 | 15% | High daily visitor count, consistent flow | Empty corridors, low attraction, seasonal dips |
-| **Visitor Experience** | 15 | 15% | Clean floors, good amenity variety, short queues, pleasant atmosphere | Dirty surfaces, broken facilities, long waits, poor lighting |
+| **Visitor Experience** | 15 | 15% | Clean floors (Cleanliness score), good amenity variety, short queues, pleasant atmosphere (Comfort score from Security) | Dirty surfaces (low Cleanliness), unsafe feeling (high Insecurity), long waits, poor lighting |
 | **Design & Architecture** | 15 | 15% | Atriums, gardens, art installations, cohesive zone layouts, visual harmony | Mismatched adjacencies, cluttered corridors, removed prestige features |
 | **Accessibility** | 10 | 10% | Elevator coverage, escalator reach, clear sightlines, no dead-ends | Poor vertical connectivity, bottlenecked corridors, unreachable floors |
 

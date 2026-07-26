@@ -297,6 +297,7 @@ The player does not manage tenants directly. Feedback comes through:
 | **Economy** | Tenant revenue → rent payment → player income. Rent pressure → business pricing → visitor spending |
 | **Visitor Simulation** | Tenant quality affects visitor satisfaction and spending. Visitor budgets drive tenant revenue |
 | **Prestige** | Tenant quality and satisfaction are major prestige factors (Tenant Quality 25%, Tenant Satisfaction 20%) |
+| **Staff System** | Insecurity and Cleanliness scores affect Tenant Satisfaction. Poor conditions reduce tenant viability. |
 | **Zone Design** | Tenant subtypes, parcel sizes, graph coloring constraints. Zone type determines which tenants can apply |
 | **Metrics & Visualization** | Tenant status indicators, viability warnings, financial reports |
 
