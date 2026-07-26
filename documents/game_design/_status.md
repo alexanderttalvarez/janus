@@ -24,5 +24,7 @@
 | 14 | Synergy system | agreed | `14_synergy_system.md` |
 | 15 | Staff system | agreed | `15_staff_system.md` |
 | 16 | Maintenance system | agreed | `16_maintenance_system.md` |
-| 17 | UI / HUD system | in-discussion | — |
-| 18 | Notifications system | pending | — |
+| 17 | UI / HUD system | agreed | `17_ui_hud_system.md` |
+| 18 | Notifications system | agreed | `18_notifications_system.md` |
+
+## Phase: 4
