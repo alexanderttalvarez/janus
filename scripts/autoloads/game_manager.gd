@@ -1,4 +1,5 @@
-## GameManager — Central coordinator for scene transitions, game state, and simulation speed.
+## GameManager — Central coordinator for scene transitions, game state, simulation speed,
+## and UI mode management.
 ## Registered as autoload "GameManager" in project settings.
 ##
 ## Responsibilities:
@@ -6,6 +7,8 @@
 ## - Simulation speed control (Pause, 1x, 2x, 3x)
 ## - Game session lifecycle (new game, load game, quit)
 ## - Global pause state
+## - UI mode tracking (Build, Observe, EditZone)
+## - Wall visualization mode (Cutaway, Partial, Full)
 ##
 ## This autoload is process mode ALWAYS so it runs while paused.
 extends Node
@@ -25,8 +28,20 @@ signal game_started
 ## Emitted when the current game session ends.
 signal game_ended
 
+## Emitted when the UI mode changes.
+signal ui_mode_changed(mode: String)
+
+## Emitted when the wall visualization mode changes.
+signal wall_mode_changed(mode: String)
+
 ## Available simulation speeds. Index 0 = paused.
 enum Speed { PAUSED = 0, X1 = 1, X2 = 2, X3 = 3 }
+
+## UI interaction modes.
+enum UIMode { BUILD = "Build", OBSERVE = "Observe", EDIT_ZONE = "EditZone" }
+
+## Wall visualization modes.
+enum WallMode { CUTAWAY = "Cutaway", PARTIAL = "Partial", FULL = "Full" }
 
 ## Current simulation speed (0 = paused, 1-3 = multiplier).
 var speed: Speed = Speed.PAUSED:
@@ -35,11 +50,29 @@ var speed: Speed = Speed.PAUSED:
 		_get_tree().paused = (value == Speed.PAUSED)
 		speed_changed.emit(value)
 
+## Current UI mode.
+var ui_mode: String = UIMode.BUILD:
+	set(value):
+		ui_mode = value
+		ui_mode_changed.emit(value)
+
+## Current wall visualization mode.
+var wall_mode: String = WallMode.CUTAWAY:
+	set(value):
+		wall_mode = value
+		wall_mode_changed.emit(value)
+
 ## Path to the currently active game scene.
 var current_scene: String = ""
 
 ## Whether a game session is active (not in main menu).
 var is_session_active: bool = false
+
+## Current heatmap mode (empty = none active).
+var active_heatmap: String = ""
+
+## Currently open informational panels (max 3).
+var open_panels: Array[String] = []
 
 
 func _ready() -> void:
@@ -67,9 +100,86 @@ func cycle_speed() -> void:
 	speed = wrapi(speed + 1, Speed.PAUSED, Speed.X3 + 1) as Speed
 
 
+## Set simulation speed directly.
+func set_speed(new_speed: Speed) -> void:
+	speed = new_speed
+
+
+## Cycle wall visualization mode: Cutaway → Partial → Full → Cutaway.
+func cycle_wall_mode() -> void:
+	var modes := [WallMode.CUTAWAY, WallMode.PARTIAL, WallMode.FULL]
+	var idx := modes.find(wall_mode)
+	idx = (idx + 1) % modes.size()
+	wall_mode = modes[idx]
+
+
+## Set wall visualization mode directly.
+func set_wall_mode(mode: String) -> void:
+	if mode in [WallMode.CUTAWAY, WallMode.PARTIAL, WallMode.FULL]:
+		wall_mode = mode
+
+
+## Set UI mode.
+func set_ui_mode(mode: String) -> void:
+	if mode in [UIMode.BUILD, UIMode.OBSERVE, UIMode.EDIT_ZONE]:
+		ui_mode = mode
+
+
+## Enter Build mode.
+func enter_build_mode() -> void:
+	ui_mode = UIMode.BUILD
+
+
+## Enter Observe mode.
+func enter_observe_mode() -> void:
+	ui_mode = UIMode.OBSERVE
+
+
+## Enter Edit Zone mode.
+func enter_edit_zone_mode() -> void:
+	ui_mode = UIMode.EDIT_ZONE
+
+
+## Exit current mode (returns to Observe).
+func exit_current_mode() -> void:
+	ui_mode = UIMode.OBSERVE
+
+
+## Toggle a heatmap mode. If already active, deactivate it.
+func toggle_heatmap(mode: String) -> void:
+	if active_heatmap == mode:
+		active_heatmap = ""
+	else:
+		active_heatmap = mode
+
+
+## Open an informational panel (max 3).
+func open_panel(panel_name: String) -> bool:
+	if open_panels.has(panel_name):
+		return false
+	if open_panels.size() >= 3:
+		return false
+	open_panels.append(panel_name)
+	return true
+
+
+## Close an informational panel.
+func close_panel(panel_name: String) -> void:
+	open_panels.erase(panel_name)
+
+
+## Close all open panels.
+func close_all_panels() -> void:
+	open_panels.clear()
+
+
 ## Start a new game session. Loads the game scene.
 func start_new_game(game_scene_path: String = "res://scenes/levels/main_game.tscn") -> void:
 	is_session_active = true
+	open_panels.clear()
+	active_heatmap = ""
+	ui_mode = UIMode.BUILD
+	wall_mode = WallMode.CUTAWAY
 	change_scene(game_scene_path)
 	game_started.emit()
 
@@ -78,6 +188,8 @@ func start_new_game(game_scene_path: String = "res://scenes/levels/main_game.tsc
 func end_game(main_menu_path: String = "res://scenes/screens/main_menu.tscn") -> void:
 	is_session_active = false
 	speed = Speed.PAUSED
+	open_panels.clear()
+	active_heatmap = ""
 	change_scene(main_menu_path)
 	game_ended.emit()
 
