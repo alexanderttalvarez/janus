@@ -267,9 +267,207 @@ Footprint masks are plain text files. Each character represents one tile. Lines 
 
 ---
 
+## Decision 10: Zone System Architecture
+**Date:** 2026-07-28
+**Status:** Accepted
+
+### Context
+Zones are the player's primary creative tool. They require data management, a complex splitting algorithm, input handling for painting/editing, and visual rendering. We needed to decide on ownership, algorithm structure, visual approach, and tool architecture.
+
+### Decision
+- **ZoneManager** owns zone data (separate from GridManager)
+- **ZoneSplitter** and **ZoneBusinessAssigner** are pure static classes
+- **ZoneTool** handles input and preview (separate from data management)
+- **Zone visuals** use a shader-driven overlay (one MeshInstance3D per floor)
+- **Wall mode** is a global visualization setting (not per-zone), managed by GameManager
+
+### Zone System Structure
+```
+ZoneManager (Node)                    ← Zone data ownership, lifecycle, synergy
+├── zones: Dictionary[String, ZoneData]
+├── create_zone()
+├── modify_zone()
+├── delete_zone()
+├── recalculate_synergy()
+└── get_zone_at_tile()
+
+ZoneSplitter (static class)           ← Pure function: zone → parcels
+└── split(zone, grid) → Array[Parcel]
+
+ZoneBusinessAssigner (static class)   ← Pure function: parcels → business assignments
+└── assign(parcels, zone_type) → void
+
+ZoneTool (Node, in UI layer)          ← Input handling, painting, preview
+├── handle_input()
+├── update_preview()
+└── Signals: zone_created, zone_modified, zone_deleted
+
+ZoneData (Resource)                   ← Zone data container
+├── id: String
+├── type: String
+├── subtype: String (assigned after splitting)
+├── floor: String
+├── tiles: Array[Vector2i]
+├── typologies: Dictionary[Vector2i, TileTypology]
+├── wall_mode: bool
+├── name: String
+└── parcels: Array[Parcel]
+```
+
+### Communication Flow
+1. Player clicks to paint → `ZoneTool` captures input, shows preview
+2. Player clicks "Finish Zone" → `ZoneTool` emits `zone_created(type, tiles, floor)`
+3. `ZoneManager` receives signal → creates `ZoneData`, marks tiles in `GridManager`
+4. `ZoneManager` calls `ZoneSplitter.split()` → gets parcels
+5. `ZoneManager` calls `ZoneBusinessAssigner.assign()` → assigns subtypes
+6. `ZoneManager` emits `zone_created` on EventBus → UI updates, synergy recalculates
+
+### Zone Visuals
+- One `MeshInstance3D` per floor covers the entire grid
+- Shader reads zone ID from a texture (zone_id_texture) and colors each tile
+- Hover preview: set shader uniform for hover zone ID
+- Painting: update zone_id_texture pixel values
+- One draw call per floor for all zone overlays
+
+### Rationale
+- Clean separation: GridManager (tiles/pathfinding) vs ZoneManager (zones/splitting)
+- Splitting is a pure function → easy to unit test, easy to iterate
+- ZoneTool handles input → doesn't pollute ZoneManager with UI concerns
+- Shader overlay → one draw call per floor, scalable to large zones
+- Wall mode is global → GameManager tracks it, shader reads it
+
+### Consequences
+- `ZoneSplitter` and `ZoneBusinessAssigner` have no Godot dependencies (pure GDScript)
+- Zone texture updates require careful synchronization (update texture when zone changes)
+- ZoneTool must coordinate with GridManager for tile validation during painting
+
+---
+
+## Decision 11: Zone Splitting Algorithm — Full Recalculation with Tenant Preservation
+**Date:** 2026-07-28
+**Status:** Accepted
+
+### Context
+When a zone is edited (tiles added/removed, typologies changed), the frontage-based splitting algorithm must re-run. We needed to decide between incremental updates vs. full recalculation, and how to handle tenant preservation.
+
+### Decision
+- **Full recalculation** on every zone edit. The splitting algorithm is fast (pure GDScript on small arrays, milliseconds).
+- **Tenant preservation** by spatial matching: after recalculation, existing parcels are matched to new parcels by overlap. If a parcel still meets minimum size, its tenant is preserved.
+- **Eviction** only when a parcel falls below its minimum tile requirement after tile removal.
+- **ZoneSplitter** and **ZoneBusinessAssigner** are pure static classes with no Godot dependencies.
+
+### Algorithm Phases
+1. **Detect Frontage:** Find zone tiles bordering walkable areas (corridors, transit)
+2. **Reserve Frontages:** Group contiguous frontage tiles into segments, distribute to target store count
+3. **Grow Rectangles:** Each frontage seed grows inward until target area or boundary
+4. **Validate and Repair:** Merge undersized parcels, fill gaps, ensure frontage connectivity
+5. **Assign Businesses:** Graph coloring to prevent adjacent same-subtype parcels
+
+### Update Flow
+```
+Player edits zone (add/remove tiles, change typology)
+    ↓
+ZoneManager identifies affected parcels
+    ↓
+For each affected parcel:
+    if new_tile_count < min_area → mark for eviction
+    else → preserve tenant
+    ↓
+Evicted tenants trigger:
+    - 1-week exclusivity lock
+    - EventBus.tenant_closed
+    - Prestige recalculation
+    ↓
+ZoneSplitter.split() re-runs on updated zone
+    ↓
+Existing tenants matched to new parcels by spatial overlap
+    ↓
+ZoneBusinessAssigner.assign() for new unassigned parcels
+    ↓
+New tenant applications begin (after 1-day delay)
+```
+
+### Rationale
+- Incremental updates are exponentially more complex (split parcels, new frontage distribution, edge cases)
+- Full recalculation is fast enough (milliseconds on 25×25 grid)
+- Tenant preservation is the critical concern, not geometry recalculation
+- Design doc says "AI recalculates" — full recalculation is the intended behavior
+
+### Consequences
+- `ZoneSplitter` and `ZoneBusinessAssigner` are easily unit-testable
+- Zone edits are atomic: either the full recalculation succeeds, or it fails and the zone reverts
+- Eviction logic is simple: tile count vs. minimum area
+
+---
+
+## Decision 12: Time System Architecture — Accumulated Time with EventBus Signals
+**Date:** 2026-07-28
+**Status:** Accepted
+
+### Context
+Janus has three independent timers (simulation clock, visual clock, visitor tick) that scale together with speed controls. We needed to decide on timer implementation, event subscription, and speed change handling.
+
+### Decision
+- **Single `_process`** accumulates `sim_time` and `visual_time` as floats
+- **Speed is a multiplier** on delta — instant changes, no timer recalculation
+- **Events emitted via signals** from TimeManager (not EventBus directly, but TimeManager can emit on EventBus if needed)
+- **TimeManager is NOT an autoload** — it's a child of `main_game.tscn`, created/destroyed with the game session
+- **GameManager proxies speed control** — `GameManager.set_speed()` forwards to `TimeManager.speed`
+- **Time-of-day and seasons are post-MVP** — calculations are left as commented code for future implementation
+
+### TimeManager Structure
+```
+TimeManager (Node, child of main_game.tscn)
+├── sim_time: float           # Accumulated sim seconds
+├── visual_time: float        # Accumulated visual seconds
+├── speed: int                # 0=pause, 1=1x, 2=2x, 3=3x
+├── _process(delta)           # Accumulates time, emits events
+└── Signals:
+    ├── visitor_tick          # Every 5 sim seconds
+    ├── sim_hour_passed(hour)
+    ├── sim_day_passed(day)
+    ├── sim_month_passed(month)
+    └── [POST-MVP] visual_phase_changed(phase), season_changed(season)
+```
+
+### Constants
+```
+SIM_SECONDS_PER_DAY = 86400       # 24 sim hours
+VISUAL_SECONDS_PER_DAY = 600      # 10 real minutes at 1x
+VISITOR_TICK_INTERVAL = 5         # 5 sim seconds
+VISUAL_TO_SIM_RATIO = VISUAL_SECONDS_PER_DAY / SIM_SECONDS_PER_DAY
+```
+
+### Event Emission Logic
+```
+_process(delta):
+    if speed == 0: return
+    sim_time += delta * speed
+    visual_time += delta * speed * VISUAL_TO_SIM_RATIO
+    
+    if int(sim_time / VISITOR_TICK_INTERVAL) > last_visitor_tick:
+        emit visitor_tick
+    if int(sim_time / SIM_SECONDS_PER_DAY) > last_sim_day:
+        emit sim_day_passed
+    if int(sim_time / (SIM_SECONDS_PER_DAY * 30)) > last_sim_month:
+        emit sim_month_passed
+```
+
+### Rationale
+- Accumulated time has no drift (unlike multiple Timer nodes)
+- Speed multiplier is instant — no state reset needed
+- Signals decouple TimeManager from listeners
+- Not an autoload because time only matters during gameplay
+- GameManager as proxy keeps speed control accessible from menus
+
+### Consequences
+- TimeManager must be instantiated when main_game.tscn loads
+- GameManager checks `if TimeManager` before forwarding speed (handles menu state)
+- Post-MVP time-of-day and season calculations are pure functions of `visual_time`
+
+---
+
 ## Pending Decisions
-- Zone system architecture (storage, validation, frontage-based splitting)
-- Time system architecture (dual timer: simulation clock + visual clock)
 - Economy system architecture (money tracking, rent, loans)
 - UI panel architecture (stacking, lifecycle, communication)
 - Save/load architecture (what to save, serialization format)
