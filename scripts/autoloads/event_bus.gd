@@ -205,14 +205,6 @@ signal camera_rotated(direction: int)
 ## Camera focused on an element.
 signal camera_focused(element_type: String, element_id: String)
 
-# ── General ──────────────────────────────────────────────────────────
-
-## The player requested to undo the last action.
-signal undo_requested
-
-## The player requested to redo an undone action.
-signal redo_requested
-
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
