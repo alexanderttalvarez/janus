@@ -98,7 +98,8 @@ func _initialize_camera() -> void:
 		push_error("MainGame: CameraManager not found.")
 		return
 
-	_camera_manager.global_position = Vector3(25, 10, 25)
+	# Position camera at plot center, elevated.
+	_camera_manager.global_position = Vector3(25, 15, 25)
 	_camera_manager.set_position_limit(Vector3(25, 0, 25), 20.0 * GridManager.TILE_SIZE + 10.0)
 	_camera_manager.floor_levels = ["G"]
 	_camera_manager.current_floor_index = 0

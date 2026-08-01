@@ -15,6 +15,13 @@
 [ext_resource type="Script" uid="uid://bdbijwelo76ye" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
 [ext_resource type="PackedScene" path="res://scenes/ui/game_ui.tscn" id="14_game_ui"]
 
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 1
+background_color = Color(0.3, 0.35, 0.4, 1)
+ambient_light_source = 1
+ambient_light_color = Color(0.5, 0.5, 0.56, 1)
+ambient_light_energy = 0.5
+
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
 
@@ -56,5 +63,13 @@ script = ExtResource("13_synergy_manager")
 
 [node name="ZoneTool" type="Node" parent="." unique_id=2029533736]
 script = ExtResource("5_zone_tool")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, 0.408248, -0.57735, 0, 0.816497, 0.57735, 0.707107, -0.408248, 0.57735, 10, 20, 10)
+light_energy = 1.5
+shadow_enabled = true
 
 [node name="GameUI" parent="." instance=ExtResource("14_game_ui")]

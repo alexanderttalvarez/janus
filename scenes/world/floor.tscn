@@ -1,25 +1,38 @@
-[gd_scene format=3 uid="uid://b7rkbkiblp2tt"]
+[gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" uid="uid://1up4x3v55x80" path="res://scripts/grid/floor.gd" id="1_floor"]
+[ext_resource type="Script" path="res://scripts/grid/floor.gd" id="1_floor"]
+[ext_resource type="Shader" path="res://assets/shaders/grid_overlay.gdshader" id="2_grid_shader"]
 
-[sub_resource type="PlaneMesh" id="PlaneMesh_8rh4k"]
+[sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
+size = Vector2(50.0, 50.0)
 
-[node name="root" type="Node3D" unique_id=2023296237]
+[sub_resource type="PlaneMesh" id="PlaneMesh_grid"]
+size = Vector2(50.0, 50.0)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_grid"]
+shader = ExtResource("2_grid_shader")
+shader_parameter/grid_size = 25.0
+shader_parameter/line_thickness = 0.02
+shader_parameter/line_color = Color(0.6, 0.6, 0.6, 1)
+shader_parameter/fill_color = Color(0.3, 0.3, 0.3, 1)
+
+[node name="root" type="Node3D"]
 script = ExtResource("1_floor")
 
-[node name="FloorPlane" type="MeshInstance3D" parent="." unique_id=1225063777]
-mesh = SubResource("PlaneMesh_8rh4k")
+[node name="FloorPlane" type="MeshInstance3D" parent="."]
+mesh = SubResource("PlaneMesh_floor")
 
-[node name="WallMesh" type="MeshInstance3D" parent="." unique_id=663785718]
+[node name="GridOverlay" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.01, 0)
+mesh = SubResource("PlaneMesh_grid")
+material_override = SubResource("ShaderMaterial_grid")
 
-[node name="GridOrigin" type="Marker3D" parent="." unique_id=769678388]
+[node name="WallMesh" type="MeshInstance3D" parent="."]
 
-[node name="TileContainer" type="Node3D" parent="." unique_id=1416098138]
+[node name="GridOrigin" type="Marker3D" parent="."]
 
-[node name="CirculationContainer" type="Node3D" parent="." unique_id=1553167824]
-
-[node name="ZoneContainer" type="Node3D" parent="." unique_id=440998567]
-
-[node name="VisitorContainer" type="Node3D" parent="." unique_id=1114255070]
-
-[node name="IndicatorContainer" type="Node3D" parent="." unique_id=1627806847]
+[node name="TileContainer" type="Node3D" parent="."]
+[node name="CirculationContainer" type="Node3D" parent="."]
+[node name="ZoneContainer" type="Node3D" parent="."]
+[node name="VisitorContainer" type="Node3D" parent="."]
+[node name="IndicatorContainer" type="Node3D" parent="."]

@@ -86,13 +86,16 @@ func _process(_delta: float) -> void:
 
 func _setup_camera() -> void:
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	_camera.size = _current_zoom
+	_camera.size = 20.0
+	_current_zoom = 20.0
 
-	# Set isometric pitch on the camera mount (tilt camera down).
-	_camera_mount.rotation_degrees.x = -isometric_pitch
+	# Isometric: -30° X tilt (pitch), 45° Y rotation.
+	_camera_rig.rotation_degrees.y = 45.0
+	_camera_mount.rotation_degrees.x = -30.0
+	_current_direction = 0  # Start at 0° (will be overridden by 45°).
 
-	# Set camera distance (offset in Z for zoom).
-	_camera.position = Vector3(0, 0, _current_zoom * 0.5)
+	# Camera distance.
+	_camera.position = Vector3(0, 0, 0)
 
 
 # ── Input Handling ─────────────────────────────────────────────────────
