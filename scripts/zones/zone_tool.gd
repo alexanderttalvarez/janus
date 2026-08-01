@@ -98,7 +98,7 @@ func finish() -> void:
 
 	if not _editing_zone_id.is_empty():
 		# Modify existing zone.
-		var existing := zone_manager.zones.get(_editing_zone_id, null)
+		var existing: Variant = zone_manager.zones.get(_editing_zone_id, null)
 		if existing:
 			# Combine existing tiles with new painted tiles.
 			var combined: Array[Vector2i] = existing.tiles.duplicate()
