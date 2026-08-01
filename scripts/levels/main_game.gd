@@ -7,6 +7,7 @@ extends Node3D
 @onready var _world: Node3D = $World
 @onready var _camera_manager: CameraManager = $CameraRig
 @onready var _time_manager: TimeManager = $Simulation/TimeManager
+@onready var _visitor_manager: VisitorManager = $Simulation/VisitorManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 
 
@@ -14,6 +15,7 @@ func _ready() -> void:
 	_initialize_grid()
 	_initialize_camera()
 	_initialize_time()
+	_initialize_visitors()
 	_initialize_zone_tool()
 
 	# Deferred state initialization — now that the scene is loaded.
@@ -107,6 +109,23 @@ func _initialize_time() -> void:
 	GameManager.speed = GameManager.Speed.X1
 
 	print("MainGame: Time system initialized — 1x speed.")
+
+
+# ── Visitor Initialization ─────────────────────────────────────────────
+
+func _initialize_visitors() -> void:
+	if _visitor_manager == null:
+		push_error("MainGame: VisitorManager not found.")
+		return
+
+	# Wire TimeManager.visitor_tick → VisitorManager update.
+	_time_manager.visitor_tick.connect(_visitor_manager.on_visitor_tick)
+
+	# Wire camera signals for culling.
+	_camera_manager.floor_changed.connect(_visitor_manager.on_floor_changed)
+	_camera_manager.zoomed.connect(_visitor_manager.on_zoom_changed)
+
+	print("MainGame: Visitor system initialized — culling & tick wired.")
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
