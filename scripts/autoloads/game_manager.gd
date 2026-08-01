@@ -67,6 +67,7 @@ var wall_mode: WallMode = WallMode.CUTAWAY:
 	set(value):
 		wall_mode = value
 		wall_mode_changed.emit(WALL_MODE_NAMES[value])
+		RenderingServer.global_shader_parameter_set("wall_mode", value)
 
 ## Path to the currently active game scene.
 var current_scene: String = ""
