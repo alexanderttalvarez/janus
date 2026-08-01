@@ -12,6 +12,7 @@ extends Node3D
 @onready var _economy_manager: EconomyManager = $Simulation/EconomyManager
 @onready var _prestige_manager: PrestigeManager = $Simulation/PrestigeManager
 @onready var _staff_manager: StaffManager = $Simulation/StaffManager
+@onready var _synergy_manager: SynergyManager = $Simulation/SynergyManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 
@@ -25,6 +26,7 @@ func _ready() -> void:
 	_initialize_economy()
 	_initialize_prestige()
 	_initialize_staff()
+	_initialize_synergy()
 	_initialize_zone_tool()
 
 	# Deferred state initialization — now that the scene is loaded.
@@ -196,6 +198,24 @@ func _initialize_staff() -> void:
 	_time_manager.visitor_tick.connect(_staff_manager.on_visitor_tick)
 
 	print("MainGame: Staff system initialized — cleaners & security.")
+
+
+# ── Synergy Initialization ─────────────────────────────────────────────
+
+func _initialize_synergy() -> void:
+	if _synergy_manager == null:
+		push_error("MainGame: SynergyManager not found.")
+		return
+
+	var gm: GridManager = _world.get_node("GridManager") as GridManager
+	if gm:
+		_synergy_manager.initialize(_zone_manager, gm)
+
+	# Recalculate synergy when zones change.
+	EventBus.zone_created.connect(func(_z: String, _t: String, _c: int): _synergy_manager.recalculate())
+	EventBus.zone_modified.connect(func(_z: String): _synergy_manager.recalculate())
+
+	print("MainGame: Synergy system initialized — zone relationships.")
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
