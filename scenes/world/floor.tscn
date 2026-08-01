@@ -1,0 +1,22 @@
+[gd_scene format=3 uid="uid://b7rkbkiblp2tt"]
+
+[ext_resource type="Script" uid="uid://1up4x3v55x80" path="res://scripts/grid/floor.gd" id="1_floor"]
+
+[node name="root" type="Node3D" unique_id=2023296237]
+script = ExtResource("1_floor")
+
+[node name="FloorPlane" type="MeshInstance3D" parent="." unique_id=1225063777]
+
+[node name="WallMesh" type="MeshInstance3D" parent="." unique_id=663785718]
+
+[node name="GridOrigin" type="Marker3D" parent="." unique_id=769678388]
+
+[node name="TileContainer" type="Node3D" parent="." unique_id=1416098138]
+
+[node name="CirculationContainer" type="Node3D" parent="." unique_id=1553167824]
+
+[node name="ZoneContainer" type="Node3D" parent="." unique_id=440998567]
+
+[node name="VisitorContainer" type="Node3D" parent="." unique_id=1114255070]
+
+[node name="IndicatorContainer" type="Node3D" parent="." unique_id=1627806847]
