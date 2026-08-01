@@ -8,7 +8,7 @@
 [ext_resource type="Script" uid="uid://cp0m6e6wopn4q" path="res://scripts/simulation/visitor_manager.gd" id="6_visitor_manager"]
 [ext_resource type="PackedScene" path="res://scenes/camera/camera_rig.tscn" id="7_camera_rig"]
 [ext_resource type="Script" uid="uid://c5vqddles7fxg" path="res://scripts/simulation/tenant_manager.gd" id="8_tenant_manager"]
-[ext_resource type="Script" path="res://scripts/simulation/economy_manager.gd" id="9_economy_manager"]
+[ext_resource type="Script" uid="uid://cchqvwpgx2s14" path="res://scripts/simulation/economy_manager.gd" id="9_economy_manager"]
 
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
@@ -34,7 +34,7 @@ script = ExtResource("6_visitor_manager")
 [node name="TenantManager" type="Node" parent="Simulation" unique_id=2100532991]
 script = ExtResource("8_tenant_manager")
 
-[node name="EconomyManager" type="Node" parent="Simulation"]
+[node name="EconomyManager" type="Node" parent="Simulation" unique_id=1570619769]
 script = ExtResource("9_economy_manager")
 
 [node name="ZoneTool" type="Node" parent="." unique_id=2029533736]

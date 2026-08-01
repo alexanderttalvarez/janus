@@ -130,6 +130,11 @@ func _initialize_visitors() -> void:
 	_camera_manager.floor_changed.connect(_visitor_manager.on_floor_changed)
 	_camera_manager.zoomed.connect(_visitor_manager.on_zoom_changed)
 
+	# Wire GridManager pathfinding graph.
+	var gm: GridManager = _world.get_node("GridManager") as GridManager
+	if gm:
+		_visitor_manager._pathfinding_graph = gm.pathfinding_graph
+
 	print("MainGame: Visitor system initialized — culling & tick wired.")
 
 
