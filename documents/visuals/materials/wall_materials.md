@@ -1,0 +1,81 @@
+# Wall Materials
+
+## Wall Base Material (MVP)
+
+| Property | Value |
+|----------|-------|
+| **Purpose** | Default wall surface. |
+| **Type** | StandardMaterial3D (used with wall clipping shader) |
+| **Color** | Warm neutral (light gray/white) |
+| **Roughness** | 0.7 |
+| **Metallic** | 0.0 |
+| **MVP** | Flat color with clipping shader. |
+| **Post-MVP** | Textured material (concrete, glass, brick, etc.). |
+
+## Wall Clipping Shader (MVP)
+
+| Property | Value |
+|----------|-------|
+| **Purpose** | Clips walls based on camera direction and visualization mode. |
+| **Type** | ShaderMaterial |
+| **Parameters** | `camera_direction` (global), `clip_mode` (cutaway/partial/full) |
+| **Logic** | Dot product of wall normal vs. camera direction determines front/back. Front walls clipped to 5% in cutaway mode. |
+
+### Shader Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `camera_direction` | vec3 (global) | Current camera look direction |
+| `clip_mode` | int | 0=Cutaway, 1=Partial, 2=Full |
+| `front_clip_height` | float | 0.05 for Cutaway/Partial, 1.0 for Full |
+| `back_clip_height` | float | 1.0 for Cutaway, 0.05 for Partial, 1.0 for Full |
+
+## Post-MVP Wall Materials
+
+### Concrete + Windows (Default)
+
+| Property | Value |
+|----------|-------|
+| **Style** | Standard commercial concrete with window cutouts |
+| **Color** | Light gray |
+| **Texture** | Concrete texture with window pattern |
+
+### Glass Curtain
+
+| Property | Value |
+|----------|-------|
+| **Style** | Modern, transparent |
+| **Color** | Tinted blue/gray |
+| **Transparency** | 70-80% |
+| **Reflection** | High |
+
+### Brick
+
+| Property | Value |
+|----------|-------|
+| **Style** | Warm, traditional |
+| **Color** | Red/brown brick |
+| **Texture** | Brick pattern |
+
+### Metal Panel
+
+| Property | Value |
+|----------|-------|
+| **Style** | Industrial, sleek |
+| **Color** | Silver/gray |
+| **Metallic** | 0.8 |
+| **Roughness** | 0.3 |
+
+### Decorative
+
+| Property | Value |
+|----------|-------|
+| **Style** | Ornamental, premium |
+| **Color** | Variable |
+| **Texture** | Decorative pattern |
+
+## Reuse Opportunities
+
+- All wall materials share the same base geometry
+- Wall clipping shader is shared across all wall materials
+- Post-MVP materials are variants of the base wall material with different textures
