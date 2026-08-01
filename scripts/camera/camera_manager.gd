@@ -102,9 +102,9 @@ func _handle_input() -> void:
 		return
 
 	# Rotation
-	if Input.is_action_just_pressed("camera_rotate_left"):
+	if InputMap.has_action("camera_rotate_left") and Input.is_action_just_pressed("camera_rotate_left"):
 		rotate_camera(-1)
-	elif Input.is_action_just_pressed("camera_rotate_right"):
+	elif InputMap.has_action("camera_rotate_right") and Input.is_action_just_pressed("camera_rotate_right"):
 		rotate_camera(1)
 
 	# Zoom
