@@ -900,7 +900,131 @@ Cleaner pathfinds → cleans → state = FREE
 
 ---
 
+## Decision 19: Tech Tree Architecture — Dictionary Data with Visual Graph
+**Date:** 2026-07-28
+**Status:** Accepted
+
+### Context
+Tech tree drives progression via Mall Levels. Three branches (Construction, Circulation, Amenities) with dependencies, costs, and unlock effects.
+
+### Decision
+- **Tech tree data stored as a Dictionary** in `TechTreeData` class — easy to maintain, single source of truth
+- **Preloaded icons** (`preload("res://...")`) stored directly in dictionary entries
+- **Translation keys** (`name_key`, `description_key`) instead of raw strings — supports multi-language
+- **`grid_pos: Vector2i`** for each node — UI builds visual graph from grid positions and prerequisites
+- **Dependency visualization** — UI draws lines between nodes using `grid_pos` and `prerequisites`
+- **Unlock effects checked by relevant systems** — `TechTreeManager.is_unlocked()` called by ZoneTool, CirculationTool, etc.
+
+### TechTreeData Structure
+```gdscript
+const NODES := {
+    "basic_zoning": {
+        "name_key": "tech_basic_zoning",
+        "description_key": "tech_basic_zoning_desc",
+        "icon": preload("res://assets/textures/ui/tech/basic_zoning.png"),
+        "branch": "construction",
+        "cost": 0,
+        "prerequisites": [],
+        "grid_pos": Vector2i(0, 0),
+        "unlocks": ["zone_retail", "zone_food"]
+    },
+    ...
+}
+```
+
+### TechTreeManager Structure
+```
+TechTreeManager (Node, child of main_game.tscn)
+├── unlocked_nodes: Array[String]
+├── available_points: int
+├── total_earned: int
+├── can_unlock(node_id) → bool
+├── unlock_node(node_id) → bool
+├── is_unlocked(node_id) → bool
+├── get_available_nodes() → Array
+└── Signals:
+    ├── tech_point_spent(node_id)
+    └── tech_points_changed(available, total_earned)
+```
+
+### Rationale
+- Dictionary is easier to maintain than many `.tres` files
+- Preloaded icons avoid path management issues
+- Translation keys enable multi-language without data restructuring
+- `grid_pos` enables clean visual graph layout without complex auto-layout algorithms
+
+### Consequences
+- All tech tree strings must be translation keys
+- Icons must be placed in `assets/textures/ui/tech/`
+- UI panel draws dependency lines from `grid_pos` data
+- Systems check `TechTreeManager.is_unlocked()` before allowing actions
+
+---
+
+## Decision 20: Debug Mode Architecture — DebugManager Autoload
+**Date:** 2026-07-28
+**Status:** Accepted
+
+### Context
+Development requires a debug mode to bypass unlocks, costs, and time constraints for testing.
+
+### Decision
+- **DebugManager is an autoload** — available globally during development
+- **Auto-disabled in release builds** — `queue_free()` if `OS.has_feature("release")`
+- **Toggle flags**: `god_mode` (unlocks everything), `infinite_money`, `instant_construction`, `time_warp`
+- **Debug UI overlay** — toggle with F12, shows toggles and quick-action buttons
+
+### Integration Points
+- `TechTreeManager.can_unlock()`: returns `true` if `DebugManager.god_mode`
+- `EconomyManager.subtract()`: returns `true` if `DebugManager.infinite_money`
+- `TenantManager.start_construction()`: sets duration to 0 if `DebugManager.instant_construction`
+- `TimeManager`: sets speed to 100 if `DebugManager.time_warp`
+
+### Rationale
+- Autoload ensures debug flags are accessible from any system
+- Auto-disabled in release prevents accidental shipping
+- Simple boolean flags are easy to toggle and test
+
+### Consequences
+- Every system with cost/unlock/time checks must integrate with DebugManager
+- Debug UI overlay is a separate scene instanced only in debug builds
+
+---
+
+## Decision 21: Multi-Language Architecture — Godot CSV/PO with tr()
+**Date:** 2026-07-28
+**Status:** Accepted
+
+### Context
+Game must support multiple languages. English is primary, but translations should be easy to add.
+
+### Decision
+- **Godot's built-in translation system** — CSV or PO files in `translations/` directory
+- **All UI text uses `tr("key")`** — no hardcoded strings in code or scenes
+- **Data stores translation keys** — TechTreeData uses `name_key`, `description_key` instead of raw strings
+- **TranslationServer handles loading/switching** — no custom translation logic needed
+
+### File Structure
+```
+translations/
+├── en.csv
+├── es.csv
+├── fr.csv
+└── ja.csv
+```
+
+### Rationale
+- Godot's translation system is mature and well-integrated
+- CSV files are easy to edit and version control
+- `tr()` is the standard Godot pattern — no custom infrastructure needed
+
+### Consequences
+- All UI labels must use `tr()` or be marked for translation in Inspector
+- Data dictionaries store keys, not raw strings
+- New languages require adding a CSV file and registering it in Project Settings
+
+---
+
 ## Pending Decisions
-- Tech tree architecture (data structure, dependency graph, unlock flow)
 - Prestige calculation architecture (Scale and Quality computation)
 - (More to come)
