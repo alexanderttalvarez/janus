@@ -62,7 +62,7 @@ func get_tile(x: int, y: int) -> GridTile:
 
 ## Check if a tile is walkable (valid, owned, floor built, and not blocked).
 func is_walkable(x: int, y: int) -> bool:
-	var tile := get_tile(x, y)
+	var tile: GridTile = get_tile(x, y)
 	if tile == null:
 		return false
 	return tile.owned and tile.floor_built
@@ -83,7 +83,7 @@ func get_zone_tiles(p_zone_id: String) -> Array[Vector2i]:
 	var positions: Array[Vector2i] = []
 	for x in range(width):
 		for y in range(height):
-	var tile: GridTile = get_tile(x, y)
+			var tile: GridTile = get_tile(x, y)
 			if tile != null and tile.zone_id == p_zone_id:
 				positions.append(Vector2i(x, y))
 	return positions
@@ -102,7 +102,7 @@ func get_neighbors(x: int, y: int) -> Array[Vector2i]:
 
 ## Get only walkable neighbors (valid + owned + floor_built).
 func get_walkable_neighbors(x: int, y: int) -> Array[Vector2i]:
-	var neighbors := get_neighbors(x, y)
+	var neighbors: Array[Vector2i] = get_neighbors(x, y)
 	var walkable: Array[Vector2i] = []
 	for n in neighbors:
 		if is_walkable(n.x, n.y):
@@ -112,7 +112,7 @@ func get_walkable_neighbors(x: int, y: int) -> Array[Vector2i]:
 
 ## Serialize this floor to a dictionary for save/load.
 func serialize() -> Dictionary:
-	var data := {
+	var data: Dictionary = {
 		"width": width,
 		"height": height,
 		"tiles": [],
@@ -120,7 +120,7 @@ func serialize() -> Dictionary:
 	}
 
 	for x in range(width):
-		var column := []
+		var column: Array = []
 		for y in range(height):
 			var tile: GridTile = tiles[x][y]
 			column.append({
@@ -146,9 +146,9 @@ func deserialize(data: Dictionary) -> void:
 	tiles.clear()
 	for x in range(width):
 		var column: Array[GridTile] = []
-		var column_data = data["tiles"][x] if x < data["tiles"].size() else []
+		var column_data: Array = data["tiles"][x] if x < data["tiles"].size() else []
 		for y in range(height):
-			var tile := GridTile.new()
+			var tile: GridTile = GridTile.new()
 			if y < column_data.size():
 				tile.owned = column_data[y]["owned"]
 				tile.floor_built = column_data[y]["floor_built"]
