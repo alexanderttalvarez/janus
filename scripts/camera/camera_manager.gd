@@ -57,8 +57,8 @@ var current_floor_index: int = 0
 ## Whether a Tween rotation is in progress.
 var _is_rotating: bool = false
 
-## Whether a Tween zoom/focus is in progress.
-var _is_tweening: bool = false
+## Reference to the active zoom tween (for interruption).
+var _zoom_tween: Tween
 
 ## Position limit center and radius (set from GridManager on init).
 var _limit_center: Vector3 = Vector3.ZERO
@@ -167,17 +167,15 @@ func _on_rotation_complete(direction: int) -> void:
 func zoom_camera(delta: float) -> void:
 	var target := clampf(_current_zoom + delta, min_zoom, max_zoom)
 
-	if _is_tweening:
-		# Interrupt previous tween.
-		for child: Node in get_children():
-			if child is Tween:
-				(child as Tween).kill()
+	if _zoom_tween and _zoom_tween.is_valid():
+		_zoom_tween.kill()
 
 	var tween := create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_CUBIC)
 	tween.tween_method(_apply_zoom, _current_zoom, target, 0.2)
 	tween.finished.connect(_on_zoom_complete.bind(target))
+	_zoom_tween = tween
 
 
 func _apply_zoom(size: float) -> void:
@@ -315,9 +313,9 @@ func _clamp_position(pos: Vector3) -> Vector3:
 
 ## Set the global camera_direction shader parameter for wall clipping.
 func _set_global_camera_direction(dir_index: int) -> void:
-	# Convert direction index to an angle in radians.
+	if not GameManager.session_ready:
+		return
 	var angle := deg_to_rad(float(dir_index * 90))
-	# Godot 4.x uses global shader parameters.
 	RenderingServer.global_shader_parameter_set("camera_direction", Vector2(cos(angle), sin(angle)))
 
 

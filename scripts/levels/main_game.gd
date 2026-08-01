@@ -12,6 +12,12 @@ func _ready() -> void:
 	_initialize_grid()
 	_initialize_camera()
 	_initialize_heatmap()
+
+	# Deferred state initialization — now that the scene is loaded.
+	GameManager.ui_mode = GameManager.UIMode.BUILD
+	GameManager.wall_mode = GameManager.WallMode.CUTAWAY
+	GameManager.session_ready = true
+
 	print("MainGame: Ready.")
 
 
@@ -82,20 +88,12 @@ func _initialize_camera() -> void:
 		push_error("MainGame: CameraManager not found.")
 		return
 
-	# Set initial camera position to center of the 25×25 grid.
-	_camera_manager.global_position = Vector3(25, 10, 25)  # Centered, elevated.
-
-	# Set position limit: 20 tiles radius from center, plus buffer.
+	_camera_manager.global_position = Vector3(25, 10, 25)
 	var center := Vector3(25, 0, 25)
 	var radius := 20.0 * GridManager.TILE_SIZE + 10.0
 	_camera_manager.set_position_limit(center, radius)
-
-	# Set floor levels for navigation (just ground floor for now).
 	_camera_manager.floor_levels = ["G"]
 	_camera_manager.current_floor_index = 0
-
-	# Set initial wall mode shader parameter (deferred until scene is loaded).
-	RenderingServer.global_shader_parameter_set("wall_mode", GameManager.wall_mode)
 
 	print("MainGame: Camera initialized at center of grid.")
 

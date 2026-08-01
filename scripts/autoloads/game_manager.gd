@@ -75,6 +75,10 @@ var current_scene: String = ""
 ## Whether a game session is active (not in main menu).
 var is_session_active: bool = false
 
+## Whether the game scene has fully loaded and initialized.
+## Set by MainGame._ready(). Used to defer shader params until scene is ready.
+var session_ready: bool = false
+
 ## Current heatmap mode (empty = none active).
 var active_heatmap: String = ""
 
@@ -178,10 +182,9 @@ func close_all_panels() -> void:
 ## Start a new game session. Loads the game scene.
 func start_new_game(game_scene_path: String = "res://scenes/levels/main_game.tscn") -> void:
 	is_session_active = true
+	session_ready = false
 	open_panels.clear()
 	active_heatmap = ""
-	ui_mode = UIMode.BUILD
-	wall_mode = WallMode.CUTAWAY
 	change_scene(game_scene_path)
 	game_started.emit()
 
@@ -207,9 +210,8 @@ func _get_tree() -> SceneTree:
 
 
 ## Safely set the wall_mode global shader parameter.
-## Guards against calling before the shader is loaded.
+## Deferred until the game scene reports it's ready (session_ready = true).
 func _set_wall_mode_shader(value: int) -> void:
-	# Only attempt to set if we're in a game scene (not main menu).
-	if not is_session_active:
+	if not session_ready:
 		return
 	RenderingServer.global_shader_parameter_set("wall_mode", value)
