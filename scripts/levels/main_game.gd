@@ -11,6 +11,7 @@ extends Node3D
 @onready var _tenant_manager: TenantManager = $Simulation/TenantManager
 @onready var _economy_manager: EconomyManager = $Simulation/EconomyManager
 @onready var _prestige_manager: PrestigeManager = $Simulation/PrestigeManager
+@onready var _tech_tree_manager: TechTreeManager = $Simulation/TechTreeManager
 @onready var _staff_manager: StaffManager = $Simulation/StaffManager
 @onready var _synergy_manager: SynergyManager = $Simulation/SynergyManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
@@ -180,6 +181,12 @@ func _initialize_prestige() -> void:
 
 	_prestige_manager.initialize(_zone_manager, _tenant_manager, _visitor_manager)
 	_time_manager.sim_month_passed.connect(func(_m: int): _prestige_manager.recalculate())
+
+	# Wire prestige level-up to tech tree point earning.
+	_prestige_manager.prestige_recalculated.connect(func(_p: int, _s: int, _q: int):
+		if _tech_tree_manager:
+			_tech_tree_manager.available_points = _prestige_manager.tech_points
+	)
 
 	print("MainGame: Prestige system initialized — monthly recalculation.")
 
