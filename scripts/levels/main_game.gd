@@ -8,6 +8,8 @@ extends Node3D
 @onready var _camera_manager: CameraManager = $CameraRig
 @onready var _time_manager: TimeManager = $Simulation/TimeManager
 @onready var _visitor_manager: VisitorManager = $Simulation/VisitorManager
+@onready var _tenant_manager: TenantManager = $Simulation/TenantManager
+@onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 
 
@@ -16,6 +18,7 @@ func _ready() -> void:
 	_initialize_camera()
 	_initialize_time()
 	_initialize_visitors()
+	_initialize_tenants()
 	_initialize_zone_tool()
 
 	# Deferred state initialization — now that the scene is loaded.
@@ -126,6 +129,19 @@ func _initialize_visitors() -> void:
 	_camera_manager.zoomed.connect(_visitor_manager.on_zoom_changed)
 
 	print("MainGame: Visitor system initialized — culling & tick wired.")
+
+
+# ── Tenant Initialization ──────────────────────────────────────────────
+
+func _initialize_tenants() -> void:
+	if _tenant_manager == null:
+		push_error("MainGame: TenantManager not found.")
+		return
+
+	_tenant_manager.initialize(_zone_manager)
+	_time_manager.sim_day_passed.connect(_tenant_manager.on_sim_day_passed)
+
+	print("MainGame: Tenant system initialized — applications & viability.")
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
