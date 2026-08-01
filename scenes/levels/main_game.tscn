@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://bsr42lv6kkxsm" path="res://scripts/simulation/tech_tree_manager.gd" id="11_tech_tree_manager"]
 [ext_resource type="Script" uid="uid://b3ooxq3kwl8jb" path="res://scripts/simulation/staff_manager.gd" id="12_staff_manager"]
 [ext_resource type="Script" uid="uid://bdbijwelo76ye" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
+[ext_resource type="PackedScene" path="res://scenes/ui/game_ui.tscn" id="14_game_ui"]
 
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
