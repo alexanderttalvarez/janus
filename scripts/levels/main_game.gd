@@ -237,3 +237,40 @@ func _initialize_zone_tool() -> void:
 	_zone_tool.active_zone_type = ZoneData.ZONE_TYPE_NAMES[0]  # Retail by default.
 
 	print("MainGame: ZoneTool initialized — Build mode active.")
+
+
+# ── Save / Load ────────────────────────────────────────────────────────
+
+func save_game(slot: int) -> void:
+	var gm: GridManager = _world.get_node("GridManager") as GridManager
+	var zm: ZoneManager = _world.get_node("ZoneManager") as ZoneManager
+	var data := {
+		"economy": _economy_manager.serialize() if _economy_manager else {},
+		"grid": gm.serialize() if gm else {},
+		"zones": zm.serialize() if zm else {},
+		"tenants": _tenant_manager.serialize() if _tenant_manager else {},
+		"visitors": _visitor_manager.serialize() if _visitor_manager else {},
+		"time": _time_manager.serialize() if _time_manager else {},
+		"prestige": _prestige_manager.serialize() if _prestige_manager else {},
+		"staff": _staff_manager.serialize() if _staff_manager else {},
+		"synergy": _synergy_manager.serialize() if _synergy_manager else {},
+	}
+	SaveManager.save_game(slot, data)
+
+
+func load_game(slot: int) -> void:
+	var data: Variant = SaveManager.load_game(slot)
+	if data == null or not data is Dictionary:
+		return
+	var gm: GridManager = _world.get_node("GridManager") as GridManager
+	var zm: ZoneManager = _world.get_node("ZoneManager") as ZoneManager
+	if _economy_manager: _economy_manager.deserialize(data.get("economy", {}))
+	if gm: gm.deserialize(data.get("grid", {}))
+	if zm: zm.deserialize(data.get("zones", {}))
+	if _tenant_manager: _tenant_manager.deserialize(data.get("tenants", {}))
+	if _visitor_manager: _visitor_manager.deserialize(data.get("visitors", {}))
+	if _time_manager: _time_manager.deserialize(data.get("time", {}))
+	if _prestige_manager: _prestige_manager.deserialize(data.get("prestige", {}))
+	if _staff_manager: _staff_manager.deserialize(data.get("staff", {}))
+	if _synergy_manager: _synergy_manager.deserialize(data.get("synergy", {}))
+	if gm: gm.rebuild_pathfinding()
