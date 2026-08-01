@@ -11,8 +11,8 @@
 [ext_resource type="Script" uid="uid://cchqvwpgx2s14" path="res://scripts/simulation/economy_manager.gd" id="9_economy_manager"]
 [ext_resource type="Script" uid="uid://dtgul3jtl4brv" path="res://scripts/simulation/prestige_manager.gd" id="10_prestige_manager"]
 [ext_resource type="Script" uid="uid://bsr42lv6kkxsm" path="res://scripts/simulation/tech_tree_manager.gd" id="11_tech_tree_manager"]
-[ext_resource type="Script" path="res://scripts/simulation/staff_manager.gd" id="12_staff_manager"]
-[ext_resource type="Script" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
+[ext_resource type="Script" uid="uid://b3ooxq3kwl8jb" path="res://scripts/simulation/staff_manager.gd" id="12_staff_manager"]
+[ext_resource type="Script" uid="uid://bdbijwelo76ye" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
 
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
@@ -47,11 +47,13 @@ script = ExtResource("10_prestige_manager")
 [node name="TechTreeManager" type="Node" parent="Simulation" unique_id=1300025007]
 script = ExtResource("11_tech_tree_manager")
 
-[node name="StaffManager" type="Node" parent="Simulation"]
+[node name="StaffManager" type="Node" parent="Simulation" unique_id=627459140]
 script = ExtResource("12_staff_manager")
 
-[node name="SynergyManager" type="Node" parent="Simulation"]
+[node name="SynergyManager" type="Node" parent="Simulation" unique_id=42908921]
 script = ExtResource("13_synergy_manager")
 
 [node name="ZoneTool" type="Node" parent="." unique_id=2029533736]
 script = ExtResource("5_zone_tool")
+
+[node name="GameUI" parent="." instance=ExtResource("14_game_ui")]
