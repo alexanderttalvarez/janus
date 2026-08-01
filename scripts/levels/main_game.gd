@@ -11,6 +11,7 @@ extends Node3D
 @onready var _tenant_manager: TenantManager = $Simulation/TenantManager
 @onready var _economy_manager: EconomyManager = $Simulation/EconomyManager
 @onready var _prestige_manager: PrestigeManager = $Simulation/PrestigeManager
+@onready var _staff_manager: StaffManager = $Simulation/StaffManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 
@@ -23,6 +24,7 @@ func _ready() -> void:
 	_initialize_tenants()
 	_initialize_economy()
 	_initialize_prestige()
+	_initialize_staff()
 	_initialize_zone_tool()
 
 	# Deferred state initialization — now that the scene is loaded.
@@ -178,6 +180,22 @@ func _initialize_prestige() -> void:
 	_time_manager.sim_month_passed.connect(func(_m: int): _prestige_manager.recalculate())
 
 	print("MainGame: Prestige system initialized — monthly recalculation.")
+
+
+# ── Staff Initialization ───────────────────────────────────────────────
+
+func _initialize_staff() -> void:
+	if _staff_manager == null:
+		push_error("MainGame: StaffManager not found.")
+		return
+
+	var gm: GridManager = _world.get_node("GridManager") as GridManager
+	if gm:
+		_staff_manager.initialize(gm)
+
+	_time_manager.visitor_tick.connect(_staff_manager.on_visitor_tick)
+
+	print("MainGame: Staff system initialized — cleaners & security.")
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
