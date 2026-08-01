@@ -85,17 +85,10 @@ func _process(_delta: float) -> void:
 # ── Camera Setup ───────────────────────────────────────────────────────
 
 func _setup_camera() -> void:
-	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	_camera.size = 20.0
-	_current_zoom = 20.0
-
-	# Isometric: -30° X tilt (pitch), 45° Y rotation.
-	_camera_rig.rotation_degrees.y = 45.0
-	_camera_mount.rotation_degrees.x = -30.0
-	_current_direction = 0  # Start at 0° (will be overridden by 45°).
-
-	# Camera distance.
-	_camera.position = Vector3(0, 0, 0)
+	# Scene file has exact isometric values (45° Y, -30° X, Orthogonal, Size 20).
+	# Only set runtime defaults that differ from scene.
+	_current_zoom = _camera.size
+	_current_direction = 0
 
 
 # ── Input Handling ─────────────────────────────────────────────────────
@@ -184,11 +177,6 @@ func zoom_camera(delta: float) -> void:
 func _apply_zoom(size: float) -> void:
 	_current_zoom = size
 	_camera.size = size
-
-	# Update camera distance to maintain isometric angle.
-	_camera.position.z = size * 0.5
-
-	# Emit zoomed signal for visitor culling (zoom > 35 hides visitors).
 	if size > 35.0:
 		zoomed.emit(size)
 
