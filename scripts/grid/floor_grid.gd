@@ -1,4 +1,4 @@
-## FloorGrid — 2D array of TileData representing one floor layer.
+## FloorGrid — 2D array of GridTile representing one floor layer.
 ## Each floor has fixed dimensions and a footprint mask defining valid tiles.
 class_name FloorGrid
 extends RefCounted
@@ -10,8 +10,8 @@ var width: int = 0
 ## Depth in tiles (Y dimension).
 var height: int = 0
 
-## 2D array of TileData: tiles[0..width-1][0..height-1].
-var tiles: Array = []  # Array[Array[TileData]]
+## 2D array of GridTile: tiles[0..width-1][0..height-1].
+var tiles: Array = []  # Array[Array[GridTile]]
 
 ## Footprint mask: footprint[y][x] = true if tile exists at (x, y).
 var footprint: Array = []  # Array[Array[bool]]
@@ -26,9 +26,9 @@ func initialize(p_width: int, p_height: int, p_footprint: Array = []) -> void:
 	# Build tile array.
 	tiles.clear()
 	for x in range(width):
-		var column: Array[TileData] = []
+		var column: Array[GridTile] = []
 		for y in range(height):
-			column.append(TileData.new())
+			column.append(GridTile.new())
 		tiles.append(column)
 
 	# Build footprint mask.
@@ -53,8 +53,8 @@ func is_valid_tile(x: int, y: int) -> bool:
 	return true
 
 
-## Get the TileData at (x, y). Returns null if out of bounds or invalid.
-func get_tile(x: int, y: int) -> TileData:
+## Get the GridTile at (x, y). Returns null if out of bounds or invalid.
+func get_tile(x: int, y: int) -> GridTile:
 	if not is_valid_tile(x, y):
 		return null
 	return tiles[x][y]
@@ -83,7 +83,7 @@ func get_zone_tiles(p_zone_id: String) -> Array[Vector2i]:
 	var positions: Array[Vector2i] = []
 	for x in range(width):
 		for y in range(height):
-			var tile := get_tile(x, y)
+	var tile: GridTile = get_tile(x, y)
 			if tile != null and tile.zone_id == p_zone_id:
 				positions.append(Vector2i(x, y))
 	return positions
@@ -92,9 +92,9 @@ func get_zone_tiles(p_zone_id: String) -> Array[Vector2i]:
 ## Get the 4-directional neighbors of a tile position (up, down, left, right).
 func get_neighbors(x: int, y: int) -> Array[Vector2i]:
 	var neighbors: Array[Vector2i] = []
-	for offset in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
-		var nx := x + offset.x
-		var ny := y + offset.y
+	for offset: Vector2i in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
+		var nx: int = x + offset.x
+		var ny: int = y + offset.y
 		if is_valid_tile(nx, ny):
 			neighbors.append(Vector2i(nx, ny))
 	return neighbors
@@ -122,7 +122,7 @@ func serialize() -> Dictionary:
 	for x in range(width):
 		var column := []
 		for y in range(height):
-			var tile := tiles[x][y]
+			var tile: GridTile = tiles[x][y]
 			column.append({
 				"owned": tile.owned,
 				"floor_built": tile.floor_built,
@@ -145,10 +145,10 @@ func deserialize(data: Dictionary) -> void:
 
 	tiles.clear()
 	for x in range(width):
-		var column: Array[TileData] = []
+		var column: Array[GridTile] = []
 		var column_data = data["tiles"][x] if x < data["tiles"].size() else []
 		for y in range(height):
-			var tile := TileData.new()
+			var tile := GridTile.new()
 			if y < column_data.size():
 				tile.owned = column_data[y]["owned"]
 				tile.floor_built = column_data[y]["floor_built"]

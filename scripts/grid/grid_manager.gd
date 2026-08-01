@@ -126,7 +126,7 @@ func get_floor_world_y(floor_level: String) -> float:
 
 
 ## Get a tile at (x, y) on a specific plot and floor.
-func get_tile(x: int, y: int, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> TileData:
+func get_tile(x: int, y: int, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> GridTile:
 	var fg := get_floor_grid(plot_id, floor_level)
 	if fg == null:
 		return null
@@ -161,8 +161,8 @@ func sell_tile(x: int, y: int, plot_id: String = DEFAULT_PLOT, floor_level: Stri
 	tile.floor_built = false
 	tile.walls_built = false
 	tile.zone_id = ""
-	tile.element = TileData.TileElement.NONE
-	tile.typology = TileData.TileTypology.TENANT
+	tile.element = GridTile.TileElement.NONE
+	tile.typology = GridTile.TileTypology.TENANT
 	pathfinding_graph.mark_dirty()
 	EventBus.tile_sold.emit(floor_level.to_int() if floor_level.is_valid_int() else 0, x, y)
 
@@ -176,17 +176,17 @@ func set_tile_zone(x: int, y: int, zone_id: String, plot_id: String = DEFAULT_PL
 
 
 ## Set a tile's element type.
-func set_tile_element(x: int, y: int, element: TileData.TileElement, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> void:
+func set_tile_element(x: int, y: int, element: GridTile.TileElement, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> void:
 	var tile := get_tile(x, y, plot_id, floor_level)
 	if tile == null:
 		return
 	tile.element = element
-	if element == TileData.TileElement.CIRCULATION:
+	if element == GridTile.TileElement.CIRCULATION:
 		pathfinding_graph.mark_dirty()
 
 
 ## Set a tile's typology.
-func set_tile_typology(x: int, y: int, typology: TileData.TileTypology, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> void:
+func set_tile_typology(x: int, y: int, typology: GridTile.TileTypology, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> void:
 	var tile := get_tile(x, y, plot_id, floor_level)
 	if tile == null:
 		return

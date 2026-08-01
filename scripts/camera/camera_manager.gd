@@ -169,9 +169,9 @@ func zoom_camera(delta: float) -> void:
 
 	if _is_tweening:
 		# Interrupt previous tween.
-		for child in get_children():
+		for child: Node in get_children():
 			if child is Tween:
-				child.kill()
+				(child as Tween).kill()
 
 	var tween := create_tween()
 	tween.set_ease(Tween.EASE_OUT)

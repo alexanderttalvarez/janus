@@ -1,0 +1,15 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/levels/main_game.gd" id="1_main_game"]
+[ext_resource type="Script" path="res://scripts/grid/grid_manager.gd" id="2_grid_manager"]
+[ext_resource type="PackedScene" uid="" path="res://scenes/camera/camera_rig.tscn" id="3_camera_rig"]
+
+[node name="root" type="Node3D"]
+script = ExtResource("1_main_game")
+
+[node name="World" type="Node3D" parent="."]
+
+[node name="GridManager" type="Node" parent="World"]
+script = ExtResource("2_grid_manager")
+
+[node name="CameraRig" parent="." instance=ExtResource("3_camera_rig")]

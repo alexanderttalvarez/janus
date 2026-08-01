@@ -145,7 +145,7 @@ func _a_star(start: PathNode, goal: PathNode) -> Array[PathNode]:
 
 	while not open_set.is_empty():
 		# Find node with lowest f_score.
-		var current_key := open_set[0]
+		var current_key: String = open_set[0]
 		for k in open_set:
 			if f_score.get(k, INF) < f_score.get(current_key, INF):
 				current_key = k
@@ -158,7 +158,7 @@ func _a_star(start: PathNode, goal: PathNode) -> Array[PathNode]:
 		var neighbors: Array[PathNode] = _edges.get(current_key, [])
 		for neighbor in neighbors:
 			var neighbor_key := neighbor.get_key()
-			var tentative_g := g_score.get(current_key, INF) + 1.0  # Cost of 1 per step.
+			var tentative_g: float = g_score.get(current_key, INF) + 1.0  # Cost of 1 per step.
 
 			if tentative_g < g_score.get(neighbor_key, INF):
 				came_from[neighbor_key] = current_key

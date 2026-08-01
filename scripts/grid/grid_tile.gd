@@ -1,6 +1,6 @@
-## TileData — Lightweight Resource representing a single grid tile.
+## GridTile — Lightweight Resource representing a single grid tile.
 ## Pure data: owned, floor_built, walls_built, zone_id, element, typology, condition.
-class_name TileData
+class_name GridTile
 extends Resource
 
 

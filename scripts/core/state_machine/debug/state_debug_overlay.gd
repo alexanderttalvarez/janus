@@ -63,8 +63,9 @@ func _refresh() -> void:
 func _collect_state_machines(node: Node, lines: Array[String]) -> void:
 	for child in node.get_children():
 		if child is StateMachine:
-			var sm := child as StateMachine
-			var current := sm.get_current_state_name()
-			var parent_name := sm.get_parent().name if sm.get_parent() else "none"
+			var sm: StateMachine = child as StateMachine
+			var current: StringName = sm.get_current_state_name()
+			var parent: Node = sm.get_parent()
+			var parent_name: String = parent.name if parent else "none"
 			lines.append("  [color=#5f5]%s[/color] ← %s" % [current, parent_name])
 		_collect_state_machines(child, lines)
