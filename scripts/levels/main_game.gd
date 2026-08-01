@@ -9,6 +9,7 @@ extends Node3D
 @onready var _time_manager: TimeManager = $Simulation/TimeManager
 @onready var _visitor_manager: VisitorManager = $Simulation/VisitorManager
 @onready var _tenant_manager: TenantManager = $Simulation/TenantManager
+@onready var _economy_manager: EconomyManager = $Simulation/EconomyManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 
@@ -19,6 +20,7 @@ func _ready() -> void:
 	_initialize_time()
 	_initialize_visitors()
 	_initialize_tenants()
+	_initialize_economy()
 	_initialize_zone_tool()
 
 	# Deferred state initialization — now that the scene is loaded.
@@ -142,6 +144,20 @@ func _initialize_tenants() -> void:
 	_time_manager.sim_day_passed.connect(_tenant_manager.on_sim_day_passed)
 
 	print("MainGame: Tenant system initialized — applications & viability.")
+
+
+# ── Economy Initialization ────────────────────────────────────────────
+
+func _initialize_economy() -> void:
+	if _economy_manager == null:
+		push_error("MainGame: EconomyManager not found.")
+		return
+
+	_economy_manager.initialize(_zone_manager, _tenant_manager)
+	_time_manager.sim_day_passed.connect(_economy_manager.on_sim_day_passed)
+	_time_manager.sim_month_passed.connect(_economy_manager.on_sim_month_passed)
+
+	print("MainGame: Economy initialized — 500K starting balance.")
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
