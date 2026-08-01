@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/hud_bar.gd" id="1_hud_bar"]
+[ext_resource type="Script" path="res://scripts/ui/panel_manager.gd" id="2_panel_manager"]
+[ext_resource type="Script" path="res://scripts/ui/game_ui.gd" id="5_game_ui"]
 
 [node name="GameUI" type="Control"]
 layout_mode = 3
@@ -8,6 +10,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
+script = ExtResource("5_game_ui")
 
 [node name="HUDLayer" type="CanvasLayer" parent="."]
 layer = 1
@@ -75,6 +78,14 @@ layer = 2
 
 [node name="PanelLayer" type="CanvasLayer" parent="."]
 layer = 3
+
+[node name="PanelManager" type="Control" parent="PanelLayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("2_panel_manager")
 
 [node name="NotificationLayer" type="CanvasLayer" parent="."]
 layer = 4
