@@ -67,7 +67,7 @@ var wall_mode: WallMode = WallMode.CUTAWAY:
 	set(value):
 		wall_mode = value
 		wall_mode_changed.emit(WALL_MODE_NAMES[value])
-		RenderingServer.global_shader_parameter_set("wall_mode", value)
+		_set_wall_mode_shader(value)
 
 ## Path to the currently active game scene.
 var current_scene: String = ""
@@ -204,3 +204,12 @@ func quit_game() -> void:
 ## Helper to access the SceneTree safely.
 func _get_tree() -> SceneTree:
 	return get_tree()
+
+
+## Safely set the wall_mode global shader parameter.
+## Guards against calling before the shader is loaded.
+func _set_wall_mode_shader(value: int) -> void:
+	# Only attempt to set if we're in a game scene (not main menu).
+	if not is_session_active:
+		return
+	RenderingServer.global_shader_parameter_set("wall_mode", value)

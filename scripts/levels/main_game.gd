@@ -94,6 +94,9 @@ func _initialize_camera() -> void:
 	_camera_manager.floor_levels = ["G"]
 	_camera_manager.current_floor_index = 0
 
+	# Set initial wall mode shader parameter (deferred until scene is loaded).
+	RenderingServer.global_shader_parameter_set("wall_mode", GameManager.wall_mode)
+
 	print("MainGame: Camera initialized at center of grid.")
 
 
