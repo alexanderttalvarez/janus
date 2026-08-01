@@ -10,6 +10,7 @@ extends Node3D
 @onready var _visitor_manager: VisitorManager = $Simulation/VisitorManager
 @onready var _tenant_manager: TenantManager = $Simulation/TenantManager
 @onready var _economy_manager: EconomyManager = $Simulation/EconomyManager
+@onready var _prestige_manager: PrestigeManager = $Simulation/PrestigeManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 
@@ -21,6 +22,7 @@ func _ready() -> void:
 	_initialize_visitors()
 	_initialize_tenants()
 	_initialize_economy()
+	_initialize_prestige()
 	_initialize_zone_tool()
 
 	# Deferred state initialization — now that the scene is loaded.
@@ -163,6 +165,19 @@ func _initialize_economy() -> void:
 	_time_manager.sim_month_passed.connect(_economy_manager.on_sim_month_passed)
 
 	print("MainGame: Economy initialized — 500K starting balance.")
+
+
+# ── Prestige Initialization ────────────────────────────────────────────
+
+func _initialize_prestige() -> void:
+	if _prestige_manager == null:
+		push_error("MainGame: PrestigeManager not found.")
+		return
+
+	_prestige_manager.initialize(_zone_manager, _tenant_manager, _visitor_manager)
+	_time_manager.sim_month_passed.connect(func(_m: int): _prestige_manager.recalculate())
+
+	print("MainGame: Prestige system initialized — monthly recalculation.")
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
