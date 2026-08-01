@@ -137,8 +137,8 @@ func get_save_meta(slot: int) -> Variant:
 	if not has_save(slot):
 		return null
 
-	var data := load_game(slot)
-	if data and data.has("meta"):
+	var data: Variant = load_game(slot)
+	if data != null and data is Dictionary and data.has("meta"):
 		return data["meta"]
 	return null
 

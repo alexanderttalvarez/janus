@@ -37,11 +37,17 @@ signal wall_mode_changed(mode: String)
 ## Available simulation speeds. Index 0 = paused.
 enum Speed { PAUSED = 0, X1 = 1, X2 = 2, X3 = 3 }
 
-## UI interaction modes.
-enum UIMode { BUILD = "Build", OBSERVE = "Observe", EDIT_ZONE = "EditZone" }
+## UI interaction modes (integer indices).
+enum UIMode { BUILD = 0, OBSERVE = 1, EDIT_ZONE = 2 }
 
-## Wall visualization modes.
-enum WallMode { CUTAWAY = "Cutaway", PARTIAL = "Partial", FULL = "Full" }
+## Human-readable names for UI modes (matches enum indices).
+const UI_MODE_NAMES: Array[String] = ["Build", "Observe", "EditZone"]
+
+## Wall visualization modes (integer indices).
+enum WallMode { CUTAWAY = 0, PARTIAL = 1, FULL = 2 }
+
+## Human-readable names for wall modes (matches enum indices).
+const WALL_MODE_NAMES: Array[String] = ["Cutaway", "Partial", "Full"]
 
 ## Current simulation speed (0 = paused, 1-3 = multiplier).
 var speed: Speed = Speed.PAUSED:
@@ -51,16 +57,16 @@ var speed: Speed = Speed.PAUSED:
 		speed_changed.emit(value)
 
 ## Current UI mode.
-var ui_mode: String = UIMode.BUILD:
+var ui_mode: UIMode = UIMode.BUILD:
 	set(value):
 		ui_mode = value
-		ui_mode_changed.emit(value)
+		ui_mode_changed.emit(UI_MODE_NAMES[value])
 
 ## Current wall visualization mode.
-var wall_mode: String = WallMode.CUTAWAY:
+var wall_mode: WallMode = WallMode.CUTAWAY:
 	set(value):
 		wall_mode = value
-		wall_mode_changed.emit(value)
+		wall_mode_changed.emit(WALL_MODE_NAMES[value])
 
 ## Path to the currently active game scene.
 var current_scene: String = ""
@@ -107,22 +113,17 @@ func set_speed(new_speed: Speed) -> void:
 
 ## Cycle wall visualization mode: Cutaway → Partial → Full → Cutaway.
 func cycle_wall_mode() -> void:
-	var modes := [WallMode.CUTAWAY, WallMode.PARTIAL, WallMode.FULL]
-	var idx := modes.find(wall_mode)
-	idx = (idx + 1) % modes.size()
-	wall_mode = modes[idx]
+	wall_mode = wrapi(wall_mode + 1, WallMode.CUTAWAY, WallMode.FULL + 1) as WallMode
 
 
 ## Set wall visualization mode directly.
-func set_wall_mode(mode: String) -> void:
-	if mode in [WallMode.CUTAWAY, WallMode.PARTIAL, WallMode.FULL]:
-		wall_mode = mode
+func set_wall_mode(mode: WallMode) -> void:
+	wall_mode = mode
 
 
 ## Set UI mode.
-func set_ui_mode(mode: String) -> void:
-	if mode in [UIMode.BUILD, UIMode.OBSERVE, UIMode.EDIT_ZONE]:
-		ui_mode = mode
+func set_ui_mode(mode: UIMode) -> void:
+	ui_mode = mode
 
 
 ## Enter Build mode.

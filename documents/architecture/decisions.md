@@ -28,6 +28,7 @@ This directory contains individual architectural decision records for the Janus 
 | 20 | Debug Mode Architecture — DebugManager Autoload | [20_debug_mode_architecture.md](20_debug_mode_architecture.md) |
 | 21 | Multi-Language Architecture — Godot CSV/PO with tr() | [21_multi_language_architecture.md](21_multi_language_architecture.md) |
 | 22 | Prestige Calculation Architecture — Aggregator with Snapshot Queries | [22_prestige_calculation_architecture.md](22_prestige_calculation_architecture.md) |
+| 23 | State Machine Architecture — Resource-Based FSM Pattern | [23_state_machine_architecture.md](23_state_machine_architecture.md) |
 
 ## Pending Decisions
 - Implementation planning (task breakdown, skill assignment)
