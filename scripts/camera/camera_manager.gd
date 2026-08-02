@@ -114,7 +114,7 @@ func _handle_input() -> void:
 		"camera_pan_up", "camera_pan_down"
 	)
 	if pan_input.length() > 0.01:
-		pan_camera(pan_input * get_process_delta_time() * 10.0)
+		pan_camera(pan_input * get_process_delta_time() * 1.0)
 
 	# Middle-mouse drag for pan
 	if Input.is_action_pressed("camera_pan_middle_mouse"):
@@ -318,4 +318,4 @@ func _get_mouse_delta() -> Vector2:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.is_action_pressed("camera_pan_middle_mouse"):
-		pan_camera(event.relative * -0.5)
+		pan_camera(event.relative * -0.05)
