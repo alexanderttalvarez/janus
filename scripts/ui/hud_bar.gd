@@ -10,6 +10,7 @@ extends Control
 @onready var _speed_label: Label = $SpeedLabel
 @onready var _clock_label: Label = $ClockLabel
 @onready var _wall_mode_label: Label = $WallModeLabel
+@onready var _camera_label: Label = $CameraLabel
 
 
 func _ready() -> void:
@@ -22,6 +23,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	_refresh_visitors()
 	_refresh_clock()
+	_refresh_camera()
 
 
 func _refresh_all() -> void:
@@ -31,6 +33,7 @@ func _refresh_all() -> void:
 	_refresh_speed()
 	_refresh_clock()
 	_refresh_wall_mode()
+	_refresh_camera()
 
 
 func _refresh_money() -> void:
@@ -69,6 +72,14 @@ func _refresh_clock() -> void:
 
 func _refresh_wall_mode() -> void:
 	_wall_mode_label.text = GameManager.WALL_MODE_NAMES[GameManager.wall_mode]
+
+
+func _refresh_camera() -> void:
+	var root := get_tree().current_scene
+	if root:
+		var cam: Node3D = root.get_node_or_null("CameraRig/CameraRig")
+		if cam:
+			_camera_label.text = "Cam: %.0f" % rad_to_deg(cam.rotation.y)
 
 
 func _on_money_changed(balance: int, _delta: int) -> void:

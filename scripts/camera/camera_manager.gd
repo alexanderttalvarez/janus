@@ -45,8 +45,8 @@ signal floor_changed(floor_level: String)
 
 # ── Runtime State ──────────────────────────────────────────────────────
 
-## Current rotation direction index: 0=0°, 1=90°, 2=180°, 3=270°.
-var _current_direction: int = 0
+## Current camera Y rotation in degrees (45°, 135°, 225°, 315°).
+var _current_angle: float = 45.0
 
 ## Current zoom level (Camera3D.size).
 var _current_zoom: float = 20.0
@@ -66,10 +66,11 @@ var _limit_radius: float = 50.0  # 20 tiles × TILE_SIZE(2.0) + buffer
 
 # ── OnReady References ─────────────────────────────────────────────────
 
-@onready var _camera_rig: Node3D = $CameraRig
-@onready var _camera_mount: Node3D = $CameraRig/CameraMount
-@onready var _camera: Camera3D = $CameraRig/CameraMount/Camera3D
-@onready var _focus_target: Marker3D = $CameraRig/FocusTarget
+@onready var _pivot: Node3D = $Pivot
+@onready var _camera_rig: Node3D = $Pivot/CameraRig
+@onready var _camera_mount: Node3D = $Pivot/CameraRig/CameraMount
+@onready var _camera: Camera3D = $Pivot/CameraRig/CameraMount/Camera3D
+@onready var _focus_target: Marker3D = $Pivot/FocusTarget
 
 
 func _ready() -> void:
@@ -86,8 +87,6 @@ func _process(_delta: float) -> void:
 
 func _setup_camera() -> void:
 	_current_zoom = _camera.size
-	# Scene starts at 45° Y rotation — use that as initial direction.
-	_current_direction = 0
 
 
 # ── Input Handling ─────────────────────────────────────────────────────
@@ -136,23 +135,31 @@ func rotate_camera(direction: int) -> void:
 	if _is_rotating:
 		return
 
-	_current_direction = wrapi(_current_direction + direction, 0, 4)
+	var start_angle := _current_angle
+	_current_angle += float(direction * 90)
 	_is_rotating = true
-
-	var target_y := deg_to_rad(float(45 + _current_direction * 90))
 
 	var tween := create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(_camera_rig, "rotation:y", target_y, 0.15)
+	tween.tween_method(
+		func(angle: float): _pivot.rotation.y = deg_to_rad(angle),
+		start_angle,
+		_current_angle,
+		0.15
+	)
 	tween.finished.connect(_on_rotation_complete.bind(direction))
 
-	# Update global shader parameter for wall clipping.
-	_set_global_camera_direction(45 + _current_direction * 90)
+	_set_global_camera_direction(fmod(_current_angle, 360.0))
 
 
 func _on_rotation_complete(direction: int) -> void:
 	_is_rotating = false
+	# Normalize rotation to 0-360 range after tween finishes.
+	_current_angle = fmod(_current_angle, 360.0)
+	if _current_angle < 0:
+		_current_angle += 360.0
+	_pivot.rotation.y = deg_to_rad(_current_angle)
 	rotated.emit(direction)
 
 
@@ -190,15 +197,15 @@ func _on_zoom_complete(size: float) -> void:
 func pan_camera(offset: Vector2) -> void:
 	var speed := _current_zoom * 2.0
 	var pan_dir := Vector3(offset.x * speed, 0, offset.y * speed)
-	pan_dir = pan_dir.rotated(Vector3.UP, _camera_rig.rotation.y)
-	_camera_rig.position += pan_dir
+	pan_dir = pan_dir.rotated(Vector3.UP, _pivot.rotation.y)
+	_pivot.position += pan_dir
 	# Clamp — zoomed IN (small size) = bigger radius, zoomed OUT (big size) = smaller radius.
 	var max_radius := clampf(1000.0 / _current_zoom, 15.0, 200.0)
-	var rig_offset := Vector3(_camera_rig.position.x, 0.0, _camera_rig.position.z)
+	var rig_offset := Vector3(_pivot.position.x, 0.0, _pivot.position.z)
 	if rig_offset.length() > max_radius:
 		rig_offset = rig_offset.normalized() * max_radius
-		_camera_rig.position.x = rig_offset.x
-		_camera_rig.position.z = rig_offset.z
+		_pivot.position.x = rig_offset.x
+		_pivot.position.z = rig_offset.z
 
 
 # ── Focus ──────────────────────────────────────────────────────────────
