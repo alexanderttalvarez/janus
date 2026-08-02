@@ -72,7 +72,7 @@ func _refresh_wall_mode() -> void:
 
 
 func _on_money_changed(balance: int, _delta: int) -> void:
-	_money_label.text = "%,d K" % balance
+	_money_label.text = "%d K" % balance
 
 func _on_speed_changed(speed: int) -> void:
 	var names := ["||", "1x", "2x", "3x"]

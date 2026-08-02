@@ -17,7 +17,7 @@ func _update_balance() -> void:
 	if root:
 		var em := root.get_node_or_null("Simulation/EconomyManager")
 		if em and em is EconomyManager:
-			($VBoxContainer/Balance as Label).text = "Balance: %,d K" % (em as EconomyManager).balance
+			($VBoxContainer/Balance as Label).text = "Balance: %d K" % (em as EconomyManager).balance
 
 
 func _update_rent() -> void:
@@ -25,4 +25,4 @@ func _update_rent() -> void:
 
 
 func _on_money_changed(balance: int, _delta: int) -> void:
-	($VBoxContainer/Balance as Label).text = "Balance: %,d K" % balance
+	($VBoxContainer/Balance as Label).text = "Balance: %d K" % balance
