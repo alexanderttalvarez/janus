@@ -188,14 +188,15 @@ func _on_zoom_complete(size: float) -> void:
 
 ## Pan the camera in XZ plane by the given offset.
 func pan_camera(offset: Vector2) -> void:
-	# Transform 2D pan input to world-space XZ based on current rotation.
 	var pan_dir := Vector3(offset.x, 0, offset.y)
-
-	# Rotate pan direction by camera rig's Y rotation.
 	pan_dir = pan_dir.rotated(Vector3.UP, _camera_rig.rotation.y)
-
-	var new_pos := global_position + pan_dir
-	global_position = _clamp_position(new_pos)
+	_camera_rig.position += pan_dir
+	# Clamp CameraRig position relative to the root.
+	var rig_offset := Vector3(_camera_rig.position.x, 0.0, _camera_rig.position.z)
+	if rig_offset.length() > _limit_radius:
+		rig_offset = rig_offset.normalized() * _limit_radius
+		_camera_rig.position.x = rig_offset.x
+		_camera_rig.position.z = rig_offset.z
 
 
 # ── Focus ──────────────────────────────────────────────────────────────
@@ -289,14 +290,8 @@ func set_position_limit(center: Vector3, radius: float) -> void:
 
 ## Clamp camera position to stay within the allowed area.
 func _clamp_position(pos: Vector3) -> Vector3:
-	if _limit_radius <= 0.0:
-		return pos
-	var offset := pos - _limit_center
-	offset.y = 0.0
-	if offset.length() > _limit_radius:
-		offset = offset.normalized() * _limit_radius
-		offset.y = pos.y - _limit_center.y
-	return _limit_center + offset
+	# Unused — panning now works via CameraRig, not root.
+	return pos
 
 
 # ── Shader Integration ─────────────────────────────────────────────────

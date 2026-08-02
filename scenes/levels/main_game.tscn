@@ -72,4 +72,7 @@ transform = Transform3D(0.707107, 0.408248, -0.57735, 0, 0.816497, 0.57735, 0.70
 light_energy = 1.5
 shadow_enabled = true
 
-[node name="GameUI" parent="." unique_id=246989188 instance=ExtResource("14_game_ui")]
+[node name="GameUI" parent="." unique_id=1170613073 instance=ExtResource("14_game_ui")]
+visible = false
+grow_horizontal = 2
+grow_vertical = 2
