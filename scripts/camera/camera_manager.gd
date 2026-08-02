@@ -104,9 +104,9 @@ func _handle_input() -> void:
 
 	# Zoom
 	if Input.is_action_just_pressed("camera_zoom_in"):
-		zoom_camera(-2.0)
+		zoom_camera(-4.0)
 	elif Input.is_action_just_pressed("camera_zoom_out"):
-		zoom_camera(2.0)
+		zoom_camera(4.0)
 
 	# Pan (WASD / Arrow keys)
 	var pan_input := Input.get_vector(
@@ -192,10 +192,11 @@ func pan_camera(offset: Vector2) -> void:
 	var pan_dir := Vector3(offset.x * speed, 0, offset.y * speed)
 	pan_dir = pan_dir.rotated(Vector3.UP, _camera_rig.rotation.y)
 	_camera_rig.position += pan_dir
-	# Soft circular clamp — keep camera within 30 units of grid center.
+	# Soft circular clamp — radius scales with zoom level.
+	var max_radius := _current_zoom * 1.5
 	var rig_offset := Vector3(_camera_rig.position.x, 0.0, _camera_rig.position.z)
-	if rig_offset.length() > 30.0:
-		rig_offset = rig_offset.normalized() * 30.0
+	if rig_offset.length() > max_radius:
+		rig_offset = rig_offset.normalized() * max_radius
 		_camera_rig.position.x = rig_offset.x
 		_camera_rig.position.z = rig_offset.z
 
@@ -323,4 +324,4 @@ func _get_mouse_delta() -> Vector2:
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion and Input.is_action_pressed("camera_pan_middle_mouse"):
-		pan_camera(event.relative * -0.001)
+		pan_camera(event.relative * -0.0015)
