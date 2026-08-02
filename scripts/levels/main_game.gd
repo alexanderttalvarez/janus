@@ -100,7 +100,8 @@ func _initialize_camera() -> void:
 
 	# Center camera on the 25-tile grid (tiles at 0..24, center at 12.5).
 	_camera_manager.global_position = Vector3(12.5, 15, 12.5)
-	_camera_manager.set_position_limit(Vector3(12.5, 0, 12.5), 15.0)
+	# Allow camera to move well beyond the grid edges.
+	_camera_manager.set_position_limit(Vector3.ZERO, 50.0)
 	_camera_manager.floor_levels = ["G"]
 	_camera_manager.current_floor_index = 0
 

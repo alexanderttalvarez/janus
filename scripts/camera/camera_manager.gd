@@ -114,7 +114,7 @@ func _handle_input() -> void:
 		"camera_pan_up", "camera_pan_down"
 	)
 	if pan_input.length() > 0.01:
-		pan_camera(pan_input * get_process_delta_time() * 500.0)
+		pan_camera(pan_input * get_process_delta_time() * 10.0)
 
 	# Middle-mouse drag for pan
 	if Input.is_action_pressed("camera_pan_middle_mouse"):
@@ -188,15 +188,11 @@ func _on_zoom_complete(size: float) -> void:
 
 ## Pan the camera in XZ plane by the given offset.
 func pan_camera(offset: Vector2) -> void:
-	var pan_dir := Vector3(offset.x, 0, offset.y)
+	# Scale pan by zoom level so movement feels consistent.
+	var speed := _current_zoom * 2.0
+	var pan_dir := Vector3(offset.x * speed, 0, offset.y * speed)
 	pan_dir = pan_dir.rotated(Vector3.UP, _camera_rig.rotation.y)
 	_camera_rig.position += pan_dir
-	# Clamp CameraRig position relative to the root.
-	var rig_offset := Vector3(_camera_rig.position.x, 0.0, _camera_rig.position.z)
-	if rig_offset.length() > _limit_radius:
-		rig_offset = rig_offset.normalized() * _limit_radius
-		_camera_rig.position.x = rig_offset.x
-		_camera_rig.position.z = rig_offset.z
 
 
 # ── Focus ──────────────────────────────────────────────────────────────
