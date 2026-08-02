@@ -38,7 +38,7 @@ func _refresh_money() -> void:
 	if root:
 		var em := root.get_node_or_null("Simulation/EconomyManager")
 		if em and em is EconomyManager:
-			_money_label.text = "%,d K" % (em as EconomyManager).balance
+			_money_label.text = "%d K" % (em as EconomyManager).balance
 
 func _refresh_visitors() -> void:
 	var root := get_tree().current_scene
