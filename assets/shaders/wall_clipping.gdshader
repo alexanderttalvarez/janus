@@ -1,5 +1,5 @@
 shader_type spatial;
-render_mode cull_disabled, unshaded, depth_draw_opaque;
+render_mode cull_disabled, unshaded;
 
 // ── Wall Clipping Shader ──────────────────────────────────────────────
 // Applied to WallMesh in floor.tscn.
