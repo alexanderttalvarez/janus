@@ -192,11 +192,10 @@ func pan_camera(offset: Vector2) -> void:
 	var pan_dir := Vector3(offset.x * speed, 0, offset.y * speed)
 	pan_dir = pan_dir.rotated(Vector3.UP, _camera_rig.rotation.y)
 	_camera_rig.position += pan_dir
-	# Soft circular clamp — radius scales with zoom level.
-	var max_radius := _current_zoom * 1.5
+	# Circular clamp — keep camera within reasonable range.
 	var rig_offset := Vector3(_camera_rig.position.x, 0.0, _camera_rig.position.z)
-	if rig_offset.length() > max_radius:
-		rig_offset = rig_offset.normalized() * max_radius
+	if rig_offset.length() > 30.0:
+		rig_offset = rig_offset.normalized() * 30.0
 		_camera_rig.position.x = rig_offset.x
 		_camera_rig.position.z = rig_offset.z
 
