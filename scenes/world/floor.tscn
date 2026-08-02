@@ -1,15 +1,20 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene format=3 uid="uid://b7rkbkiblp2tt"]
 
-[ext_resource type="Script" path="res://scripts/grid/floor.gd" id="1_floor"]
+[ext_resource type="Script" uid="uid://1up4x3v55x80" path="res://scripts/grid/floor.gd" id="1_floor"]
 
-[node name="root" type="Node3D"]
+[node name="root" type="Node3D" unique_id=287643115]
 script = ExtResource("1_floor")
 
-[node name="WallMesh" type="MeshInstance3D" parent="."]
-[node name="GridOrigin" type="Marker3D" parent="."]
+[node name="WallMesh" type="MeshInstance3D" parent="." unique_id=578426766]
 
-[node name="TileContainer" type="Node3D" parent="."]
-[node name="CirculationContainer" type="Node3D" parent="."]
-[node name="ZoneContainer" type="Node3D" parent="."]
-[node name="VisitorContainer" type="Node3D" parent="."]
-[node name="IndicatorContainer" type="Node3D" parent="."]
+[node name="GridOrigin" type="Marker3D" parent="." unique_id=356406811]
+
+[node name="TileContainer" type="Node3D" parent="." unique_id=1188807463]
+
+[node name="CirculationContainer" type="Node3D" parent="." unique_id=641446918]
+
+[node name="ZoneContainer" type="Node3D" parent="." unique_id=448635435]
+
+[node name="VisitorContainer" type="Node3D" parent="." unique_id=247794843]
+
+[node name="IndicatorContainer" type="Node3D" parent="." unique_id=963679287]
