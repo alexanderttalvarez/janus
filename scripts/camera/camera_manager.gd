@@ -75,7 +75,7 @@ var _limit_radius: float = 50.0  # 20 tiles × TILE_SIZE(2.0) + buffer
 func _ready() -> void:
 	_setup_camera()
 	_apply_zoom(_current_zoom)
-	_apply_rotation(_current_direction)
+	# Don't override scene rotation — use scene's initial 45° Y rotation.
 
 
 func _process(_delta: float) -> void:
@@ -85,9 +85,8 @@ func _process(_delta: float) -> void:
 # ── Camera Setup ───────────────────────────────────────────────────────
 
 func _setup_camera() -> void:
-	# Scene file has exact isometric values (45° Y, -30° X, Orthogonal, Size 20).
-	# Only set runtime defaults that differ from scene.
 	_current_zoom = _camera.size
+	# Scene starts at 45° Y rotation — use that as initial direction.
 	_current_direction = 0
 
 
@@ -140,7 +139,7 @@ func rotate_camera(direction: int) -> void:
 	_current_direction = wrapi(_current_direction + direction, 0, 4)
 	_is_rotating = true
 
-	var target_y := deg_to_rad(float(_current_direction * 90))
+	var target_y := deg_to_rad(float(45 + _current_direction * 90))
 
 	var tween := create_tween()
 	tween.set_ease(Tween.EASE_OUT)
@@ -149,7 +148,7 @@ func rotate_camera(direction: int) -> void:
 	tween.finished.connect(_on_rotation_complete.bind(direction))
 
 	# Update global shader parameter for wall clipping.
-	_set_global_camera_direction(_current_direction)
+	_set_global_camera_direction(45 + _current_direction * 90)
 
 
 func _on_rotation_complete(direction: int) -> void:
@@ -303,18 +302,18 @@ func _clamp_position(pos: Vector3) -> Vector3:
 # ── Shader Integration ─────────────────────────────────────────────────
 
 ## Set the global camera_direction shader parameter for wall clipping.
-func _set_global_camera_direction(dir_index: int) -> void:
+func _set_global_camera_direction(angle_deg: float) -> void:
 	if not GameManager.session_ready:
 		return
-	var angle := deg_to_rad(float(dir_index * 90))
+	var angle := deg_to_rad(angle_deg)
 	RenderingServer.global_shader_parameter_set("camera_direction", Vector2(cos(angle), sin(angle)))
 
 
 # ── Initial State ──────────────────────────────────────────────────────
 
-func _apply_rotation(dir_index: int) -> void:
-	_camera_rig.rotation.y = deg_to_rad(float(dir_index * 90))
-	_set_global_camera_direction(dir_index)
+func _apply_rotation(_dir_index: int) -> void:
+	# Scene sets initial 45° Y via the tscn file — don't override.
+	pass
 
 
 # ── Helpers ────────────────────────────────────────────────────────────

@@ -22,6 +22,12 @@ ambient_light_source = 1
 ambient_light_color = Color(0.5, 0.5, 0.56, 1)
 ambient_light_energy = 0.5
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ykusu"]
+albedo_color = Color(1, 0.3372549, 1, 1)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_ssju7"]
+material = SubResource("StandardMaterial3D_ykusu")
+
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
 
@@ -75,3 +81,6 @@ shadow_enabled = true
 [node name="GameUI" parent="." unique_id=246989188 instance=ExtResource("14_game_ui")]
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=460034628]
+mesh = SubResource("PlaneMesh_ssju7")
