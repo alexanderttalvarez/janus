@@ -17,8 +17,8 @@ const DEFAULT_PLOT: String = "plot_0"
 ## Default floor level (ground floor).
 const GROUND_FLOOR: String = "G"
 
-## Tile size in world units.
-const TILE_SIZE: float = 2.0
+## Tile size in world units. Matches the 1.0-unit visual tile grid in floor.tscn.
+const TILE_SIZE: float = 1.0
 
 ## Floor height spacing in world units.
 const FLOOR_HEIGHT: float = 3.0

@@ -13,7 +13,7 @@
 [ext_resource type="Script" uid="uid://bsr42lv6kkxsm" path="res://scripts/simulation/tech_tree_manager.gd" id="11_tech_tree_manager"]
 [ext_resource type="Script" uid="uid://b3ooxq3kwl8jb" path="res://scripts/simulation/staff_manager.gd" id="12_staff_manager"]
 [ext_resource type="Script" uid="uid://bdbijwelo76ye" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
-[ext_resource type="PackedScene" path="res://scenes/ui/game_ui.tscn" id="14_game_ui"]
+[ext_resource type="PackedScene" uid="uid://bh40r23u87png" path="res://scenes/ui/game_ui.tscn" id="14_game_ui"]
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
@@ -80,8 +80,6 @@ shadow_enabled = true
 
 [node name="GameUI" parent="." unique_id=1170613073 instance=ExtResource("14_game_ui")]
 visible = false
-grow_horizontal = 2
-grow_vertical = 2
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=746643617]
 mesh = SubResource("PlaneMesh_ssju7")

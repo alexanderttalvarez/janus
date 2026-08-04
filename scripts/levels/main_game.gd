@@ -234,11 +234,12 @@ func _initialize_zone_tool() -> void:
 		push_error("MainGame: ZoneTool not found.")
 		return
 
-	# ZoneTool input is handled via _unhandled_input — it's active in Build mode.
-	_zone_tool.is_active = true
+	# ZoneTool starts INACTIVE: painting only begins when the player presses a
+	# zone-type button in the BottomToolbar (which sets is_active = true).
+	_zone_tool.is_active = false
 	_zone_tool.active_zone_type = ZoneData.ZONE_TYPE_NAMES[0]  # Retail by default.
 
-	print("MainGame: ZoneTool initialized — Build mode active.")
+	print("MainGame: ZoneTool initialized — idle until a zone type is chosen.")
 
 
 # ── Save / Load ────────────────────────────────────────────────────────

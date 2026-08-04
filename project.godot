@@ -22,6 +22,7 @@ EventBus="*res://scripts/autoloads/event_bus.gd"
 AudioManager="*res://scripts/autoloads/audio_manager.gd"
 SaveManager="*res://scripts/autoloads/save_manager.gd"
 DebugManager="*res://scripts/autoloads/debug_manager.gd"
+GodotIQRuntime="*res://addons/godotiq/godotiq_runtime.gd"
 
 [display]
 
@@ -29,6 +30,10 @@ window/size/viewport_width=1920
 window/size/viewport_height=1080
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/godotiq/plugin.cfg")
 
 [input]
 

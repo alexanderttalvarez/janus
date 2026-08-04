@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://cvdnghlniwxd3" path="res://scripts/ui/hud_bar.gd" id="1_hud_bar"]
 [ext_resource type="Script" uid="uid://dkinkxq1xu7v6" path="res://scripts/ui/panel_manager.gd" id="2_panel_manager"]
 [ext_resource type="Script" uid="uid://cs3y2pabgp62j" path="res://scripts/ui/game_ui.gd" id="5_game_ui"]
+[ext_resource type="Script" uid="uid://deigrs7gmgjqr" path="res://scripts/ui/bottom_toolbar.gd" id="6_toolbar"]
 
 [node name="GameUI" type="Control" unique_id=1233812799]
 layout_mode = 3
@@ -82,6 +83,32 @@ text = "Camera"
 
 [node name="ToolbarLayer" type="CanvasLayer" parent="." unique_id=1260599950]
 layer = 2
+
+[node name="BottomToolbar" type="Control" parent="ToolbarLayer" unique_id=659504562]
+layout_mode = 3
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -40.0
+grow_vertical = 0
+script = ExtResource("6_toolbar")
+
+[node name="ModeLabel" type="Label" parent="ToolbarLayer/BottomToolbar" unique_id=344424883]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 80.0
+offset_bottom = 28.0
+text = "Build"
+
+[node name="Buttons" type="HBoxContainer" parent="ToolbarLayer/BottomToolbar" unique_id=1444707107]
+layout_mode = 0
+offset_left = 90.0
+offset_top = 4.0
+offset_right = 1000.0
+offset_bottom = 36.0
+theme_override_constants/separation = 4
 
 [node name="PanelLayer" type="CanvasLayer" parent="." unique_id=323486302]
 layer = 3

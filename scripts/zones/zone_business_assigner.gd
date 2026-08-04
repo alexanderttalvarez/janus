@@ -18,7 +18,12 @@ const BUSINESS_SUBTYPES: Dictionary = {
 ## Assign business subtypes to parcels in a zone.
 ## Uses simple graph coloring to avoid adjacent duplicates.
 static func assign(zone: ZoneData) -> void:
-	var subtypes: Array[String] = BUSINESS_SUBTYPES.get(zone.type, [])
+	var subtypes_raw: Variant = BUSINESS_SUBTYPES.get(zone.type, [])
+	if not subtypes_raw is Array:
+		return
+	var subtypes: Array[String] = []
+	for s in subtypes_raw:
+		subtypes.append(s)
 	if subtypes.is_empty():
 		return
 

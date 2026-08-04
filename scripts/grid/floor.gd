@@ -33,7 +33,7 @@ func _spawn_tile_grid() -> void:
 			tile_mesh.name = "Tile_%d_%d" % [x, y]
 			tile_mesh.mesh = mesh
 			tile_mesh.material_override = mat
-			tile_mesh.position = Vector3(x, 0, y)
+			tile_mesh.position = Vector3(x + 0.5, 0, y + 0.5)
 			container.add_child(tile_mesh)
 
 

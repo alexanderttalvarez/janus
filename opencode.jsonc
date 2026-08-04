@@ -17,6 +17,14 @@
       "environment": {
         "GODOT_PATH": "/usr/local/bin/godot"
       },
+      "enabled": false
+    },
+    "godotiq": {
+      "type": "local",
+      "command": ["/home/aelxan/.local/bin/uvx", "godotiq"],
+      "environment": {
+        "GODOTIQ_PROJECT_ROOT": "/home/aelxan/Programming/Games/janus"
+      },
       "enabled": true
     }
   }

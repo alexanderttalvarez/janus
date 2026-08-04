@@ -52,24 +52,24 @@ void fragment() {
 		alpha = 0.0;
 		color = vec3(0.0);
 	} else if (zone_id == 1) {
-		// Retail (warm orange).
-		color = vec3(1.0, 0.6, 0.2);
+		// Retail (purple).
+		color = vec3(0.5, 0.2, 0.8);
 		alpha = opacity;
 	} else if (zone_id == 2) {
-		// Food & Beverage (red).
-		color = vec3(0.9, 0.2, 0.15);
+		// Food & Beverage (green).
+		color = vec3(0.2, 0.7, 0.3);
 		alpha = opacity;
 	} else if (zone_id == 3) {
-		// Entertainment (purple).
-		color = vec3(0.6, 0.2, 0.9);
+		// Entertainment (orange).
+		color = vec3(0.9, 0.5, 0.1);
 		alpha = opacity;
 	} else if (zone_id == 4) {
 		// Services (blue).
 		color = vec3(0.2, 0.4, 0.9);
 		alpha = opacity;
 	} else if (zone_id == 5) {
-		// Anchor (gold).
-		color = vec3(0.95, 0.8, 0.1);
+		// Anchor (red).
+		color = vec3(0.9, 0.2, 0.2);
 		alpha = opacity;
 	} else {
 		// Unknown zone type — grey with low alpha.
