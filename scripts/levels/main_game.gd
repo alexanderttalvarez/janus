@@ -16,6 +16,7 @@ extends Node3D
 @onready var _synergy_manager: SynergyManager = $Simulation/SynergyManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
+@onready var _wall_manager: WallManager = $World/WallManager
 
 
 func _ready() -> void:
@@ -29,6 +30,7 @@ func _ready() -> void:
 	_initialize_staff()
 	_initialize_synergy()
 	_initialize_zone_tool()
+	_initialize_walls()
 
 	# Deferred state initialization — now that the scene is loaded.
 	GameManager.ui_mode = GameManager.UIMode.BUILD
@@ -240,6 +242,26 @@ func _initialize_zone_tool() -> void:
 	_zone_tool.active_zone_type = ZoneData.ZONE_TYPE_NAMES[0]  # Retail by default.
 
 	print("MainGame: ZoneTool initialized — idle until a zone type is chosen.")
+
+
+# ── Walls ──────────────────────────────────────────────────────────────
+
+func _initialize_walls() -> void:
+	if _wall_manager == null:
+		push_error("MainGame: WallManager not found.")
+		return
+
+	_wall_manager.rebuild()
+
+	print("MainGame: Walls initialized — floor perimeter generated.")
+
+
+# ── Input ──────────────────────────────────────────────────────────────
+
+func _unhandled_input(event: InputEvent) -> void:
+	# Cycle wall visualization mode: Cutaway → Partial → Full → Cutaway.
+	if event.is_action_pressed("cycle_wall_mode"):
+		GameManager.cycle_wall_mode()
 
 
 # ── Save / Load ────────────────────────────────────────────────────────

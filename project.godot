@@ -22,7 +22,7 @@ EventBus="*res://scripts/autoloads/event_bus.gd"
 AudioManager="*res://scripts/autoloads/audio_manager.gd"
 SaveManager="*res://scripts/autoloads/save_manager.gd"
 DebugManager="*res://scripts/autoloads/debug_manager.gd"
-GodotIQRuntime="*res://addons/godotiq/godotiq_runtime.gd"
+GodotIQRuntime="*uid://cgfnb7lo5hj1e"
 
 [display]
 

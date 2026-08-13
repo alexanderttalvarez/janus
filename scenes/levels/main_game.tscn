@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://bpatskxswuqau" path="res://scripts/levels/main_game.gd" id="1_main_game"]
 [ext_resource type="Script" uid="uid://c15g86wqdhhj2" path="res://scripts/grid/grid_manager.gd" id="2_grid_manager"]
 [ext_resource type="Script" uid="uid://bs30mfoth3xer" path="res://scripts/zones/zone_manager.gd" id="3_zone_manager"]
+[ext_resource type="Script" uid="uid://cegguehmuiv8i" path="res://scripts/walls/wall_manager.gd" id="4_gpckr"]
 [ext_resource type="Script" uid="uid://cxb7ishmx4bbn" path="res://scripts/simulation/time_manager.gd" id="4_time_manager"]
 [ext_resource type="Script" uid="uid://b32xkrc4r11rw" path="res://scripts/zones/zone_tool.gd" id="5_zone_tool"]
 [ext_resource type="Script" uid="uid://cp0m6e6wopn4q" path="res://scripts/simulation/visitor_manager.gd" id="6_visitor_manager"]
@@ -18,9 +19,9 @@
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
 background_color = Color(0.3, 0.35, 0.4, 1)
-ambient_light_source = 1
-ambient_light_color = Color(0.5, 0.5, 0.56, 1)
-ambient_light_energy = 0.5
+ambient_light_source = 2
+ambient_light_color = Color(0.6, 0.6, 0.65, 1)
+ambient_light_energy = 0.8
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ykusu"]
 albedo_color = Color(1, 0.54509807, 1, 1)
@@ -38,6 +39,9 @@ script = ExtResource("2_grid_manager")
 
 [node name="ZoneManager" type="Node" parent="World" unique_id=888189535]
 script = ExtResource("3_zone_manager")
+
+[node name="WallManager" type="Node" parent="World" unique_id=1612016903]
+script = ExtResource("4_gpckr")
 
 [node name="CameraRig" parent="." unique_id=1866546742 instance=ExtResource("7_camera_rig")]
 

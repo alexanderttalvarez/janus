@@ -76,6 +76,9 @@ var _limit_radius: float = 50.0  # 20 tiles × TILE_SIZE(2.0) + buffer
 func _ready() -> void:
 	_setup_camera()
 	_apply_zoom(_current_zoom)
+	# Push the initial camera_direction global for wall clipping (45° default
+	# view). Deferred so session_ready is true when the shader parameter is set.
+	call_deferred("_set_global_camera_direction", _current_angle)
 	# Don't override scene rotation — use scene's initial 45° Y rotation.
 
 
@@ -306,11 +309,15 @@ func _clamp_position(pos: Vector3) -> Vector3:
 # ── Shader Integration ─────────────────────────────────────────────────
 
 ## Set the global camera_direction shader parameter for wall clipping.
+## The CameraRig offset is along the pivot's local +Z (tscn: (0, 20, 20)), so
+## after a pivot rotation of θ the camera's world offset direction is
+## (sin θ, cos θ) — NOT (cos θ, sin θ). This direction (building → camera)
+## is what the wall shader uses to classify front/back faces.
 func _set_global_camera_direction(angle_deg: float) -> void:
 	if not GameManager.session_ready:
 		return
 	var angle := deg_to_rad(angle_deg)
-	RenderingServer.global_shader_parameter_set("camera_direction", Vector2(cos(angle), sin(angle)))
+	RenderingServer.global_shader_parameter_set("camera_direction", Vector2(sin(angle), cos(angle)))
 
 
 # ── Initial State ──────────────────────────────────────────────────────

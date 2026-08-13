@@ -89,6 +89,13 @@ var open_panels: Array[String] = []
 func _ready() -> void:
 	# Ensure this autoload processes even when the tree is paused.
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	# Pre-register the wall shader's global parameters. The RenderingServer
+	# only registers them when the shader first compiles, which happens
+	# asynchronously after load — explicit registration guarantees they exist
+	# before any scene code (CameraManager, WallManager) sets them.
+	# (Godot 4.7 renamed these to GLOBAL_VAR_TYPE_*.)
+	RenderingServer.global_shader_parameter_add("wall_mode", RenderingServer.GLOBAL_VAR_TYPE_INT, 0)
+	RenderingServer.global_shader_parameter_add("camera_direction", RenderingServer.GLOBAL_VAR_TYPE_VEC2, Vector2(1.0, 0.0))
 
 
 ## Change to a new scene by file path.

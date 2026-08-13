@@ -15,6 +15,17 @@ Walls define the architectural boundaries between spaces in Janus. They operate 
 - A 2-tile-wide corridor becomes a tunnel with 2 outer walls, no inner divider.
 - A 3×3 corridor block has only the outer perimeter walls.
 
+### Corners (Corner Cubes)
+
+- Walls are **centered on the boundary line** — half the thickness on each side, **shared between the two adjacent tiles** (a building perimeter wall overhangs the floor edge by half a thickness).
+- **Every wall junction gets a corner cube** (`0.1 × 3.0 × 0.1`, full wall height), centered on the junction lines (also shared between its four adjacent tiles):
+  - **Convex corners** (both wall runs end at the same point): the cube fills the corner square where the two bodies would overlap; both runs are trimmed flush against its faces.
+  - **Concave (inner) corners** (both runs end at a notch): the cube fills the open notch between the end caps.
+  - **T-junctions** (one run ends at another run's line while the other runs through — e.g. a zone wall meeting the building perimeter): the short run is trimmed flush against the cube and the long run is **split** so both sides butt the cube cleanly.
+- Consequence: wall boxes **never overlap** — no coplanar faces, no z-fighting, and all walls render at the full `3.0` height. The wall outline is always continuous.
+- Cubes are **axis-aligned** (their faces match the wall lines) and use a per-corner material whose baked "outward" direction points away from the room's interior, along the corner diagonal.
+- In Cutaway mode the shader opens only the corner facing the camera (front-face threshold `0.5` — side corners sit perpendicular to the camera and stay solid). The other **three corner cubes are always visible**, so the building outline always reaches the exact edge of the floor.
+
 ### Zone Perimeter Walls
 
 - A wall surrounds the zone boundary.
