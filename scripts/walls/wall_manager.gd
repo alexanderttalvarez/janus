@@ -6,20 +6,24 @@
 ##     corridor tile borders the zone.
 ##   - Corridor walls: 4 walls per corridor tile, shared walls removed.
 ##
-## Contiguous wall edges on the same line are MERGED into a single box.
+## Contiguous wall edges on the same line are MERGED into a single run.
 ## Walls are CENTERED on the boundary line — half the thickness on each
 ## side, shared between the two adjacent tiles (a building perimeter wall
 ## overhangs the floor edge by half a thickness).
-## Corners get their own solid cube (0.1 x 3.0 x 0.1): where an X-axis run's
-## end meets a Z-axis run's end, both runs are trimmed flush against the
-## cube's inner faces. No wall boxes ever overlap (no coplanar faces, no
-## z-fighting), and the cube's outward direction points away from the room's
-## interior, so in Cutaway the corner facing the camera opens while the back
-## corners stay solid.
+##
+## Corners are MITERED at 45°: where an X-axis run's end meets a Z-axis
+## run's end, each run is extended by half a thickness and its end is
+## clipped by the corner's bisector seam, so the two walls meet along a
+## shared diagonal. No separate corner mesh — no gaps, no overlaps, no
+## coplanar faces (the two miter faces are back-to-back, so cull_back drops
+## the hidden one). T-junctions (one run ending against another that runs
+## through) keep a flat end; the embedded half-thickness is hidden inside
+## the through wall.
 ##
 ## Walls use wall_clipping.gdshader, which classifies the whole wall by its
-## outward direction (mesh local +Z): walls facing the camera disappear in
-## Cutaway mode, walls facing away stay solid.
+## outward direction (baked into the material as the wall's outward normal):
+## walls facing the camera disappear in Cutaway mode, walls facing away stay
+## solid.
 class_name WallManager
 extends Node
 
@@ -31,18 +35,28 @@ const WALL_HEIGHT: float = 3.0
 const WALL_THICKNESS: float = 0.1
 ## Wall color (concrete beige). Materials are post-MVP.
 const WALL_COLOR: Color = Color(0.85, 0.82, 0.78)
+## Fraction of the wall height kept visible at the bottom in Cutaway/Partial
+## (matches KEEP_FRACTION in wall_clipping.gdshader).
+const CUTAWAY_KEEP_FRACTION: float = 0.10
+## Height of the cap plate rendered on top of a cut wall (its "top").
+const CAP_HEIGHT: float = 0.04
+## World Y of the cap plate's center (strip top + half cap height).
+const CAP_Y: float = CUTAWAY_KEEP_FRACTION * WALL_HEIGHT + CAP_HEIGHT * 0.5
 ## Opening width at corridor connections (door).
 const DOOR_GAP: float = 0.6
 ## Adjacency tolerance when merging edge spans.
 const MERGE_EPSILON: float = 0.01
 
-var _wall_material: ShaderMaterial = null
+const _DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]
+
+var _wall_materials: Dictionary = {}  # outward key -> ShaderMaterial
+var _cap_materials: Dictionary = {}
 
 
 func _ready() -> void:
 	# Force-load the wall shader NOW so its global uniforms (camera_direction,
 	# wall_mode) register in the RenderingServer before GameManager sets them.
-	_get_wall_material()
+	_get_wall_material(Vector2(0.0, 1.0))
 
 	# Walls adapt automatically to zone changes and tile purchases.
 	EventBus.zone_created.connect(func(_id: String, _t: String, _c: int): rebuild())
@@ -132,14 +146,12 @@ func rebuild() -> void:
 				continue
 			_record_edge(placed, pieces, container, pos, n, false)
 
-	# 4) Merge contiguous pieces into runs, then place the wall boxes.
+	# 4) Merge contiguous pieces into runs, classify mitered corners, then
+	#    place the wall prisms.
 	var runs := _merge_runs(pieces)
-	_place_corner_cubes(container, runs)
+	_classify_ends(runs)
 	for run: Dictionary in runs:
 		_create_wall_mesh(container, run)
-
-
-const _DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]
 
 
 ## Dedup an edge and either record it for merging or (for door edges) spawn
@@ -227,19 +239,11 @@ func _span_end_at(run: Dictionary, coord: float) -> bool:
 	return absf(run["from"] - coord) <= MERGE_EPSILON or absf(run["to"] - coord) <= MERGE_EPSILON
 
 
-## Fill every convex corner with a solid cube and trim the meeting runs so
-## they butt flush against it. A convex corner exists where an X-axis run's
-## span end sits on a Z-axis run's line AND the Z-axis run's span end sits
-## on the X-axis run's line — both walls end at the same point. The cube
-## occupies the corner square between the two wall bodies (interior side of
-## both). T-junctions — where ONE run ends at the other run's line while the
-## other runs through (e.g. a zone wall meeting the building perimeter) —
-## get a cube too: the short run is trimmed flush against it and the long
-## run is split so both sides butt the cube cleanly.
-func _place_corner_cubes(container: Node3D, runs: Array) -> void:
-	# T-junction splits (long run key -> cut intervals), applied after the
-	# pass so multiple junctions on one long run combine correctly.
-	var t_splits: Dictionary = {}
+## Walk every (x-run, z-run) pair and, where both runs end at the same
+## junction point, mark both ends as mitered by storing the sign-adjusted
+## seam normal (the wall keeps the side where m·(point - junction) >= 0).
+## T-junctions (only one run ends) and unrelated pairs are left flat.
+func _classify_ends(runs: Array) -> void:
 	for run_x: Dictionary in runs:
 		if run_x["axis"] != "x":
 			continue
@@ -250,186 +254,229 @@ func _place_corner_cubes(container: Node3D, runs: Array) -> void:
 			var z_line: float = run_x["line"]
 			var x_end := _span_end_at(run_x, x_line)
 			var z_end := _span_end_at(run_z, z_line)
-			if x_end and z_end:
-				_place_convex_corner(container, run_x, run_z, x_line, z_line)
-			elif x_end != z_end:
-				_place_t_junction(container, run_x, run_z, x_line, z_line, x_end, t_splits)
-	_apply_t_splits(runs, t_splits)
+			if not (x_end and z_end):
+				continue
+
+			var n_a: Vector2 = Vector2(run_x["normal"].x, run_x["normal"].z)
+			var n_b: Vector2 = Vector2(run_z["normal"].x, run_z["normal"].z)
+			var sum := n_a + n_b
+			if sum.length_squared() < 0.0001:
+				continue
+			# Seam is perpendicular to the corner's bisector (n_a + n_b).
+			var m := Vector2(sum.y, -sum.x)
+			var p := Vector2(x_line, z_line)
+
+			if absf(run_x["from"] - x_line) <= MERGE_EPSILON:
+				run_x["miter_from"] = _sign_for(run_x, m, p, true)
+			else:
+				run_x["miter_to"] = _sign_for(run_x, m, p, false)
+
+			if absf(run_z["from"] - z_line) <= MERGE_EPSILON:
+				run_z["miter_from"] = _sign_for(run_z, m, p, true)
+			else:
+				run_z["miter_to"] = _sign_for(run_z, m, p, false)
 
 
-## Corner junction: both runs end at the junction point. The cube fills the
-## corner square — the walls' overlap for convex corners, or the open notch
-## between the end caps for concave (inner) corners. In both cases the walls
-## already butt the cube flush, so no span checks are needed.
-func _place_convex_corner(container: Node3D, run_x: Dictionary, run_z: Dictionary, x_line: float, z_line: float) -> void:
-	var in_x: float = 1.0 if run_z["normal"].x < 0.0 else -1.0
-	var in_z: float = 1.0 if run_x["normal"].z < 0.0 else -1.0
-	var t2 := WALL_THICKNESS * 0.5
-	_create_corner_cube(container, run_x, run_z, in_x, in_z)
-
-
-## Create one corner cube at the junction of `run_x` (X-axis) and `run_z`
-## (Z-axis), trimming the runs whose spans overlap the cube. The cube is
-## axis-aligned (its faces match the wall lines) and gets a per-corner
-## material whose baked outward direction points away from the room's
-## interior — the shader opens only the camera-facing corner.
-func _create_corner_cube(container: Node3D, run_x: Dictionary, run_z: Dictionary, in_x: float, in_z: float) -> void:
-	var x_line: float = run_z["line"]
-	var z_line: float = run_x["line"]
-	var t2 := WALL_THICKNESS * 0.5
-	# The cube is centered on the junction lines. Each run's end at the
-	# junction is trimmed to the cube's face on its side: the run extends
-	# from the line in its span direction, so its end moves by half a
-	# thickness (convex and concave corners alike).
-	if absf(run_x["from"] - x_line) <= MERGE_EPSILON:
-		run_x["from"] = x_line + t2
-	elif absf(run_x["to"] - x_line) <= MERGE_EPSILON:
-		run_x["to"] = x_line - t2
-	if absf(run_z["from"] - z_line) <= MERGE_EPSILON:
-		run_z["from"] = z_line + t2
-	elif absf(run_z["to"] - z_line) <= MERGE_EPSILON:
-		run_z["to"] = z_line - t2
-
-	_spawn_corner_cube(container, Vector3(x_line, WALL_HEIGHT * 0.5, z_line), Vector2(-in_x, -in_z).normalized(), "Corner_%.1f_%.1f" % [x_line, z_line])
-
-
-## Create one corner cube mesh: axis-aligned box with the corner's outward
-## direction baked into its material (see wall_clipping.gdshader).
-func _spawn_corner_cube(container: Node3D, center: Vector3, outward: Vector2, cube_name: String) -> void:
-	var cube := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS)
-	box.material = _get_corner_material(outward)
-	cube.mesh = box
-	cube.position = center
-	cube.name = cube_name
-	container.add_child(cube)
-
-
-## T-junction: one run ends at the other run's line while the other runs
-## through the junction point (e.g. a zone wall meeting the building
-## perimeter). Their bodies overlap in the corner square — fill it with a
-## corner cube, trim the short run flush against the cube's far face, and
-## record a split of the long run so both sides butt the cube cleanly.
-func _place_t_junction(container: Node3D, run_x: Dictionary, run_z: Dictionary, x_line: float, z_line: float, x_ends: bool, t_splits: Dictionary) -> void:
-	var t2 := WALL_THICKNESS * 0.5
-	var in_x: float = 1.0 if run_z["normal"].x < 0.0 else -1.0
-	var in_z: float = 1.0 if run_x["normal"].z < 0.0 else -1.0
-	# The cube (centered on the junction) must sit inside both spans —
-	# rejects phantom junctions where the runs don't actually reach each
-	# other.
-	if x_line < minf(run_x["from"], run_x["to"]) - MERGE_EPSILON or x_line > maxf(run_x["from"], run_x["to"]) + MERGE_EPSILON:
-		return
-	if z_line < minf(run_z["from"], run_z["to"]) - MERGE_EPSILON or z_line > maxf(run_z["from"], run_z["to"]) + MERGE_EPSILON:
-		return
-	_spawn_corner_cube(container, Vector3(x_line, WALL_HEIGHT * 0.5, z_line), Vector2(-in_x, -in_z).normalized(), "Corner_%.1f_%.1f" % [x_line, z_line])
-	if x_ends:
-		# run_x ends at run_z's line: trim its end to the cube's face.
-		if absf(run_x["from"] - x_line) <= MERGE_EPSILON:
-			run_x["from"] = x_line + t2
-		else:
-			run_x["to"] = x_line - t2
-		var key := _t_run_key(run_z)
-		var cuts: Array = t_splits.get(key, [])
-		cuts.append([z_line - t2, z_line + t2])
-		t_splits[key] = cuts
+## Flip the seam normal so the run keeps the side its far (opposite) end
+## lies on — the run is clipped to m·(point - p) >= 0.
+func _sign_for(run: Dictionary, m: Vector2, p: Vector2, is_from: bool) -> Vector2:
+	var far_long: float = run["to"] if is_from else run["from"]
+	var far: Vector2
+	if run["axis"] == "x":
+		far = Vector2(far_long, run["line"])
 	else:
-		# run_z ends at run_x's line: trim its end to the cube's face.
-		if absf(run_z["from"] - z_line) <= MERGE_EPSILON:
-			run_z["from"] = z_line + t2
-		else:
-			run_z["to"] = z_line - t2
-		var key := _t_run_key(run_x)
-		var cuts: Array = t_splits.get(key, [])
-		cuts.append([x_line - t2, x_line + t2])
-		t_splits[key] = cuts
+		far = Vector2(run["line"], far_long)
+	if m.dot(far - p) < 0.0:
+		return -m
+	return m
 
 
-## Identity key for a run along the shared line (line + facing direction).
-func _t_run_key(run: Dictionary) -> String:
-	var dir: String = "p" if (run["normal"].x + run["normal"].z) > 0.0 else "m"
-	return "%s:%.4f:%s" % [run["axis"], run["line"], dir]
-
-
-## Apply recorded T-junction splits: cut each long run at its recorded
-## intervals, keeping the original run as the first segment and appending
-## new run dicts for the rest.
-func _apply_t_splits(runs: Array, t_splits: Dictionary) -> void:
-	for key: String in t_splits:
-		var cuts: Array = t_splits[key]
-		# Distribute cuts to the matching runs (same line, same facing) by
-		# span containment — a line can hold several separate runs.
-		for run: Dictionary in runs:
-			if _t_run_key(run) != key:
-				continue
-			var span_from: float = run["from"]
-			var span_to: float = run["to"]
-			var run_cuts: Array = []
-			var remaining: Array = []
-			for cut: Array in cuts:
-				var c0: float = minf(cut[0], cut[1])
-				var c1: float = maxf(cut[0], cut[1])
-				if c0 >= minf(span_from, span_to) - MERGE_EPSILON and c1 <= maxf(span_from, span_to) + MERGE_EPSILON:
-					run_cuts.append([c0, c1])
-				else:
-					remaining.append(cut)
-			cuts = remaining
-			if run_cuts.is_empty():
-				continue
-			run_cuts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
-			var segments: Array = []
-			var cursor: float = span_from
-			for cut: Array in run_cuts:
-				var c0: float = cut[0]
-				var c1: float = cut[1]
-				if c0 < cursor - MERGE_EPSILON:
-					continue
-				if c0 > cursor + MERGE_EPSILON:
-					segments.append([cursor, c0])
-				cursor = maxf(cursor, c1)
-			if span_to > cursor + MERGE_EPSILON:
-				segments.append([cursor, span_to])
-			if segments.is_empty():
-				continue
-			run["from"] = segments[0][0]
-			run["to"] = segments[0][1]
-			for i in range(1, segments.size()):
-				var seg := run.duplicate()
-				seg["from"] = segments[i][0]
-				seg["to"] = segments[i][1]
-				runs.append(seg)
-
-
-## Create one wall box. The wall is centered on the run's line — half the
-## thickness on each side, shared between the two adjacent tiles. Corners
-## are filled by dedicated cubes (see _place_corner_cubes), so wall boxes
-## never overlap — all walls are full run length at full WALL_HEIGHT.
+## Create one wall prism from a run. The footprint is a rectangle (extended
+## by half a thickness at mitered ends) clipped by each miter seam, then
+## extruded into a solid. Caps use the same footprint so their tops match the
+## wall's trapezoid exactly.
 func _create_wall_mesh(container: Node3D, run: Dictionary) -> void:
 	var axis: String = run["axis"]
 	var line: float = run["line"]
 	var from: float = run["from"]
 	var to: float = run["to"]
 	var normal: Vector3 = run["normal"]
-	var height := WALL_HEIGHT
+	var t2 := WALL_THICKNESS * 0.5
 
-	var center: Vector3
+	var m_from: Variant = run.get("miter_from")
+	var m_to: Variant = run.get("miter_to")
+
+	var from_long := from - (t2 if m_from != null else 0.0)
+	var to_long := to + (t2 if m_to != null else 0.0)
+
+	var poly: Array = []
 	if axis == "z":
-		center = Vector3(line, height * 0.5, (from + to) * 0.5)
+		# Runs along Z: thickness in X, line = x.
+		var outer_x := line + t2 * normal.x
+		var inner_x := line - t2 * normal.x
+		poly = [
+			Vector2(inner_x, from_long), Vector2(inner_x, to_long),
+			Vector2(outer_x, to_long), Vector2(outer_x, from_long),
+		]
 	else:
-		center = Vector3((from + to) * 0.5, height * 0.5, line)
+		# Runs along X: thickness in Z, line = z.
+		var outer_z := line + t2 * normal.z
+		var inner_z := line - t2 * normal.z
+		poly = [
+			Vector2(from_long, inner_z), Vector2(to_long, inner_z),
+			Vector2(to_long, outer_z), Vector2(from_long, outer_z),
+		]
+
+	if m_from != null:
+		poly = _clip_polygon(poly, m_from, _end_point(run, from))
+	if m_to != null:
+		poly = _clip_polygon(poly, m_to, _end_point(run, to))
+	poly = _dedupe(poly)
+	if poly.size() < 3:
+		poly = [
+			Vector2(from_long, line - t2), Vector2(to_long, line - t2),
+			Vector2(to_long, line + t2), Vector2(from_long, line + t2),
+		]
+
+	var outward := Vector2(normal.x, normal.z)
 
 	var wall := MeshInstance3D.new()
-	var box := BoxMesh.new()
-	box.size = Vector3(to - from, height, WALL_THICKNESS)
-	box.material = _get_wall_material()
-	wall.mesh = box
-	wall.position = center
-	if axis == "z":
-		wall.rotation.y = deg_to_rad(90.0) if normal.x > 0.0 else deg_to_rad(-90.0)
-	else:
-		wall.rotation.y = 0.0 if normal.z > 0.0 else deg_to_rad(180.0)
+	wall.mesh = _make_prism_mesh(poly, WALL_HEIGHT)
+	wall.material_override = _get_wall_material(outward)
+	wall.position = Vector3(0.0, WALL_HEIGHT * 0.5, 0.0)
 	wall.name = "Wall_%s_%.1f_%.1f" % [axis, line, (from + to) * 0.5]
 	container.add_child(wall)
+
+	var cap := MeshInstance3D.new()
+	cap.mesh = _make_prism_mesh(poly, CAP_HEIGHT)
+	cap.material_override = _get_cap_material(outward)
+	cap.position = Vector3(0.0, CAP_Y, 0.0)
+	cap.name = wall.name + "_cap"
+	container.add_child(cap)
+
+
+## World xz point of a run's span end (the junction corner).
+func _end_point(run: Dictionary, coord: float) -> Vector2:
+	if run["axis"] == "x":
+		return Vector2(coord, run["line"])
+	return Vector2(run["line"], coord)
+
+
+## Clip a convex xz polygon to the half-plane m·(point - p) >= 0.
+func _clip_polygon(poly: Array, m: Vector2, p: Vector2) -> Array:
+	var out: Array = []
+	var n := poly.size()
+	if n == 0:
+		return poly
+	for i in range(n):
+		var cur: Vector2 = poly[i]
+		var nxt: Vector2 = poly[(i + 1) % n]
+		var sc := m.dot(cur - p)
+		var sn := m.dot(nxt - p)
+		var cur_in := sc >= 0.0
+		var nxt_in := sn >= 0.0
+		if cur_in:
+			out.append(cur)
+		if cur_in != nxt_in:
+			var t := sc / (sc - sn)
+			out.append(cur + (nxt - cur) * t)
+	return out
+
+
+## Drop consecutive near-duplicate points (Sutherland-Hodgman can emit a
+## corner twice when the seam passes exactly through it).
+func _dedupe(poly: Array) -> Array:
+	var out: Array = []
+	for v in poly:
+		if out.is_empty() or (out.back() as Vector2).distance_squared_to(v) > 0.000001:
+			out.append(v)
+	while out.size() > 1 and (out.back() as Vector2).distance_squared_to(out[0]) < 0.000001:
+		out.pop_back()
+	return out
+
+
+## Build a right prism from an xz base polygon. Flat-shaded (one normal per
+## face) so the miter seams read as crisp, lit surfaces. Base vertices are
+## normalized to CCW so side faces face outward.
+func _make_prism_mesh(base: Array, height: float) -> ArrayMesh:
+	var poly := _ensure_ccw(base)
+	var n := poly.size()
+	var half := height * 0.5
+
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var indices := PackedInt32Array()
+
+	# Top face (+Y).
+	var start := vertices.size()
+	for i in range(n):
+		var p: Vector2 = poly[i]
+		vertices.append(Vector3(p.x, half, p.y))
+		normals.append(Vector3.UP)
+	for i in range(1, n - 1):
+		indices.append(start)
+		indices.append(start + i)
+		indices.append(start + i + 1)
+
+	# Bottom face (-Y).
+	start = vertices.size()
+	for i in range(n):
+		var p: Vector2 = poly[i]
+		vertices.append(Vector3(p.x, -half, p.y))
+		normals.append(Vector3.DOWN)
+	for i in range(1, n - 1):
+		indices.append(start)
+		indices.append(start + i + 1)
+		indices.append(start + i)
+
+	# Side faces.
+	for i in range(n):
+		var j := (i + 1) % n
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[j]
+		var nx := b.y - a.y
+		var nz := -(b.x - a.x)
+		var nl := sqrt(nx * nx + nz * nz)
+		if nl > 0.0:
+			nx /= nl
+			nz /= nl
+		var side_normal := Vector3(nx, 0.0, nz)
+		start = vertices.size()
+		vertices.append(Vector3(a.x, -half, a.y))
+		vertices.append(Vector3(a.x, half, a.y))
+		vertices.append(Vector3(b.x, -half, b.y))
+		vertices.append(Vector3(b.x, half, b.y))
+		for k in range(4):
+			normals.append(side_normal)
+		indices.append(start + 0)
+		indices.append(start + 2)
+		indices.append(start + 1)
+		indices.append(start + 2)
+		indices.append(start + 3)
+		indices.append(start + 1)
+
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_INDEX] = indices
+
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+## Return `poly` wound counter-clockwise (positive signed area in xz).
+func _ensure_ccw(poly: Array) -> Array:
+	var area := 0.0
+	var n := poly.size()
+	for i in range(n):
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % n]
+		area += a.x * b.y - b.x * a.y
+	if area < 0.0:
+		poly.reverse()
+	return poly
 
 
 ## Two short segments flanking a centered door opening on one edge.
@@ -440,7 +487,6 @@ func _create_door_segments(
 	var dz: int = neighbor.y - pos.y
 	var line: float = float(pos.x) + 0.5 + float(dx) * 0.5 if dx != 0 else float(pos.y) + 0.5 + float(dz) * 0.5
 	var mid_along: float = float(pos.y) + 0.5 if dx != 0 else float(pos.x) + 0.5
-	var t2 := WALL_THICKNESS * 0.5
 	var seg_width := (1.0 - DOOR_GAP) * 0.5
 	var offset := DOOR_GAP * 0.5 + seg_width
 
@@ -460,24 +506,35 @@ func _edge_key(a: Vector2i, b: Vector2i) -> String:
 	return "%d,%d|%d,%d" % [a.x, a.y, b.x, b.y]
 
 
-func _get_wall_material() -> ShaderMaterial:
-	if _wall_material == null:
-		_wall_material = ShaderMaterial.new()
-		_wall_material.shader = load("res://assets/shaders/wall_clipping.gdshader") as Shader
-		_wall_material.set_shader_parameter("wall_color", WALL_COLOR)
-	return _wall_material
-
-
-## Per-corner material: the cube stays axis-aligned (faces match the walls),
-## so its cutaway classification uses the corner's outward diagonal (away
-## from the room interior) baked into the material, with the shader's 0.5
-## front-face threshold for corners.
-func _get_corner_material(outward: Vector2) -> ShaderMaterial:
+## Wall material, cached per outward direction. The shader classifies the
+## whole wall by its baked outward normal (mesh local axes are irrelevant —
+## the prism is built in world space with an identity transform).
+func _get_wall_material(outward: Vector2) -> ShaderMaterial:
+	var key := "%.0f,%.0f" % [outward.x, outward.y]
+	if _wall_materials.has(key):
+		return _wall_materials[key]
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://assets/shaders/wall_clipping.gdshader") as Shader
 	mat.set_shader_parameter("wall_color", WALL_COLOR)
-	mat.set_shader_parameter("is_corner", true)
+	mat.set_shader_parameter("is_cap", false)
 	mat.set_shader_parameter("corner_outward", outward)
+	_wall_materials[key] = mat
+	return mat
+
+
+## Cap material for the thin plate on top of a cut wall. The shader's is_cap
+## branch shows it only where the wall is actually cut (front walls in
+## Cutaway, all walls in Partial), so the cut never shows a hollow interior.
+func _get_cap_material(outward: Vector2) -> ShaderMaterial:
+	var key := "%.0f,%.0f" % [outward.x, outward.y]
+	if _cap_materials.has(key):
+		return _cap_materials[key]
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://assets/shaders/wall_clipping.gdshader") as Shader
+	mat.set_shader_parameter("wall_color", WALL_COLOR)
+	mat.set_shader_parameter("is_cap", true)
+	mat.set_shader_parameter("corner_outward", outward)
+	_cap_materials[key] = mat
 	return mat
 
 

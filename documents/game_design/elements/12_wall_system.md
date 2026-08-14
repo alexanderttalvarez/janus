@@ -88,9 +88,11 @@ Wall rendering follows the isometric camera system used in games like *The Sims*
 
 | Mode | Front Walls (facing camera) | Back Walls (away from camera) | Use Case |
 |------|----------------------------|------------------------------|----------|
-| **Cutaway** (default) | 5% height | 100% height | Building and interior design. Player can see inside rooms while understanding the wall layout. |
-| **Partial** | 5% height | 5% height | Overview of all rooms simultaneously. No walls obstruct the view. |
+| **Cutaway** (default) | Bottom 10% strip + cap | 100% height | Building and interior design. Player can see inside rooms while understanding the wall layout. |
+| **Partial** | Bottom 10% strip + cap | Bottom 10% strip + cap | Overview of all rooms simultaneously. No walls obstruct the view. |
 | **Full** | 100% height | 100% height | Exterior view, final presentation. Shows the building as it would appear in reality. |
+
+> In **Cutaway** and **Partial**, walls that are hidden keep only a strip at their base (~10% of the wall height) so the player can always tell a wall is there without it obstructing the view. A thin **cap plate** sits on top of the strip (on both walls and corner cubes, the cube caps slightly inset to avoid z-fighting) and renders as the wall's top surface, so the cut reads as a real low wall rather than a hollow interior.
 
 ### Camera-Relative Rendering
 
