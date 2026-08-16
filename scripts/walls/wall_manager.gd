@@ -109,17 +109,27 @@ func rebuild() -> void:
 
 	var corridor: Dictionary = {}  # Vector2i -> true
 	var built: Dictionary = {}     # Vector2i -> true
+	var door_edges: Dictionary = {}  # edge key -> true
 	for x in range(fg.width):
 		for y in range(fg.height):
 			var tile: GridTile = fg.get_tile(x, y)
 			if tile == null or not (tile.owned and tile.floor_built):
 				continue
-			built[Vector2i(x, y)] = true
+			var pos := Vector2i(x, y)
+			built[pos] = true
 			if tile.element == GridTile.TileElement.CIRCULATION:
-				corridor[Vector2i(x, y)] = true
+				corridor[pos] = true
+			if tile.has_door(GridTile.DoorSide.NORTH):
+				door_edges[_edge_key(pos, pos + Vector2i.UP)] = true
+			if tile.has_door(GridTile.DoorSide.SOUTH):
+				door_edges[_edge_key(pos, pos + Vector2i.DOWN)] = true
+			if tile.has_door(GridTile.DoorSide.EAST):
+				door_edges[_edge_key(pos, pos + Vector2i.RIGHT)] = true
+			if tile.has_door(GridTile.DoorSide.WEST):
+				door_edges[_edge_key(pos, pos + Vector2i.LEFT)] = true
 
 	# Pipeline: edges -> pieces -> runs -> junctions -> boxes.
-	var pieces := _collect_wall_pieces(built, corridor, zones, zone_of)
+	var pieces := _collect_wall_pieces(built, corridor, zones, zone_of, door_edges)
 	var runs := _merge_pieces_into_runs(pieces)
 	var joints_by_run: Dictionary = {}  # run index -> Array[float]
 	var junctions := _find_wall_junctions(runs, joints_by_run)
@@ -141,7 +151,8 @@ func _clear_walls(container: Node3D) -> void:
 ## floor perimeter, zone perimeters (with door gaps), and corridor walls.
 ## Edges are deduplicated canonically, so each boundary produces one wall.
 func _collect_wall_pieces(
-	built: Dictionary, corridor: Dictionary, zones: Array[ZoneData], zone_of: Dictionary
+	built: Dictionary, corridor: Dictionary, zones: Array[ZoneData], zone_of: Dictionary,
+	door_edges: Dictionary
 ) -> Array:
 	var placed: Dictionary = {}  # edge key -> true
 	var pieces: Array = []
@@ -151,7 +162,8 @@ func _collect_wall_pieces(
 		for dir: Vector2i in _DIRS:
 			var n: Vector2i = pos + dir
 			if not built.has(n):
-				_add_wall_piece(placed, pieces, pos, n, false)
+				var edge_key := _edge_key(pos, n)
+				_add_wall_piece(placed, pieces, pos, n, false, door_edges.has(edge_key))
 
 	# 2) Zone perimeter — zone tile edges facing other built space.
 	#    Door gap when the neighbor is a corridor tile.
@@ -182,16 +194,19 @@ func _collect_wall_pieces(
 
 
 ## Dedup an edge and record its wall piece(s) for merging. Door edges
-## produce two short flank pieces leaving a centered DOOR_GAP opening.
+## produce either a full-height corridor opening or an exterior door shape.
 func _add_wall_piece(
-	placed: Dictionary, pieces: Array, pos: Vector2i, neighbor: Vector2i, has_door: bool
+	placed: Dictionary, pieces: Array, pos: Vector2i, neighbor: Vector2i,
+	has_door: bool, is_exterior_door: bool = false
 ) -> void:
 	var key := _edge_key(pos, neighbor)
 	if placed.has(key):
 		return
 	placed[key] = true
 	var normal := Vector3(float(neighbor.x - pos.x), 0.0, float(neighbor.y - pos.y))
-	if has_door:
+	if is_exterior_door:
+		pieces.append_array(_make_exterior_door_pieces(pos, normal))
+	elif has_door:
 		pieces.append_array(_make_door_pieces(pos, normal))
 	else:
 		pieces.append(_make_edge_piece(pos, normal))
@@ -207,6 +222,8 @@ func _make_edge_piece(pos: Vector2i, normal: Vector3) -> Dictionary:
 			"from": float(pos.y),
 			"to": float(pos.y) + 1.0,
 			"normal": normal,
+			"height_from": 0.0,
+			"height_to": WALL_HEIGHT,
 		}
 	# North/south edge — wall runs along X at line z.
 	return {
@@ -215,6 +232,8 @@ func _make_edge_piece(pos: Vector2i, normal: Vector3) -> Dictionary:
 		"from": float(pos.x),
 		"to": float(pos.x) + 1.0,
 		"normal": normal,
+		"height_from": 0.0,
+		"height_to": WALL_HEIGHT,
 	}
 
 
@@ -233,6 +252,23 @@ func _make_door_pieces(pos: Vector2i, normal: Vector3) -> Array:
 	return [seg_a, seg_b]
 
 
+## Exterior door geometry keeps 10% side sections at full height and a
+## centered lintel over the upper 25% of the wall.
+func _make_exterior_door_pieces(pos: Vector2i, normal: Vector3) -> Array:
+	var piece := _make_edge_piece(pos, normal)
+	var side_width := 0.1
+	var side_a: Dictionary = piece.duplicate()
+	side_a["to"] = side_a["from"] + side_width
+	var side_b: Dictionary = piece.duplicate()
+	side_b["from"] = side_b["to"] - side_width
+	var lintel: Dictionary = piece.duplicate()
+	lintel["from"] = piece["from"] + side_width
+	lintel["to"] = piece["to"] - side_width
+	lintel["height_from"] = WALL_HEIGHT * 0.75
+	lintel["height_to"] = WALL_HEIGHT
+	return [side_a, side_b, lintel]
+
+
 ## Merge all recorded pieces: group by (axis, line, normal direction), then
 ## join adjacent spans into single runs.
 func _merge_pieces_into_runs(pieces: Array) -> Array:
@@ -240,7 +276,9 @@ func _merge_pieces_into_runs(pieces: Array) -> Array:
 	for piece: Dictionary in pieces:
 		var normal: Vector3 = piece["normal"]
 		var dir_key: String = "p" if (normal.x + normal.z) > 0.0 else "m"
-		var key := "%s:%.4f:%s" % [piece["axis"], piece["line"], dir_key]
+		var key := "%s:%.4f:%s:%.2f:%.2f" % [
+			piece["axis"], piece["line"], dir_key, piece["height_from"], piece["height_to"]
+		]
 		if not groups.has(key):
 			groups[key] = []
 		groups[key].append(piece)
@@ -262,6 +300,8 @@ func _merge_pieces_into_runs(pieces: Array) -> Array:
 					"from": run_from,
 					"to": run_to,
 					"normal": group[0]["normal"],
+					"height_from": group[0]["height_from"],
+					"height_to": group[0]["height_to"],
 				})
 				run_from = piece["from"]
 				run_to = piece["to"]
@@ -271,6 +311,8 @@ func _merge_pieces_into_runs(pieces: Array) -> Array:
 			"from": run_from,
 			"to": run_to,
 			"normal": group[0]["normal"],
+			"height_from": group[0]["height_from"],
+			"height_to": group[0]["height_to"],
 		})
 	return runs
 
@@ -357,20 +399,27 @@ func _spawn_wall_box(container: Node3D, run: Dictionary, from: float, to: float)
 	var length := to - from
 	var mid := (from + to) * 0.5
 	var line: float = run["line"]
+	var height_from: float = run.get("height_from", 0.0)
+	var height_to: float = run.get("height_to", WALL_HEIGHT)
+	var height := height_to - height_from
 	var size: Vector3
 	var center: Vector3
 	if run["axis"] == "z":
-		size = Vector3(WALL_THICKNESS, WALL_HEIGHT, length)
-		center = Vector3(line, WALL_HEIGHT * 0.5, mid)
+		size = Vector3(WALL_THICKNESS, height, length)
+		center = Vector3(line, (height_from + height_to) * 0.5, mid)
 	else:
-		size = Vector3(length, WALL_HEIGHT, WALL_THICKNESS)
-		center = Vector3(mid, WALL_HEIGHT * 0.5, line)
+		size = Vector3(length, height, WALL_THICKNESS)
+		center = Vector3(mid, (height_from + height_to) * 0.5, line)
 	var outward := Vector2(run["normal"].x, run["normal"].z)
-	var label := "Wall_%s_%.1f_%.1f" % [run["axis"], line, mid]
+	var label := "Wall_%s_%.1f_%.1f_%.2f" % [run["axis"], line, mid, height_from]
+	var is_door_lintel := not is_zero_approx(height_from)
+	# Keep the 25% lintel visible; only its cap/thickness bar is hidden
+	# outside Full mode.
 	_spawn_box(container, center, size, outward, 0.0, false, label)
+	var cap_y := CAP_Y if is_zero_approx(height_from) else height_to + CAP_HEIGHT * 0.5
 	_spawn_box(
-		container, Vector3(center.x, CAP_Y, center.z),
-		_inset_cap_size(size), outward, 0.0, true, label + "_cap"
+		container, Vector3(center.x, cap_y, center.z),
+		_inset_cap_size(size), outward, 0.0, true, label + "_cap", is_door_lintel
 	)
 
 
@@ -391,11 +440,12 @@ func _build_corner_cube(container: Node3D, point: Vector2, outward: Vector2) -> 
 ## Spawn a single wall box mesh instance. Meshes are shared per size.
 func _spawn_box(
 	container: Node3D, center: Vector3, size: Vector3,
-	outward: Vector2, front_threshold: float, is_cap: bool, label: String
+	outward: Vector2, front_threshold: float, is_cap: bool, label: String,
+	is_door_lintel: bool = false
 ) -> void:
 	var box := MeshInstance3D.new()
 	box.mesh = _get_box_mesh(size)
-	box.material_override = _get_wall_material(outward, front_threshold, is_cap)
+	box.material_override = _get_wall_material(outward, front_threshold, is_cap, is_door_lintel)
 	box.position = center
 	box.name = label
 	container.add_child(box)
@@ -425,8 +475,13 @@ func _get_box_mesh(size: Vector3) -> BoxMesh:
 ## Wall material, cached per outward direction + threshold + cap flag. The
 ## shader classifies the whole box by the baked outward direction, so every
 ## face of a wall or cube opens or stays solid together.
-func _get_wall_material(outward: Vector2, front_threshold: float, is_cap: bool) -> ShaderMaterial:
-	var key := "%.2f|%.2f|%.2f|%s" % [outward.x, outward.y, front_threshold, "cap" if is_cap else "wall"]
+func _get_wall_material(
+	outward: Vector2, front_threshold: float, is_cap: bool, is_door_lintel: bool = false
+) -> ShaderMaterial:
+	var key := "%.2f|%.2f|%.2f|%s|%s" % [
+		outward.x, outward.y, front_threshold,
+		"cap" if is_cap else "wall", "door_lintel" if is_door_lintel else "normal"
+	]
 	var mat := _materials.get(key) as ShaderMaterial
 	if mat == null:
 		mat = ShaderMaterial.new()
@@ -435,6 +490,7 @@ func _get_wall_material(outward: Vector2, front_threshold: float, is_cap: bool) 
 		mat.set_shader_parameter("outward", outward)
 		mat.set_shader_parameter("front_threshold", front_threshold)
 		mat.set_shader_parameter("is_cap", is_cap)
+		mat.set_shader_parameter("is_door_lintel", is_door_lintel)
 		_materials[key] = mat
 	return mat
 

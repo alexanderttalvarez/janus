@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://bco3ec32w5l2k"]
+
+[ext_resource type="Script" uid="uid://cxxp2ysnj4mlg" path="res://scripts/characters/visitor.gd" id="1_6wf8m"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6wf8m"]
+albedo_color = Color(0.12, 0.48, 0.86, 1)
+roughness = 0.9
+
+[sub_resource type="CylinderMesh" id="CylinderMesh_i5tdm"]
+top_radius = 0.25
+bottom_radius = 0.25
+height = 1.3
+
+[sub_resource type="SphereMesh" id="SphereMesh_1fiif"]
+radius = 0.24
+height = 0.48
+
+[node name="Visitor" type="Node3D" unique_id=1365814092]
+script = ExtResource("1_6wf8m")
+
+[node name="Body" type="MeshInstance3D" parent="." unique_id=187769028]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.65, 0)
+material_override = SubResource("StandardMaterial3D_6wf8m")
+mesh = SubResource("CylinderMesh_i5tdm")
+
+[node name="Head" type="MeshInstance3D" parent="." unique_id=1916769340]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.42, 0)
+material_override = SubResource("StandardMaterial3D_6wf8m")
+mesh = SubResource("SphereMesh_1fiif")

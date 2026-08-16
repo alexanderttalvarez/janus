@@ -9,6 +9,10 @@ class_name PathfindingGraph
 extends RefCounted
 
 
+## Plot ID used for the pedestrian ring outside a building plot.
+const EXTERIOR_PLOT_ID: String = "exterior"
+
+
 ## Internal node representation.
 class PathNode:
 	var plot_id: String
@@ -69,6 +73,20 @@ func _add_floor_edges(plot_id: String, floor_level: String, floor_grid: FloorGri
 			for n_pos in floor_grid.get_walkable_neighbors(x, y):
 				var neighbor := PathNode.new(plot_id, floor_level, n_pos)
 				_edges[key].append(neighbor)
+
+
+## Add a bidirectional edge between a building boundary tile and its exterior door tile.
+func add_exterior_door_edge(
+	plot_id: String, floor_level: String, interior_pos: Vector2i, exterior_pos: Vector2i
+) -> void:
+	var interior_key := PathNode.new(plot_id, floor_level, interior_pos).get_key()
+	var exterior_key := PathNode.new(EXTERIOR_PLOT_ID, floor_level, exterior_pos).get_key()
+	if not _edges.has(interior_key):
+		_edges[interior_key] = []
+	if not _edges.has(exterior_key):
+		_edges[exterior_key] = []
+	_edges[interior_key].append(PathNode.new(EXTERIOR_PLOT_ID, floor_level, exterior_pos))
+	_edges[exterior_key].append(PathNode.new(plot_id, floor_level, interior_pos))
 
 
 ## Add a cross-floor circulation edge (e.g., stair connects tile_a to tile_b on different floors).

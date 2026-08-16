@@ -7,6 +7,9 @@ extends Resource
 ## What occupies this tile.
 enum TileElement { NONE, SHOP, DECORATION, COLUMN, CIRCULATION, AMENITY }
 
+## Door flags for the four edges of a tile. Values are combinable bit flags.
+enum DoorSide { NORTH = 1, SOUTH = 2, EAST = 4, WEST = 8 }
+
 ## Zone typology classification (used for zone painting and splitting).
 enum TileTypology { TENANT, DECORATION, TRANSIT }
 
@@ -32,6 +35,22 @@ enum TileTypology { TENANT, DECORATION, TRANSIT }
 ## Tile condition (0-100, used for maintenance system post-MVP).
 @export var condition: int = 100
 
+## Door sides stored as a combinable DoorSide bitmask.
+@export_flags("North", "South", "East", "West") var door_sides: int = 0
+
+
+## Return whether this tile edge contains a door.
+func has_door(side: DoorSide) -> bool:
+	return (door_sides & int(side)) != 0
+
+
+## Set or clear a door on this tile edge.
+func set_door(side: DoorSide, enabled: bool = true) -> void:
+	if enabled:
+		door_sides |= int(side)
+	else:
+		door_sides &= ~int(side)
+
 
 ## Reset all tile data to defaults.
 func reset() -> void:
@@ -42,3 +61,4 @@ func reset() -> void:
 	element = TileElement.NONE
 	typology = TileTypology.TENANT
 	condition = 100
+	door_sides = 0

@@ -18,7 +18,7 @@ You have GodotIQ MCP tools (`godotiq_*`). ALWAYS prefer them over raw file opera
 4. **Visual QA after scene work:** `explore(mode="tour")` — describe each screenshot, fix issues, tour again; `explore(mode="inspect", positions=[...])` for close-ups.
 5. **After every code change:** `validate(target=file, detail="brief")` for Pro convention checks, then `check_errors(scope=file)` for compilation/parser errors. One script, one validate/check cycle — never batch five scripts then debug.
 6. **Multi-file refactor:** `impact_check` BEFORE changing; `validate(target="project")` baseline before/after; then `check_errors(scope="project")` and `signal_map(find="orphans")`.
-7. **Testing/debugging:** `run(action="play")` → `verify_project_runs()` → `read_debug_console()` for errors → `state_inspect` for values (cheap, preferred) → `verify_motion` for movement → `screenshot(scale=0.25, quality=0.3)` only when visuals changed (expensive) → `run(action="stop")`.
+7. **Testing/debugging:** `run(action="play")` → `verify_project_runs()` → `read_debug_console()` for errors → `state_inspect` for values (cheap, preferred) → `verify_motion` for movement → `screenshot(delivery="legacy", scale=0.25, quality=0.3)` only when visuals changed (expensive) → `run(action="stop")`.
 
 ## Token Efficiency
 
@@ -104,7 +104,7 @@ Screenshots are expensive and visual-only. Use them ONLY when the task changed s
 
 For Godot Debugger/console errors, call `godotiq_read_debug_console()` first. Do not ask the user to copy/paste the Debug window unless this tool returns INCONCLUSIVE or cannot connect.
 
-**How screenshots reach you:** with `delivery="image"` (the default) `godotiq_screenshot` and `godotiq_explore` return real image blocks after the metadata JSON — you SEE the pixels. Use the image to VERIFY layout/appearance claims before stating them, and describe only what you actually observe in the image. If your client cannot render MCP image blocks (you get metadata but no image), pass `delivery="legacy"` (or set env `GODOTIQ_IMAGE_DELIVERY=legacy`) to get the pre-0.5.14 base64 dict — in that mode you CANNOT see the screenshot, so never claim you can.
+**How screenshots reach you:** with `delivery="image"` (the default) `godotiq_screenshot` and `godotiq_explore` return real image blocks after the metadata JSON — you SEE the pixels. Use the image to VERIFY layout/appearance claims before stating them, and describe only what you actually observe in the image. **Janus workspace rule:** use `delivery="legacy"` for `godotiq_screenshot` by default because this client does not reliably forward MCP image blocks. You can also set `GODOTIQ_IMAGE_DELIVERY=legacy`. Legacy delivery returns base64 data and cannot be visually analyzed by the model. Use `delivery="image"` only after confirming the client renders MCP image blocks. `godotiq_explore` screenshots remain a Pro-tier feature.
 
 When you receive a screenshot from `godotiq_screenshot`, **DESCRIBE what you see**. When you receive screenshots from `godotiq_explore`, **ANALYZE each one** — the i-th image pairs with `screenshots[i]` in the metadata (area, position). Note lighting issues, geometry gaps, floating objects, fog artifacts, missing textures, scale problems, and general visual impression.
 

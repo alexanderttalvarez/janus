@@ -39,6 +39,15 @@ var target_position: Vector3 = Vector3.ZERO
 ## Current floor level.
 var floor_level: String = "G"
 
+## Current walkable area type. Visitors begin on the exterior ring.
+var location_type: String = "pedestrian_area"
+
+## Door side currently used for building entry, or NONE when outside.
+var entry_door_side: int = 0
+
+## Current waypoint index in the walkable area's route.
+var waypoint_index: int = 0
+
 ## Queue of goals to visit (zone_ids).
 var goal_queue: Array[String] = []
 
@@ -59,6 +68,9 @@ var spawn_time: float = 0.0
 func initialize(p_id: String, p_floor: String, p_position: Vector3) -> void:
 	id = p_id
 	floor_level = p_floor
+	location_type = "pedestrian_area"
+	entry_door_side = 0
+	waypoint_index = 0
 	position = p_position
 	target_position = p_position
 

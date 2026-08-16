@@ -18,7 +18,7 @@ You have GodotIQ MCP tools (`godotiq_*`). ALWAYS prefer them over raw file opera
 4. **Visual QA after scene work:** `explore(mode="tour")` — describe each screenshot, fix issues, tour again; `explore(mode="inspect", positions=[...])` for close-ups.
 5. **After every code change:** `validate(target=file, detail="brief")` for Pro convention checks, then `check_errors(scope=file)` for compilation/parser errors. One script, one validate/check cycle — never batch five scripts then debug.
 6. **Multi-file refactor:** `impact_check` BEFORE changing; `validate(target="project")` baseline before/after; then `check_errors(scope="project")` and `signal_map(find="orphans")`.
-7. **Testing/debugging:** `run(action="play")` → `verify_project_runs()` → `read_debug_console()` for errors → `state_inspect` for values (cheap, preferred) → `verify_motion` for movement → `screenshot(scale=0.25, quality=0.3)` only when visuals changed (expensive) → `run(action="stop")`.
+7. **Testing/debugging:** `run(action="play")` → `verify_project_runs()` → `read_debug_console()` for errors → `state_inspect` for values (cheap, preferred) → `verify_motion` for movement → `screenshot(delivery="legacy", scale=0.25, quality=0.3)` only when visuals changed (expensive) → `run(action="stop")`.
 
 ## Token Efficiency
 
@@ -44,7 +44,7 @@ You have GodotIQ MCP tools (`godotiq_*`). ALWAYS prefer them over raw file opera
 | `NO_SCENE` / `PARENT_NOT_FOUND` / `NO_NODES` (build_scene) | open a scene / fix or create the parent / pass exactly one mode with valid data |
 | Partial success (build_scene) | check `errors`, retry only the failed items |
 | explore timeout / 0 screenshots | game must be running: `run(action="play")`, retry; partial results are valid — check `areas_inspected` |
-| screenshot metadata but NO visible image | your client does not forward MCP images: retry with `delivery="legacy"` |
+| screenshot metadata but NO visible image | this workspace defaults to `delivery="legacy"`; use `delivery="image"` only when the client explicitly supports MCP image blocks |
 
 ## Conventions
 

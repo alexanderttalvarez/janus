@@ -193,6 +193,18 @@ func set_tile_typology(x: int, y: int, typology: GridTile.TileTypology, plot_id:
 	tile.typology = typology
 
 
+## Set or clear a door on one edge of a tile.
+func set_tile_door(
+	x: int, y: int, side: GridTile.DoorSide, enabled: bool = true,
+	plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR
+) -> void:
+	var tile := get_tile(x, y, plot_id, floor_level)
+	if tile == null:
+		return
+	tile.set_door(side, enabled)
+	pathfinding_graph.mark_dirty()
+
+
 ## Convert grid position to world-space position (center of tile).
 func grid_to_world(x: int, y: int, floor_level: String = GROUND_FLOOR) -> Vector3:
 	return Vector3(
@@ -216,6 +228,27 @@ func world_to_grid(world_pos: Vector3) -> Vector2i:
 ## Rebuild the pathfinding graph from current tile state.
 func rebuild_pathfinding() -> void:
 	pathfinding_graph.rebuild(plots)
+	_add_exterior_door_edges()
+
+
+## Add pathfinding edges between fixed exterior doors and building tiles.
+func _add_exterior_door_edges() -> void:
+	for plot_id: String in plots:
+		for floor_level: String in plots[plot_id].floors:
+			var floor_grid: FloorGrid = plots[plot_id].floors[floor_level]
+			for x in range(floor_grid.width):
+				for y in range(floor_grid.height):
+					var tile := floor_grid.get_tile(x, y)
+					if tile == null:
+						continue
+					if tile.has_door(GridTile.DoorSide.NORTH):
+						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x, y - 1))
+					if tile.has_door(GridTile.DoorSide.SOUTH):
+						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x, y + 1))
+					if tile.has_door(GridTile.DoorSide.EAST):
+						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x + 1, y))
+					if tile.has_door(GridTile.DoorSide.WEST):
+						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x - 1, y))
 
 
 ## Add a cross-floor circulation edge.

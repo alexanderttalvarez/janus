@@ -131,6 +131,7 @@ func serialize() -> Dictionary:
 				"element": tile.element,
 				"typology": tile.typology,
 				"condition": tile.condition,
+				"door_sides": tile.door_sides,
 			})
 		data["tiles"].append(column)
 
@@ -157,5 +158,6 @@ func deserialize(data: Dictionary) -> void:
 				tile.element = column_data[y]["element"]
 				tile.typology = column_data[y]["typology"]
 				tile.condition = column_data[y].get("condition", 100)
+				tile.door_sides = column_data[y].get("door_sides", 0)
 			column.append(tile)
 		tiles.append(column)

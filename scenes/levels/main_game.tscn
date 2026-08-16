@@ -8,6 +8,7 @@
 [ext_resource type="Material" path="res://resources/materials/surroundings_ground.tres" id="5_e1i65"]
 [ext_resource type="Script" uid="uid://b32xkrc4r11rw" path="res://scripts/zones/zone_tool.gd" id="5_zone_tool"]
 [ext_resource type="Material" path="res://resources/materials/surroundings_pedestrian.tres" id="6_8c1vm"]
+[ext_resource type="Script" uid="uid://c3brpcylxq0ev" path="res://scripts/world/pedestrian_area.gd" id="6_mwvdt"]
 [ext_resource type="Script" uid="uid://cp0m6e6wopn4q" path="res://scripts/simulation/visitor_manager.gd" id="6_visitor_manager"]
 [ext_resource type="PackedScene" path="res://scenes/camera/camera_rig.tscn" id="7_camera_rig"]
 [ext_resource type="Material" path="res://resources/materials/surroundings_road.tres" id="7_mwvdt"]
@@ -107,6 +108,7 @@ material_override = ExtResource("5_e1i65")
 mesh = SubResource("BoxMesh_o6ym2")
 
 [node name="PedestrianAreas" type="Node3D" parent="World/Surroundings" unique_id=625773378]
+script = ExtResource("6_mwvdt")
 
 [node name="Pedestrian_North" type="MeshInstance3D" parent="World/Surroundings/PedestrianAreas" unique_id=221167936]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, -1)
@@ -189,6 +191,8 @@ mesh = SubResource("BoxMesh_omgrs")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, 30)
 material_override = ExtResource("7_mwvdt")
 mesh = SubResource("BoxMesh_4tgpl")
+
+[node name="Visitors" type="Node3D" parent="World" unique_id=1205100646]
 
 [node name="CameraRig" parent="." unique_id=1866546742 instance=ExtResource("7_camera_rig")]
 

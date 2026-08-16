@@ -19,6 +19,10 @@ extends Node3D
 @onready var _wall_manager: WallManager = $World/WallManager
 
 
+## Human tile 13 in a zero-based 25×25 grid (index 12).
+const FIXED_DOOR_TILE_INDEX: int = 12
+
+
 func _ready() -> void:
 	_initialize_grid()
 	_initialize_camera()
@@ -62,6 +66,12 @@ func _initialize_grid() -> void:
 				if tile != null:
 					tile.owned = true
 					tile.floor_built = true
+
+	# MVP fixed exterior doors: tile 13 (index 12) at the middle of every side.
+	gm.set_tile_door(FIXED_DOOR_TILE_INDEX, 0, GridTile.DoorSide.NORTH)
+	gm.set_tile_door(FIXED_DOOR_TILE_INDEX, 24, GridTile.DoorSide.SOUTH)
+	gm.set_tile_door(0, FIXED_DOOR_TILE_INDEX, GridTile.DoorSide.WEST)
+	gm.set_tile_door(24, FIXED_DOOR_TILE_INDEX, GridTile.DoorSide.EAST)
 
 	_create_floor_instance(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR, fg)
 	gm.rebuild_pathfinding()
@@ -144,6 +154,7 @@ func _initialize_visitors() -> void:
 	# Wire GridManager pathfinding graph.
 	var gm: GridManager = _world.get_node("GridManager") as GridManager
 	if gm:
+		_visitor_manager._grid_manager = gm
 		_visitor_manager._pathfinding_graph = gm.pathfinding_graph
 
 	print("MainGame: Visitor system initialized — culling & tick wired.")
