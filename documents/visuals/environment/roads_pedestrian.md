@@ -29,4 +29,8 @@ not implemented yet.
 - A continuous 6-tile road ring surrounds the pedestrian area.
 - Ring corners are filled so there are no empty gaps between side segments.
 - The ground plane extends to at least 50m × 50m around the plot.
+- Four visitor spawn anchors are derived at the pedestrian-ring corners of each
+  plot. These are the controlled entry and voluntary-exit points for visitors.
+- Pedestrian-ring waypoints remain traversal geometry and are not independent
+  visitor entry sources.
 - No neighboring buildings, lane markings, crosswalks, traffic, ownership, or zone assignment exists yet.

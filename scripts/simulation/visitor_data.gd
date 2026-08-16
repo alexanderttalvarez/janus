@@ -45,6 +45,9 @@ var location_type: String = "pedestrian_area"
 ## Door side currently used for building entry, or NONE when outside.
 var entry_door_side: int = 0
 
+## Stable plot spawn point used for entry or voluntary exit.
+var spawn_point_id: String = ""
+
 ## Current waypoint index in the walkable area's route.
 var waypoint_index: int = 0
 
@@ -70,6 +73,7 @@ func initialize(p_id: String, p_floor: String, p_position: Vector3) -> void:
 	floor_level = p_floor
 	location_type = "pedestrian_area"
 	entry_door_side = 0
+	spawn_point_id = ""
 	waypoint_index = 0
 	position = p_position
 	target_position = p_position

@@ -1,8 +1,8 @@
 ## VisitorManager — Centralized visitor lifecycle, tick handling, and culling.
 ##
-## The first visitor iteration creates a small random population on the
-## pedestrian ring and advances each visitor around its perimeter. Interior
-## entry, goals, and pathfinding remain future iterations.
+## Visitors spawn from plot-owned corner spawn points and advance through the
+## pedestrian ring into the building. The manager owns lifecycle and culling;
+## plot geometry owns spawn-point definitions.
 class_name VisitorManager
 extends Node
 
@@ -22,9 +22,11 @@ var _current_zoom: float = 20.0
 ## Hide visitors when zoomed farther out than this threshold.
 const ZOOM_HIDE_THRESHOLD: float = 35.0
 
-## Initial population bounds for the exterior visitor iteration.
-const INITIAL_VISITOR_MIN: int = 5
-const INITIAL_VISITOR_MAX: int = 20
+## Maximum active visitors for the current MVP.
+const MAX_VISITORS: int = 20
+
+## One spawn attempt per five-second visitor tick.
+const SPAWN_PER_TICK: int = 1
 
 ## Maximum visible visitor Node3Ds supported by the architecture.
 const MAX_VISIBLE_VISITORS: int = 60
@@ -48,43 +50,44 @@ func _ready() -> void:
 		push_error("VisitorManager: World/Visitors visual container not found.")
 		return
 
-	_generate_initial_visitors()
 	_apply_culling()
-
-
-## Create the initial small exterior population once per game session.
-func _generate_initial_visitors() -> void:
-	if not all_visitors.is_empty():
-		return
-
-	var visitor_count := randi_range(INITIAL_VISITOR_MIN, INITIAL_VISITOR_MAX)
-	for _i in range(visitor_count):
-		_create_pedestrian_visitor()
-
-
-func _create_pedestrian_visitor() -> void:
-	var waypoint_count := _pedestrian_area.get_waypoint_count()
-	if waypoint_count <= 0:
-		return
-
-	var visitor := VisitorData.new()
-	visitor.initialize(_next_id(), "G", Vector3.ZERO)
-	visitor.location_type = "pedestrian_area"
-	visitor.waypoint_index = randi_range(0, waypoint_count - 1)
-	visitor.position = _pedestrian_area.get_waypoint(visitor.waypoint_index)
-	visitor.target_position = visitor.position
-	visitor.current_state = "moving"
-	all_visitors.append(visitor)
-	EventBus.visitor_entered.emit(visitor.id)
-
-	_set_next_pedestrian_target(visitor)
 
 
 ## Called by TimeManager on each visitor_tick.
 func on_visitor_tick() -> void:
+	_spawn_visitors_if_needed()
 	_decay_visitor_needs()
 	_sync_data_positions()
 	_apply_culling()
+
+
+## Spawn at most one visitor per tick until the active population reaches 20.
+func _spawn_visitors_if_needed() -> void:
+	if _grid_manager == null or all_visitors.size() >= MAX_VISITORS:
+		return
+	for _i in range(SPAWN_PER_TICK):
+		if all_visitors.size() >= MAX_VISITORS:
+			break
+		_spawn_visitor_at_plot_spawn_point()
+
+
+func _spawn_visitor_at_plot_spawn_point() -> void:
+	var spawn_points := _grid_manager.get_spawn_points(GridManager.DEFAULT_PLOT)
+	if spawn_points.is_empty():
+		return
+	var point: Dictionary = spawn_points[randi_range(0, spawn_points.size() - 1)]
+	var spawn_position: Vector3 = point.get("position", Vector3.ZERO)
+	var visitor := VisitorData.new()
+	visitor.initialize(_next_id(), "G", spawn_position)
+	visitor.location_type = "pedestrian_area"
+	visitor.spawn_point_id = point.get("id", "")
+	visitor.waypoint_index = _pedestrian_area.get_nearest_waypoint_index(spawn_position)
+	visitor.position = spawn_position
+	visitor.target_position = _pedestrian_area.get_waypoint(visitor.waypoint_index)
+	visitor.current_state = "moving"
+	all_visitors.append(visitor)
+	EventBus.visitor_entered.emit(visitor.id)
+
 
 
 ## Decay needs for all visitors.
@@ -136,6 +139,9 @@ func _begin_visitor_entry(visitor: VisitorData, side: int) -> void:
 
 func _on_visitor_target_reached(visitor: VisitorData) -> void:
 	if not all_visitors.has(visitor):
+		return
+	if visitor.current_state == "leaving":
+		remove_visitor(visitor.id)
 		return
 	if visitor.current_state == "entering":
 		visitor.location_type = "building"
@@ -267,6 +273,32 @@ func on_zoom_changed(zoom: float) -> void:
 
 # ── Lifecycle ──────────────────────────────────────────────────────────
 
+## Request a voluntary exit through a selected plot spawn point.
+func request_visitor_leave(visitor_id: String, spawn_point_id: String = "") -> void:
+	var spawn_points := _grid_manager.get_spawn_points(GridManager.DEFAULT_PLOT) if _grid_manager else []
+	for visitor: VisitorData in all_visitors:
+		if visitor.id != visitor_id or visitor.current_state == "leaving":
+			continue
+		var point: Dictionary = {}
+		if spawn_point_id.is_empty() and not spawn_points.is_empty():
+			point = spawn_points[randi_range(0, spawn_points.size() - 1)]
+		else:
+			for candidate: Dictionary in spawn_points:
+				if candidate.get("id", "") == spawn_point_id:
+					point = candidate
+					break
+		if point.is_empty():
+			return
+		visitor.spawn_point_id = point.get("id", "")
+		visitor.current_state = "leaving"
+		visitor.target_position = point.get("position", visitor.position)
+		if visitor.is_visible and is_instance_valid(visitor.visual_node):
+			var visual := visitor.visual_node as Visitor
+			if visual:
+				visual.set_target(visitor.target_position)
+		return
+
+
 ## Remove a visitor and their visual node.
 func remove_visitor(visitor_id: String) -> void:
 	for index in range(all_visitors.size() - 1, -1, -1):
@@ -297,6 +329,7 @@ func serialize() -> Dictionary:
 			"floor_level": visitor.floor_level,
 			"location_type": visitor.location_type,
 			"entry_door_side": visitor.entry_door_side,
+			"spawn_point_id": visitor.spawn_point_id,
 			"waypoint_index": visitor.waypoint_index,
 			"current_state": visitor.current_state,
 			"budget": visitor.budget,
@@ -323,6 +356,7 @@ func deserialize(data: Dictionary) -> void:
 		visitor.floor_level = visitor_data.get("floor_level", "G")
 		visitor.location_type = visitor_data.get("location_type", "pedestrian_area")
 		visitor.entry_door_side = visitor_data.get("entry_door_side", 0)
+		visitor.spawn_point_id = visitor_data.get("spawn_point_id", "")
 		visitor.waypoint_index = visitor_data.get("waypoint_index", 0)
 		visitor.current_state = visitor_data.get("current_state", "moving")
 		visitor.budget = visitor_data.get("budget", 0)

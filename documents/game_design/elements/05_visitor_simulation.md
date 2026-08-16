@@ -173,11 +173,29 @@ The visitor generator assigns goals weighted by zone type availability:
 
 ### Entry Points
 
-Visitors enter the mall through:
-- Main entrances (ground floor)
-- Transportation facilities (bus stops, metro stations, etc.)
-- Pedestrian walkways (sidewalk access from surrounding neighborhood)
-- Skybridges or building connections (post-MVP)
+Visitors enter the mall through plot-owned spawn points:
+- Each building plot has four spawn points, one at each pedestrian-ring corner.
+- Spawn points are derived from the plot boundary and have stable IDs.
+- Visitors do not traverse arbitrary distant pedestrian areas to simulate arrival.
+- Main entrances, transportation facilities, and player-placed entry points can
+  be added as additional spawn-point sources later.
+- Skybridges or building connections remain post-MVP.
+
+### MVP Visitor Spawning
+
+- VisitorManager attempts to spawn one visitor every 5-second visitor tick.
+- Spawning stops when the active population reaches 20 visitors.
+- A visitor counts toward the cap immediately, including while fading in or
+  voluntarily leaving.
+- New visitor visuals fade from 0% to 100% opacity over 2 seconds.
+
+### Voluntary Exit
+
+- A visitor may be explicitly assigned a `LEAVING` intent and a target spawn
+  point.
+- The visitor is removed only after reaching that target spawn point.
+- Passing a spawn point during ordinary wandering or building movement has no
+  effect.
 
 ---
 

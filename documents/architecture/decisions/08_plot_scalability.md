@@ -22,8 +22,27 @@ GridManager
 │       ├── floors: Dictionary[String, FloorGrid]
 │       ├── boundary: Rect2i
 │       ├── pedestrian_boundary: Rect2i
+│       ├── spawn_points: Array[SpawnPointData]  # four derived corner anchors
 │       └── connections: Array[PlotConnection]  # empty in MVP
 ```
+
+### Visitor Spawn Points
+
+Each plot derives four stable spawn points from its building and pedestrian boundaries:
+
+- `plot_id_corner_nw`
+- `plot_id_corner_ne`
+- `plot_id_corner_se`
+- `plot_id_corner_sw`
+
+The points are positioned at the four pedestrian-ring corners using the plot
+geometry and a configurable pedestrian margin. They are data owned by
+`PlotData`; `PedestrianArea` only provides traversal geometry, and
+`VisitorManager` consumes the points for spawning and voluntary exits.
+
+The MVP attempts one spawn per visitor tick until the active visitor count
+reaches 20. This policy is population-based and remains valid when additional
+plots are introduced.
 
 ### Consequences
 - `PlotData` class added to `scripts/grid/plot_data.gd`

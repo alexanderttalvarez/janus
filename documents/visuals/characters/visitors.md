@@ -82,6 +82,15 @@ The simplest viable visitor:
 
 See [animations/visitor_animations.md](../animations/visitor_animations.md) for animation specifications.
 
+## Visitor Spawn Fade
+
+| Property | Value |
+|----------|-------|
+| **Purpose** | Prevent newly spawned visitors from popping into existence. |
+| **Duration** | 2 seconds |
+| **Method** | Per-instance `GeometryInstance3D.transparency` tween |
+| **Material impact** | None; shared visitor materials remain unchanged |
+
 ## Reuse Opportunities
 
 - **Single base mesh** for all visitors, differentiated by material color

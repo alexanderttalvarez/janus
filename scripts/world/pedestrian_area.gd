@@ -50,6 +50,21 @@ func get_waypoint_count() -> int:
 	return _waypoints.size()
 
 
+## Return the nearest perimeter waypoint to a world position.
+func get_nearest_waypoint_index(world_position: Vector3) -> int:
+	_ensure_waypoints()
+	if _waypoints.is_empty():
+		return 0
+	var nearest_index := 0
+	var nearest_distance := INF
+	for index in range(_waypoints.size()):
+		var distance := world_position.distance_squared_to(_waypoints[index])
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_index = index
+	return nearest_index
+
+
 ## Return a waypoint using a wrapped index.
 func get_waypoint(index: int) -> Vector3:
 	_ensure_waypoints()

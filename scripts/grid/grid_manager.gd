@@ -51,7 +51,12 @@ func create_plot(
 ) -> PlotData:
 	var plot := PlotData.new()
 	plot.plot_id = plot_id
-	plot.boundary = boundary
+	plot.boundary = boundary if boundary != Rect2i() else Rect2i(0, 0, width, height)
+	plot.pedestrian_boundary = Rect2i(
+		plot.boundary.position - Vector2i(2, 2),
+		plot.boundary.size + Vector2i(4, 4)
+	)
+	plot.initialize_spawn_points()
 
 	var footprint: Array
 	if not footprint_path.is_empty():
@@ -71,6 +76,14 @@ func create_plot(
 ## Get a plot by ID. Returns null if not found.
 func get_plot(plot_id: String = DEFAULT_PLOT) -> PlotData:
 	return plots.get(plot_id, null)
+
+
+## Get the stable visitor spawn points for a plot.
+func get_spawn_points(plot_id: String = DEFAULT_PLOT) -> Array[Dictionary]:
+	var plot := get_plot(plot_id)
+	if plot == null:
+		return []
+	return plot.spawn_points
 
 
 ## Remove a plot and all its floors.

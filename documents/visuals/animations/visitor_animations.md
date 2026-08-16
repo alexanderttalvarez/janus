@@ -26,6 +26,12 @@ Simplest viable walk animation:
 - **Option B**: Very simple 2-frame walk cycle (left foot forward, right foot forward).
 - Option A is acceptable for MVP. The smooth movement is enough to convey "walking."
 
+## Visitor Spawn Fade (MVP)
+
+- New visitors fade from fully transparent to fully opaque over 2 seconds.
+- This is a script-driven visual transition on each visitor's geometry, not an
+  `AnimationPlayer` animation and not a separate animation asset.
+
 ## Visitor Browse (Post-MVP)
 
 | Property | Value |
