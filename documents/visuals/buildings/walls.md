@@ -7,9 +7,9 @@ Walls are generated procedurally based on tile layout. The wall system uses a sh
 | Property | Value |
 |----------|-------|
 | **Purpose** | Define boundaries between corridors, zones, and exterior. |
-| **Height** | 4m (full floor height) |
-| **Thickness** | 0.15m |
-| **Length** | 2m (per tile edge) |
+| **Height** | 3m (full floor height) |
+| **Thickness** | 0.1m |
+| **Length** | 1m (per tile edge) |
 | **MVP** | Simple flat panel with clipping shader. Single material. |
 | **Post-MVP** | Multiple materials (concrete, glass, brick, metal, decorative). Window segments. |
 
@@ -27,8 +27,8 @@ Walls are generated procedurally based on tile layout. The wall system uses a sh
 | Property | Value |
 |----------|-------|
 | **Purpose** | Opening in wall where visitors pass through. |
-| **Height** | 2.5m |
-| **Width** | 1.5m |
+| **Height** | Full wall height (open gap) |
+| **Width** | 0.6m (centered in the tile edge) |
 | **MVP** | Gap in wall mesh (no door model). |
 | **Post-MVP** | Door frame + door panel (open/closed animation). |
 
@@ -56,8 +56,8 @@ The wall clipping shader handles three visualization modes:
 
 | Mode | Front Walls | Back Walls |
 |------|-------------|------------|
-| **Cutaway** (default) | 5% height | 100% height |
-| **Partial** | 5% height | 5% height |
+| **Cutaway** (default) | 10% height | 100% height |
+| **Partial** | 10% height | 10% height |
 | **Full** | 100% height | 100% height |
 
 - Front = walls facing the camera direction
@@ -77,7 +77,8 @@ The wall clipping shader handles three visualization modes:
 
 ## Reuse Opportunities
 
-- Single wall segment mesh (2m wide × 4m tall × 0.15m thick), instanced per wall edge
+- Single wall segment mesh (1m wide × 3m tall × 0.1m thick), instanced per wall edge
+- Corner cube mesh (0.1m × 3m × 0.1m) at every wall junction
 - Door segment is a modified wall segment with a gap
 - Window segment is a wall segment with glass material
 - All wall types share the same base geometry, differentiated by material and shader params
