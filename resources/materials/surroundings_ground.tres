@@ -1,0 +1,8 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[ext_resource type="Shader" path="res://assets/shaders/surroundings_color.gdshader" id="1_color"]
+
+[resource]
+shader = ExtResource("1_color")
+shader_parameter/base_color = Color(0.32, 0.31, 0.28, 1)
+shader_parameter/surface_roughness = 0.95
