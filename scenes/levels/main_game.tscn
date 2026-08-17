@@ -11,7 +11,6 @@
 [ext_resource type="Script" uid="uid://c3brpcylxq0ev" path="res://scripts/world/pedestrian_area.gd" id="6_mwvdt"]
 [ext_resource type="Script" uid="uid://cp0m6e6wopn4q" path="res://scripts/simulation/visitor_manager.gd" id="6_visitor_manager"]
 [ext_resource type="PackedScene" path="res://scenes/camera/camera_rig.tscn" id="7_camera_rig"]
-[ext_resource type="Material" path="res://resources/materials/surroundings_road.tres" id="7_mwvdt"]
 [ext_resource type="Script" uid="uid://c5vqddles7fxg" path="res://scripts/simulation/tenant_manager.gd" id="8_tenant_manager"]
 [ext_resource type="Script" uid="uid://cchqvwpgx2s14" path="res://scripts/simulation/economy_manager.gd" id="9_economy_manager"]
 [ext_resource type="Script" uid="uid://dtgul3jtl4brv" path="res://scripts/simulation/prestige_manager.gd" id="10_prestige_manager"]
@@ -47,6 +46,10 @@ size = Vector3(2, 0.1, 2)
 [sub_resource type="BoxMesh" id="BoxMesh_7dc4v"]
 size = Vector3(2, 0.1, 2)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_e1i65"]
+albedo_color = Color(0.075, 0.085, 0.095, 1)
+roughness = 0.92
+
 [sub_resource type="BoxMesh" id="BoxMesh_qt8r4"]
 size = Vector3(29, 0.1, 6)
 
@@ -70,6 +73,10 @@ size = Vector3(6, 0.1, 6)
 
 [sub_resource type="BoxMesh" id="BoxMesh_4tgpl"]
 size = Vector3(6, 0.1, 6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8c1vm"]
+albedo_color = Color(0.55, 0.57, 0.58, 1)
+roughness = 0.85
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
@@ -154,43 +161,83 @@ mesh = SubResource("BoxMesh_7dc4v")
 
 [node name="Road_North" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=954906598]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, -5)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_qt8r4")
 
 [node name="Road_South" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=8012401]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, 30)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_mlqf3")
 
 [node name="Road_West" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=776629165]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 12.5)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_c368o")
 
 [node name="Road_East" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=753402690]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, 12.5)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_j60hy")
 
 [node name="Road_NorthWest" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=1266554880]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, -5)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_qyiln")
 
 [node name="Road_NorthEast" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=60954198]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, -5)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_s7iec")
 
 [node name="Road_SouthWest" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=974246016]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 0, 30)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_omgrs")
 
 [node name="Road_SouthEast" type="MeshInstance3D" parent="World/Surroundings/Roads" unique_id=95279959]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 30, 0, 30)
-material_override = ExtResource("7_mwvdt")
+material_override = SubResource("StandardMaterial3D_e1i65")
 mesh = SubResource("BoxMesh_4tgpl")
+
+[node name="Curb_North" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=1032903211]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.09, -8.05)
+size = Vector3(29, 0.18, 0.2)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_South" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=1797654128]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.09, 33.05)
+size = Vector3(29, 0.18, 0.2)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_West" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=1728457614]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.05, 0.09, 12.5)
+size = Vector3(0.2, 0.18, 29)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_East" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=1630008358]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33.05, 0.09, 12.5)
+size = Vector3(0.2, 0.18, 29)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_Inner_North" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=1508149413]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.09, -2)
+size = Vector3(25, 0.18, 0.2)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_Inner_South" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=327473768]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.09, 27)
+size = Vector3(25, 0.18, 0.2)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_Inner_West" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=2128106744]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0.09, 12.5)
+size = Vector3(0.2, 0.18, 25)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="Curb_Inner_East" type="CSGBox3D" parent="World/Surroundings/Roads" unique_id=1057601445]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27, 0.09, 12.5)
+size = Vector3(0.2, 0.18, 25)
+material = SubResource("StandardMaterial3D_8c1vm")
 
 [node name="Visitors" type="Node3D" parent="World" unique_id=1205100646]
 
