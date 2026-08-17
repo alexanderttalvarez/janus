@@ -100,14 +100,42 @@ func get_neighbors(x: int, y: int) -> Array[Vector2i]:
 	return neighbors
 
 
-## Get only walkable neighbors (valid + owned + floor_built).
+## Check whether two adjacent walkable tiles have an open connection.
+## Zone boundaries are closed until a door flag is placed on either edge.
+func can_traverse_between(from: Vector2i, to: Vector2i) -> bool:
+	if not is_walkable(from.x, from.y) or not is_walkable(to.x, to.y):
+		return false
+	var from_tile := get_tile(from.x, from.y)
+	var to_tile := get_tile(to.x, to.y)
+	if from_tile == null or to_tile == null:
+		return false
+	if from_tile.zone_id == to_tile.zone_id:
+		return true
+	var offset := to - from
+	var from_side := _door_side_for_offset(offset)
+	var to_side := _door_side_for_offset(-offset)
+	return from_tile.has_door(from_side) or to_tile.has_door(to_side)
+
+
+## Get only walkable neighbors with open wall/door connections.
 func get_walkable_neighbors(x: int, y: int) -> Array[Vector2i]:
 	var neighbors: Array[Vector2i] = get_neighbors(x, y)
 	var walkable: Array[Vector2i] = []
+	var from := Vector2i(x, y)
 	for n in neighbors:
-		if is_walkable(n.x, n.y):
+		if can_traverse_between(from, n):
 			walkable.append(n)
 	return walkable
+
+
+func _door_side_for_offset(offset: Vector2i) -> GridTile.DoorSide:
+	if offset == Vector2i.UP:
+		return GridTile.DoorSide.NORTH
+	if offset == Vector2i.DOWN:
+		return GridTile.DoorSide.SOUTH
+	if offset == Vector2i.RIGHT:
+		return GridTile.DoorSide.EAST
+	return GridTile.DoorSide.WEST
 
 
 ## Serialize this floor to a dictionary for save/load.

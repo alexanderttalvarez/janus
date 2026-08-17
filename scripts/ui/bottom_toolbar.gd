@@ -15,18 +15,22 @@ func _ready() -> void:
 
 func _build_build_mode() -> void:
 	_clear_buttons()
+	_mode_label.text = "Build"
 	for zone_type: String in ZoneData.ZONE_TYPE_NAMES:
 		_add_button(zone_type, func(): _enter_paint_mode(zone_type))
 
 
 func _build_observe_mode() -> void:
 	_clear_buttons()
+	_mode_label.text = "Observe"
+	_add_button("Build Zones", func(): GameManager.enter_build_mode())
 	_add_button("Heatmap", func(): pass)
 	_add_button("Finances", func(): pass)
 
 
 func _enter_paint_mode(zone_type: String) -> void:
 	_painting = true
+	GameManager.enter_build_mode()
 	_clear_buttons()
 	_mode_label.text = "Build: " + zone_type
 	var root := get_tree().current_scene
@@ -46,7 +50,7 @@ func _exit_paint_mode() -> void:
 		if tool and tool is ZoneTool:
 			(tool as ZoneTool).finish()
 			(tool as ZoneTool).is_active = false
-	_build_build_mode()
+	GameManager.enter_observe_mode()
 
 
 func _add_button(text: String, callback: Callable) -> void:

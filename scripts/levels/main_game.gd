@@ -37,7 +37,8 @@ func _ready() -> void:
 	_initialize_walls()
 
 	# Deferred state initialization — now that the scene is loaded.
-	GameManager.ui_mode = GameManager.UIMode.BUILD
+	# Start in the clean Observe view; zone buttons explicitly enter Build mode.
+	GameManager.ui_mode = GameManager.UIMode.OBSERVE
 	GameManager.wall_mode = GameManager.WallMode.CUTAWAY
 	GameManager.session_ready = true
 

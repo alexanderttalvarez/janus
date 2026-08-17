@@ -147,43 +147,27 @@ func find_path(
 
 ## A* implementation.
 func _a_star(start: PathNode, goal: PathNode) -> Array[PathNode]:
+	# The graph has uniform edge costs. A queue-based search guarantees bounded
+	# work for the small grid while preserving the same shortest-path contract.
 	var start_key := start.get_key()
 	var goal_key := goal.get_key()
-
-	var open_set: Array = [start_key]
+	var queue: Array[String] = [start_key]
+	var queue_index: int = 0
+	var visited: Dictionary = {start_key: true}
 	var came_from: Dictionary = {}
 
-	# g_score: cost from start to node.
-	var g_score: Dictionary = {}
-	g_score[start_key] = 0.0
-
-	# f_score: g_score + heuristic.
-	var f_score: Dictionary = {}
-	f_score[start_key] = _heuristic(start, goal)
-
-	while not open_set.is_empty():
-		# Find node with lowest f_score.
-		var current_key: String = open_set[0]
-		for k in open_set:
-			if f_score.get(k, INF) < f_score.get(current_key, INF):
-				current_key = k
-
+	while queue_index < queue.size():
+		var current_key: String = queue[queue_index]
+		queue_index += 1
 		if current_key == goal_key:
 			return _reconstruct_path(came_from, current_key)
-
-		open_set.erase(current_key)
-
-		var neighbors: Array[PathNode] = _edges.get(current_key, [])
-		for neighbor in neighbors:
+		for neighbor: PathNode in _edges.get(current_key, []):
 			var neighbor_key := neighbor.get_key()
-			var tentative_g: float = g_score.get(current_key, INF) + 1.0  # Cost of 1 per step.
-
-			if tentative_g < g_score.get(neighbor_key, INF):
-				came_from[neighbor_key] = current_key
-				g_score[neighbor_key] = tentative_g
-				f_score[neighbor_key] = tentative_g + _heuristic(neighbor, goal)
-				if not open_set.has(neighbor_key):
-					open_set.append(neighbor_key)
+			if visited.has(neighbor_key):
+				continue
+			visited[neighbor_key] = true
+			came_from[neighbor_key] = current_key
+			queue.append(neighbor_key)
 
 	return []
 

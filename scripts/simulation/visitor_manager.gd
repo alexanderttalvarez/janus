@@ -31,12 +31,16 @@ const SPAWN_PER_TICK: int = 1
 ## Maximum visible visitor Node3Ds supported by the architecture.
 const MAX_VISIBLE_VISITORS: int = 60
 
+## Visitors are dimmed while the player is in Building mode.
+const BUILDING_MODE_VISITOR_OPACITY: float = 0.5
+
 
 var _pedestrian_area: PedestrianArea
 var _visual_container: Node3D
 var _grid_manager: GridManager
 var _pathfinding_graph: PathfindingGraph
 var _visitor_scene: PackedScene
+var _visitor_mode_opacity: float = 1.0
 
 
 func _ready() -> void:
@@ -50,6 +54,10 @@ func _ready() -> void:
 		push_error("VisitorManager: World/Visitors visual container not found.")
 		return
 
+	GameManager.ui_mode_changed.connect(_on_ui_mode_changed)
+	EventBus.zone_created.connect(_on_zone_created)
+	EventBus.zone_modified.connect(_on_zone_modified)
+	_visitor_mode_opacity = _get_mode_visitor_opacity()
 	_apply_culling()
 
 
@@ -140,6 +148,9 @@ func _begin_visitor_entry(visitor: VisitorData, side: int) -> void:
 func _on_visitor_target_reached(visitor: VisitorData) -> void:
 	if not all_visitors.has(visitor):
 		return
+	# The visual node reaches the target between simulation ticks. Keep the
+	# serialized position synchronized before choosing the next grid path.
+	visitor.position = visitor.target_position
 	if visitor.current_state == "leaving":
 		remove_visitor(visitor.id)
 		return
@@ -165,14 +176,91 @@ func _set_interior_target(visitor: VisitorData) -> void:
 	var floor_grid := _grid_manager.get_floor_grid(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR)
 	if floor_grid == null:
 		return
-	var x := randi_range(1, maxi(1, floor_grid.width - 2))
-	var y := randi_range(1, maxi(1, floor_grid.height - 2))
-	visitor.current_state = "inside_wandering"
-	visitor.target_position = _grid_manager.grid_to_world(x, y, GridManager.GROUND_FLOOR)
-	if visitor.is_visible and is_instance_valid(visitor.visual_node):
-		var visual := visitor.visual_node as Visitor
-		if visual:
-			visual.set_target(visitor.target_position)
+
+	var start_pos := _grid_manager.world_to_grid(visitor.position)
+	for _attempt in range(24):
+		var target_pos := Vector2i(
+			randi_range(1, maxi(1, floor_grid.width - 2)),
+			randi_range(1, maxi(1, floor_grid.height - 2))
+		)
+		var target_tile := floor_grid.get_tile(target_pos.x, target_pos.y)
+		if target_tile == null or not floor_grid.is_walkable(target_pos.x, target_pos.y) or not target_tile.zone_id.is_empty():
+			continue
+		var grid_path := _find_floor_path(floor_grid, start_pos, target_pos)
+		if grid_path.size() < 2:
+			continue
+		var world_path: Array[Vector3] = []
+		for index in range(1, grid_path.size()):
+			var grid_pos: Vector2i = grid_path[index]
+			world_path.append(_grid_manager.grid_to_world(grid_pos.x, grid_pos.y, GridManager.GROUND_FLOOR))
+		visitor.current_state = "inside_wandering"
+		visitor.target_position = world_path[world_path.size() - 1]
+		if visitor.is_visible and is_instance_valid(visitor.visual_node):
+			var visual := visitor.visual_node as Visitor
+			if visual:
+				visual.set_path(world_path)
+		return
+
+
+func _find_floor_path(floor_grid: FloorGrid, start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
+	if not floor_grid.is_walkable(start.x, start.y) or not floor_grid.is_walkable(goal.x, goal.y):
+		return []
+	var queue: Array[Vector2i] = [start]
+	var queue_index: int = 0
+	var visited: Dictionary = {start: true}
+	var came_from: Dictionary = {}
+	while queue_index < queue.size():
+		var current: Vector2i = queue[queue_index]
+		queue_index += 1
+		if current == goal:
+			break
+		for neighbor: Vector2i in floor_grid.get_walkable_neighbors(current.x, current.y):
+			if visited.has(neighbor):
+				continue
+			visited[neighbor] = true
+			came_from[neighbor] = current
+			queue.append(neighbor)
+	if not visited.has(goal):
+		return []
+	var path: Array[Vector2i] = [goal]
+	var current_pos := goal
+	while current_pos != start:
+		current_pos = came_from[current_pos]
+		path.push_front(current_pos)
+	return path
+
+
+func _on_zone_created(zone_id: String, _zone_type: String, _tile_count: int) -> void:
+	_on_zone_changed(zone_id)
+
+
+func _on_zone_modified(zone_id: String) -> void:
+	_on_zone_changed(zone_id)
+
+
+## Remove visitors occupying a newly walled zone and repath remaining visitors.
+func _on_zone_changed(zone_id: String) -> void:
+	if _grid_manager == null:
+		return
+	var zone_manager := get_tree().current_scene.get_node_or_null("World/ZoneManager") as ZoneManager
+	if zone_manager == null:
+		return
+	var zone: ZoneData = zone_manager.zones.get(zone_id, null)
+	if zone == null:
+		return
+	_sync_data_positions()
+	var remove_ids: Array[String] = []
+	for visitor: VisitorData in all_visitors:
+		if visitor.floor_level != zone.floor:
+			continue
+		var current_tile := _grid_manager.world_to_grid(visitor.position)
+		var target_tile := _grid_manager.world_to_grid(visitor.target_position)
+		if zone.tiles.has(current_tile) or zone.tiles.has(target_tile):
+			remove_ids.append(visitor.id)
+		elif visitor.location_type == "building":
+			_set_interior_target(visitor)
+	for visitor_id: String in remove_ids:
+		remove_visitor(visitor_id)
 
 
 func _get_door_side_for_waypoint(waypoint_index: int) -> int:
@@ -203,6 +291,19 @@ func _get_door_interior_position(side: int) -> Vector2i:
 
 # ── Culling ────────────────────────────────────────────────────────────
 
+func _get_mode_visitor_opacity() -> float:
+	return BUILDING_MODE_VISITOR_OPACITY if GameManager.ui_mode == GameManager.UIMode.BUILD else 1.0
+
+
+func _on_ui_mode_changed(_mode: String) -> void:
+	_visitor_mode_opacity = _get_mode_visitor_opacity()
+	for visitor: VisitorData in all_visitors:
+		if visitor.is_visible and is_instance_valid(visitor.visual_node):
+			var visual := visitor.visual_node as Visitor
+			if visual:
+				visual.set_mode_opacity(_visitor_mode_opacity)
+
+
 ## Apply floor-based and zoom-based culling.
 func _apply_culling() -> void:
 	var zoom_hide := _current_zoom > ZOOM_HIDE_THRESHOLD
@@ -230,6 +331,7 @@ func _show_visitor(visitor: VisitorData) -> void:
 		return
 	_visual_container.add_child(node)
 	node.global_position = visitor.position
+	node.set_mode_opacity(_visitor_mode_opacity, 0.0)
 	node.target_reached.connect(_on_visitor_target_reached.bind(visitor))
 	node.set_target(visitor.target_position)
 

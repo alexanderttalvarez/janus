@@ -186,6 +186,7 @@ func set_tile_zone(x: int, y: int, zone_id: String, plot_id: String = DEFAULT_PL
 	if tile == null:
 		return
 	tile.zone_id = zone_id
+	pathfinding_graph.mark_dirty()
 
 
 ## Set a tile's element type.

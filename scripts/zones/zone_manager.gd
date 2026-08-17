@@ -37,6 +37,7 @@ func create_zone(
 			grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, zone.id, plot_id, floor)
 
 	zones[zone.id] = zone
+	_rebuild_pathfinding()
 
 	# Emit event.
 	EventBus.zone_created.emit(zone.id, zone.type, tiles.size())
@@ -75,6 +76,7 @@ func modify_zone(
 		if grid_manager:
 			grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, zone.id, plot_id, zone.floor)
 
+	_rebuild_pathfinding()
 	EventBus.zone_modified.emit(zone_id)
 	return zone
 
@@ -91,6 +93,7 @@ func delete_zone(zone_id: String, plot_id: String = GridManager.DEFAULT_PLOT) ->
 			grid_manager.sell_tile(tile_pos.x, tile_pos.y, plot_id, zone.floor)
 
 	zones.erase(zone_id)
+	_rebuild_pathfinding()
 	EventBus.zone_deleted.emit(zone_id)
 
 
@@ -184,6 +187,12 @@ func deserialize(data: Dictionary) -> void:
 func _generate_zone_id() -> String:
 	_zone_counter += 1
 	return "zone_%d" % _zone_counter
+
+
+func _rebuild_pathfinding() -> void:
+	var grid_manager := _get_grid_manager()
+	if grid_manager:
+		grid_manager.rebuild_pathfinding()
 
 
 func _get_grid_manager() -> GridManager:
