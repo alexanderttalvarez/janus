@@ -129,6 +129,9 @@ signal congestion_detected(floor: int, tile_x: int, tile_y: int, severity: float
 
 # ── Walls ────────────────────────────────────────────────────────────
 
+## A manual wall door was added or removed between two adjacent tiles.
+signal door_changed(from: Vector2i, to: Vector2i, enabled: bool)
+
 ## Wall visualization mode changed.
 signal wall_mode_changed(mode: String)
 

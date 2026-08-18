@@ -3,6 +3,9 @@ class_name ZoneTool
 extends Node
 
 
+signal painting_state_changed(has_tiles: bool, transit_mode: bool)
+
+
 const ZONE_COLORS: Dictionary = {
 	"Retail": Color(0.5, 0.2, 0.8, 1.0),          # Purple
 	"Food & Beverage": Color(0.2, 0.7, 0.3, 1.0),  # Green
@@ -24,6 +27,7 @@ const TILE_VISUAL_Y: float = 0.15
 var active_zone_type: String = ZoneData.ZONE_TYPE_NAMES[0]
 var is_active: bool = false
 var _painted_tiles: Array[Vector2i] = []
+var _painted_typologies: Dictionary = {}
 var _editing_zone_id: String = ""
 var _typo_mode: GridTile.TileTypology = GridTile.TileTypology.TENANT
 var _preview_mesh: MeshInstance3D
@@ -93,14 +97,23 @@ func _paint_at_mouse() -> void:
 		return
 	if not _painted_tiles.has(tile_pos):
 		_painted_tiles.append(tile_pos)
+		_painted_typologies[tile_pos] = _typo_mode
 		_show_painted_tile(tile_pos)
+		painting_state_changed.emit(true, is_transit_mode())
+	else:
+		# Repainting an existing pending tile intentionally overrides its
+		# typology, allowing tenant/transit correction before finishing.
+		_painted_typologies[tile_pos] = _typo_mode
+		_refresh_painted_tile(tile_pos)
 
 
 func _erase_at_mouse() -> void:
 	var tile_pos := _get_tile_under_mouse()
 	if _painted_tiles.has(tile_pos):
 		_painted_tiles.erase(tile_pos)
+		_painted_typologies.erase(tile_pos)
 		_hide_painted_tile(tile_pos)
+		painting_state_changed.emit(not _painted_tiles.is_empty(), is_transit_mode())
 
 
 func _can_paint(tile_pos: Vector2i) -> bool:
@@ -131,7 +144,7 @@ func _update_hover() -> void:
 	if _can_paint(tile_pos):
 		_preview_mesh.visible = true
 		_preview_mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y, float(tile_pos.y) + 0.5)
-		var color := ZONE_COLORS.get(active_zone_type, Color.GRAY) as Color
+		var color := _get_typology_color(_typo_mode)
 		color.a = HOVER_ALPHA
 		(_preview_mesh.material_override as StandardMaterial3D).albedo_color = color
 	else:
@@ -144,7 +157,7 @@ func _make_tile_mesh(alpha: float) -> MeshInstance3D:
 	box.size = Vector3(0.96, 0.07, 0.96)
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var color := ZONE_COLORS.get(active_zone_type, Color.GRAY) as Color
+	var color := _get_typology_color(_typo_mode)
 	color.a = alpha
 	mat.albedo_color = color
 	var mesh := MeshInstance3D.new()
@@ -156,11 +169,21 @@ func _make_tile_mesh(alpha: float) -> MeshInstance3D:
 ## Show the painted-but-unfinished tile visual (dimmer than the hover).
 func _show_painted_tile(tile_pos: Vector2i) -> void:
 	if _painted_meshes.has(tile_pos):
+		_refresh_painted_tile(tile_pos)
 		return
 	var mesh := _make_tile_mesh(PAINTED_ALPHA)
 	mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y, float(tile_pos.y) + 0.5)
 	_visual_root.add_child(mesh)
 	_painted_meshes[tile_pos] = mesh
+
+
+func _refresh_painted_tile(tile_pos: Vector2i) -> void:
+	var mesh := _painted_meshes.get(tile_pos) as MeshInstance3D
+	if mesh == null:
+		return
+	var material := mesh.material_override as StandardMaterial3D
+	if material:
+		material.albedo_color = _get_typology_color(_painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT), PAINTED_ALPHA)
 
 
 ## Remove the painted-tile visual when erased.
@@ -185,10 +208,15 @@ func finish() -> void:
 			for t: Vector2i in _painted_tiles:
 				if not combined.has(t):
 					combined.append(t)
-			zm.modify_zone(_editing_zone_id, combined)
+			var typologies: Dictionary = existing.typologies.duplicate()
+			for tile_pos: Vector2i in _painted_tiles:
+				typologies[tile_pos] = _painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+			zm.modify_zone(_editing_zone_id, combined, GridManager.DEFAULT_PLOT, typologies)
 			zm.split_zone(_editing_zone_id)
 	else:
-		var zone := zm.create_zone(active_zone_type, _painted_tiles, "G")
+		var zone := zm.create_zone(
+			active_zone_type, _painted_tiles, "G", GridManager.DEFAULT_PLOT, _painted_typologies
+		)
 		if zone:
 			zm.split_zone(zone.id)
 			_show_zone_tiles(zone)
@@ -197,7 +225,10 @@ func finish() -> void:
 
 func cancel() -> void:
 	_painted_tiles.clear()
+	_painted_typologies.clear()
 	_editing_zone_id = ""
+	set_transit_mode(false)
+	painting_state_changed.emit(false, false)
 	_preview_mesh.visible = false
 	for mesh: Node in _painted_meshes.values():
 		mesh.queue_free()
@@ -228,10 +259,32 @@ func _show_zone_tiles(zone: ZoneData) -> void:
 	for tile_pos: Vector2i in zone.tiles:
 		var mesh := MeshInstance3D.new()
 		mesh.mesh = box
-		mesh.material_override = mat
+		var tile_color := _get_typology_color(zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT), 0.4)
+		var tile_material := mat.duplicate() as StandardMaterial3D
+		tile_material.albedo_color = tile_color
+		mesh.material_override = tile_material
 		mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y, float(tile_pos.y) + 0.5)
 		mesh.name = "zone_%s_tile_%d_%d" % [zone.id, tile_pos.x, tile_pos.y]
 		zone_container.add_child(mesh)
+
+
+func set_transit_mode(enabled: bool) -> void:
+	# Changing the toggle only changes the typology assigned to future paint
+	# actions. Existing pending tiles change only when explicitly repainted.
+	_typo_mode = GridTile.TileTypology.TRANSIT if enabled else GridTile.TileTypology.TENANT
+	painting_state_changed.emit(not _painted_tiles.is_empty(), enabled)
+
+
+func is_transit_mode() -> bool:
+	return _typo_mode == GridTile.TileTypology.TRANSIT
+
+
+func _get_typology_color(typology: GridTile.TileTypology, alpha: float = 1.0) -> Color:
+	var color := ZONE_COLORS.get(active_zone_type, Color.GRAY) as Color
+	if typology == GridTile.TileTypology.TRANSIT:
+		color = color.lerp(Color.WHITE, 0.28)
+	color.a = alpha
+	return color
 
 
 func _get_tile_under_mouse() -> Vector2i:

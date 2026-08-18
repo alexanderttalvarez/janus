@@ -219,6 +219,97 @@ func set_tile_door(
 	pathfinding_graph.mark_dirty()
 
 
+func has_door_between(from: Vector2i, to: Vector2i, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> bool:
+	var from_tile := get_tile(from.x, from.y, plot_id, floor_level)
+	var to_tile := get_tile(to.x, to.y, plot_id, floor_level)
+	if from_tile == null and to_tile != null:
+		var swapped := from
+		from = to
+		to = swapped
+		from_tile = to_tile
+		to_tile = get_tile(to.x, to.y, plot_id, floor_level)
+	if absi(from.x - to.x) + absi(from.y - to.y) != 1:
+		return false
+	if from_tile != null:
+		if from_tile.has_door(_door_side_for_offset(to - from)):
+			return true
+	if to_tile != null:
+		return to_tile.has_door(_door_side_for_offset(from - to))
+	return false
+
+
+func can_place_door_between(from: Vector2i, to: Vector2i, plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR) -> bool:
+	var floor_grid := get_floor_grid(plot_id, floor_level)
+	var from_tile := get_tile(from.x, from.y, plot_id, floor_level)
+	var to_tile := get_tile(to.x, to.y, plot_id, floor_level)
+	if from_tile == null and to_tile != null:
+		var swapped := from
+		from = to
+		to = swapped
+		from_tile = to_tile
+		to_tile = get_tile(to.x, to.y, plot_id, floor_level)
+	if floor_grid == null or from_tile == null:
+		return false
+	if not from_tile.owned or not from_tile.floor_built:
+		return false
+	if absi(from.x - to.x) + absi(from.y - to.y) != 1:
+		return false
+	# A valid edge outside the footprint is the building-to-pedestrian boundary.
+	if to_tile == null and not floor_grid.is_valid_tile(to.x, to.y):
+		return true
+	if to_tile == null or not to_tile.owned or not to_tile.floor_built:
+		return false
+	if from_tile.zone_id == to_tile.zone_id and not from_tile.zone_id.is_empty():
+		return false
+	var from_corridor := from_tile.element == GridTile.TileElement.CIRCULATION
+	var to_corridor := to_tile.element == GridTile.TileElement.CIRCULATION
+	var from_is_zone := not from_tile.zone_id.is_empty()
+	var to_is_zone := not to_tile.zone_id.is_empty()
+	# Any zone-to-corridor boundary requires the zone-side tile to be transit,
+	# even when the corridor is represented as a normal walkable tile.
+	if from_is_zone != to_is_zone:
+		var zone_tile := from_tile if from_is_zone else to_tile
+		if zone_tile.typology != GridTile.TileTypology.TRANSIT:
+			return false
+	return from_tile.zone_id != to_tile.zone_id or from_corridor != to_corridor
+
+
+func set_door_between(
+	from: Vector2i, to: Vector2i, enabled: bool,
+	plot_id: String = DEFAULT_PLOT, floor_level: String = GROUND_FLOOR
+) -> bool:
+	if enabled and not can_place_door_between(from, to, plot_id, floor_level):
+		return false
+	var from_tile := get_tile(from.x, from.y, plot_id, floor_level)
+	var to_tile := get_tile(to.x, to.y, plot_id, floor_level)
+	if from_tile == null and to_tile != null:
+		var swapped := from
+		from = to
+		to = swapped
+		from_tile = to_tile
+		to_tile = get_tile(to.x, to.y, plot_id, floor_level)
+	if from_tile == null:
+		return false
+	var from_side := _door_side_for_offset(to - from)
+	var to_side := _door_side_for_offset(from - to)
+	from_tile.set_door(from_side, enabled)
+	if to_tile != null:
+		to_tile.set_door(to_side, enabled)
+	rebuild_pathfinding()
+	EventBus.door_changed.emit(from, to, enabled)
+	return true
+
+
+func _door_side_for_offset(offset: Vector2i) -> GridTile.DoorSide:
+	if offset == Vector2i.UP:
+		return GridTile.DoorSide.NORTH
+	if offset == Vector2i.DOWN:
+		return GridTile.DoorSide.SOUTH
+	if offset == Vector2i.RIGHT:
+		return GridTile.DoorSide.EAST
+	return GridTile.DoorSide.WEST
+
+
 ## Convert grid position to world-space position (center of tile).
 func grid_to_world(x: int, y: int, floor_level: String = GROUND_FLOOR) -> Vector3:
 	return Vector3(
@@ -255,13 +346,13 @@ func _add_exterior_door_edges() -> void:
 					var tile := floor_grid.get_tile(x, y)
 					if tile == null:
 						continue
-					if tile.has_door(GridTile.DoorSide.NORTH):
+					if tile.has_door(GridTile.DoorSide.NORTH) and not floor_grid.is_valid_tile(x, y - 1):
 						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x, y - 1))
-					if tile.has_door(GridTile.DoorSide.SOUTH):
+					if tile.has_door(GridTile.DoorSide.SOUTH) and not floor_grid.is_valid_tile(x, y + 1):
 						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x, y + 1))
-					if tile.has_door(GridTile.DoorSide.EAST):
+					if tile.has_door(GridTile.DoorSide.EAST) and not floor_grid.is_valid_tile(x + 1, y):
 						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x + 1, y))
-					if tile.has_door(GridTile.DoorSide.WEST):
+					if tile.has_door(GridTile.DoorSide.WEST) and not floor_grid.is_valid_tile(x - 1, y):
 						pathfinding_graph.add_exterior_door_edge(plot_id, floor_level, Vector2i(x, y), Vector2i(x - 1, y))
 
 

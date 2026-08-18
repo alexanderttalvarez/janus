@@ -57,6 +57,7 @@ func _ready() -> void:
 	GameManager.ui_mode_changed.connect(_on_ui_mode_changed)
 	EventBus.zone_created.connect(_on_zone_created)
 	EventBus.zone_modified.connect(_on_zone_modified)
+	EventBus.door_changed.connect(_on_door_changed)
 	_visitor_mode_opacity = _get_mode_visitor_opacity()
 	_apply_culling()
 
@@ -132,6 +133,10 @@ func _begin_visitor_entry(visitor: VisitorData, side: int) -> void:
 		return
 
 	var interior_pos := _get_door_interior_position(side)
+	var exterior_pos := _get_door_exterior_position(side)
+	if not _grid_manager.has_door_between(interior_pos, exterior_pos):
+		_set_next_pedestrian_target(visitor)
+		return
 	if not _grid_manager.is_walkable(interior_pos.x, interior_pos.y):
 		_set_next_pedestrian_target(visitor)
 		return
@@ -165,7 +170,10 @@ func _on_visitor_target_reached(visitor: VisitorData) -> void:
 
 	var door_side := _get_door_side_for_waypoint(visitor.waypoint_index)
 	if door_side != 0:
-		_begin_visitor_entry(visitor, door_side)
+		if _is_exterior_door_open(door_side):
+			_begin_visitor_entry(visitor, door_side)
+		else:
+			_set_next_pedestrian_target(visitor)
 	else:
 		_set_next_pedestrian_target(visitor)
 
@@ -239,6 +247,46 @@ func _on_zone_modified(zone_id: String) -> void:
 
 
 ## Remove visitors occupying a newly walled zone and repath remaining visitors.
+func _on_door_changed(from: Vector2i, to: Vector2i, enabled: bool) -> void:
+	var exterior_side := _get_exterior_door_side(from, to)
+	if exterior_side != 0:
+		if not enabled:
+			_redirect_visitors_from_closed_door(exterior_side)
+		return
+	# Internal door changes need building visitors to receive fresh routes, but
+	# that work is deferred so the placement/removal click remains responsive.
+	call_deferred("_repath_visitors_after_door_change")
+
+
+func _redirect_visitors_from_closed_door(side: int) -> void:
+	for visitor: VisitorData in all_visitors:
+		var heading_to_door := visitor.location_type == "pedestrian_area" and (
+			visitor.current_state == "entering" or visitor.waypoint_index == _pedestrian_area.get_door_waypoint_index(side)
+		)
+		if not heading_to_door:
+			continue
+		if visitor.is_visible and is_instance_valid(visitor.visual_node):
+			var visual := visitor.visual_node as Visitor
+			if visual:
+				visual.clear_target()
+		_set_next_pedestrian_target(visitor)
+
+
+func _repath_visitors_after_door_change() -> void:
+	_sync_data_positions()
+	for visitor: VisitorData in all_visitors:
+		if visitor.current_state == "leaving":
+			continue
+		if visitor.is_visible and is_instance_valid(visitor.visual_node):
+			var visual := visitor.visual_node as Visitor
+			if visual:
+				visual.clear_target()
+		if visitor.current_state == "entering":
+			_set_next_pedestrian_target(visitor)
+		elif visitor.location_type == "building":
+			_set_interior_target(visitor)
+
+
 func _on_zone_changed(zone_id: String) -> void:
 	if _grid_manager == null:
 		return
@@ -272,6 +320,40 @@ func _get_door_side_for_waypoint(waypoint_index: int) -> int:
 	]:
 		if waypoint_index == _pedestrian_area.get_door_waypoint_index(side):
 			return side
+	return 0
+
+
+func _is_exterior_door_open(side: int) -> bool:
+	if _grid_manager == null:
+		return false
+	return _grid_manager.has_door_between(_get_door_interior_position(side), _get_door_exterior_position(side))
+
+
+func _get_door_exterior_position(side: int) -> Vector2i:
+	match side:
+		GridTile.DoorSide.NORTH:
+			return Vector2i(12, -1)
+		GridTile.DoorSide.SOUTH:
+			return Vector2i(12, 25)
+		GridTile.DoorSide.EAST:
+			return Vector2i(25, 12)
+		GridTile.DoorSide.WEST:
+			return Vector2i(-1, 12)
+	return Vector2i.ZERO
+
+
+func _get_exterior_door_side(from: Vector2i, to: Vector2i) -> int:
+	var exterior := to if _grid_manager.get_tile(to.x, to.y) == null else from
+	if _grid_manager.get_tile(exterior.x, exterior.y) != null:
+		return 0
+	if exterior.y < 0:
+		return GridTile.DoorSide.NORTH
+	if exterior.y >= 25:
+		return GridTile.DoorSide.SOUTH
+	if exterior.x < 0:
+		return GridTile.DoorSide.WEST
+	if exterior.x >= 25:
+		return GridTile.DoorSide.EAST
 	return 0
 
 

@@ -27,7 +27,7 @@ func create_zone(
 	zone.type = zone_type
 	zone.floor = floor
 	zone.tiles = tiles.duplicate()
-	zone.typologies = typologies
+	zone.typologies = _normalize_typologies(zone.tiles, typologies)
 	zone.zone_name = zone_type  # Default name; player can rename.
 
 	# Mark tiles in GridManager.
@@ -35,6 +35,10 @@ func create_zone(
 		var grid_manager := _get_grid_manager()
 		if grid_manager:
 			grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, zone.id, plot_id, floor)
+			grid_manager.set_tile_typology(
+				tile_pos.x, tile_pos.y,
+				zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT), plot_id, floor
+			)
 
 	zones[zone.id] = zone
 	_rebuild_pathfinding()
@@ -64,9 +68,13 @@ func modify_zone(
 		var grid_manager := _get_grid_manager()
 		if grid_manager:
 			grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, "", plot_id, zone.floor)
+			grid_manager.set_tile_typology(
+				tile_pos.x, tile_pos.y, GridTile.TileTypology.TENANT, plot_id, zone.floor
+			)
 
 	# Set new tiles.
 	zone.tiles = new_tiles.duplicate()
+	zone.typologies = _normalize_typologies(zone.tiles, typologies if not typologies.is_empty() else zone.typologies)
 	if not typologies.is_empty():
 		zone.typologies = typologies
 
@@ -75,6 +83,10 @@ func modify_zone(
 		var grid_manager := _get_grid_manager()
 		if grid_manager:
 			grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, zone.id, plot_id, zone.floor)
+			grid_manager.set_tile_typology(
+				tile_pos.x, tile_pos.y,
+				zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT), plot_id, zone.floor
+			)
 
 	_rebuild_pathfinding()
 	EventBus.zone_modified.emit(zone_id)
@@ -159,6 +171,7 @@ func serialize() -> Dictionary:
 			"subtype": zone.subtype,
 			"floor": zone.floor,
 			"tiles": zone.tiles,
+			"typologies": _serialize_typologies(zone.typologies),
 			"walls_enabled": zone.walls_enabled,
 			"zone_name": zone.zone_name,
 		}
@@ -177,6 +190,7 @@ func deserialize(data: Dictionary) -> void:
 		zone.subtype = zd.get("subtype", "")
 		zone.floor = zd["floor"]
 		zone.tiles = zd["tiles"]
+		zone.typologies = _deserialize_typologies(zd.get("typologies", []))
 		zone.walls_enabled = zd.get("walls_enabled", true)
 		zone.zone_name = zd.get("zone_name", "")
 		zones[zone_id] = zone
@@ -187,6 +201,33 @@ func deserialize(data: Dictionary) -> void:
 func _generate_zone_id() -> String:
 	_zone_counter += 1
 	return "zone_%d" % _zone_counter
+
+
+func _normalize_typologies(tiles: Array[Vector2i], typologies: Dictionary) -> Dictionary:
+	var normalized: Dictionary = {}
+	for tile_pos: Vector2i in tiles:
+		normalized[tile_pos] = typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+	return normalized
+
+
+func _serialize_typologies(typologies: Dictionary) -> Array[Dictionary]:
+	var serialized: Array[Dictionary] = []
+	for tile_pos: Vector2i in typologies:
+		serialized.append({
+			"x": tile_pos.x,
+			"y": tile_pos.y,
+			"typology": int(typologies[tile_pos]),
+		})
+	return serialized
+
+
+func _deserialize_typologies(data: Array) -> Dictionary:
+	var typologies: Dictionary = {}
+	for entry: Dictionary in data:
+		typologies[Vector2i(entry.get("x", 0), entry.get("y", 0))] = entry.get(
+			"typology", GridTile.TileTypology.TENANT
+		)
+	return typologies
 
 
 func _rebuild_pathfinding() -> void:

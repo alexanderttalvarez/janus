@@ -77,6 +77,7 @@ func _ready() -> void:
 	EventBus.zone_modified.connect(func(_id: String): rebuild())
 	EventBus.zone_deleted.connect(func(_id: String): rebuild())
 	EventBus.zone_wall_mode_changed.connect(func(_id: String, _on: bool): rebuild())
+	EventBus.door_changed.connect(func(_from: Vector2i, _to: Vector2i, _enabled: bool): rebuild())
 	EventBus.tile_purchased.connect(func(_f: int, _x: int, _y: int): rebuild())
 
 
@@ -166,7 +167,7 @@ func _collect_wall_pieces(
 				_add_wall_piece(placed, pieces, pos, n, false, door_edges.has(edge_key))
 
 	# 2) Zone perimeter — zone tile edges facing other built space.
-	#    Door gap when the neighbor is a corridor tile.
+	#    Door gaps are explicit manual door flags.
 	for zone: ZoneData in zones:
 		for pos: Vector2i in zone.tiles:
 			for dir: Vector2i in _DIRS:
@@ -175,7 +176,7 @@ func _collect_wall_pieces(
 					continue
 				if not built.has(n):
 					continue  # Exterior handled by the floor perimeter.
-				_add_wall_piece(placed, pieces, pos, n, corridor.has(n))
+				_add_wall_piece(placed, pieces, pos, n, door_edges.has(_edge_key(pos, n)))
 
 	# 3) Corridor walls — corridor tile edges facing non-corridor built space.
 	#    Skip zone-facing edges (door handled on the zone side) and exterior.

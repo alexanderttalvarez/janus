@@ -15,6 +15,9 @@ const MIN_PARCEL_TILES: int = 2
 static func split(zone: ZoneData, grid_manager: GridManager) -> Array[Parcel]:
 	if zone.tiles.is_empty():
 		return []
+	var tenant_tiles := _tenant_tiles(zone)
+	if tenant_tiles.is_empty():
+		return []
 
 	var fg := grid_manager.get_floor_grid(GridManager.DEFAULT_PLOT, zone.floor)
 	if fg == null:
@@ -27,7 +30,7 @@ static func split(zone: ZoneData, grid_manager: GridManager) -> Array[Parcel]:
 		return [_create_single_parcel(zone)]
 
 	# Phase 2: Reserve frontage segments and distribute to target store count.
-	var target_count: int = _calculate_target_count(zone.tiles.size())
+	var target_count: int = _calculate_target_count(tenant_tiles.size())
 	var frontage_segments: Array[Array] = _group_frontage_segments(frontage, zone.tiles)
 	var seeds: Array[Array] = _distribute_frontage(frontage_segments, target_count)
 
@@ -46,17 +49,22 @@ static func split(zone: ZoneData, grid_manager: GridManager) -> Array[Parcel]:
 ## Find zone tiles that border walkable areas (corridors or unowned tiles).
 static func _detect_frontage(zone: ZoneData, fg: FloorGrid) -> Array[Vector2i]:
 	var frontage: Array[Vector2i] = []
-	for tile_pos: Vector2i in zone.tiles:
+	for tile_pos: Vector2i in _tenant_tiles(zone):
 		for offset: Vector2i in [Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
 			var nx: int = tile_pos.x + offset.x
 			var ny: int = tile_pos.y + offset.y
 			if not fg.is_valid_tile(nx, ny):
 				continue
 			var neighbor: GridTile = fg.get_tile(nx, ny)
-			# A tile is frontage if it borders:
-			# - An unowned tile (outside the building)
-			# - A corridor/circulation tile
-			if neighbor != null and (not neighbor.owned or neighbor.element == GridTile.TileElement.CIRCULATION):
+			var neighbor_pos := Vector2i(nx, ny)
+			var internal_transit: bool = zone.tiles.has(neighbor_pos) and zone.typologies.get(
+				neighbor_pos, GridTile.TileTypology.TENANT
+			) == GridTile.TileTypology.TRANSIT
+			# A tile is frontage if it borders an unowned tile, external
+			# circulation, or a transit tile inside this zone.
+			if neighbor != null and (
+				not neighbor.owned or neighbor.element == GridTile.TileElement.CIRCULATION or internal_transit
+			):
 				if not frontage.has(tile_pos):
 					frontage.append(tile_pos)
 				break
@@ -138,8 +146,9 @@ static func _grow_parcels(seeds: Array[Array], zone: ZoneData, fg: FloorGrid) ->
 		return [_create_single_parcel(zone)]
 
 	# Assign remaining unassigned zone tiles to nearest parcel.
-	var target_per_parcel: int = ceili(float(zone.tiles.size()) / float(parcel_tiles.size()))
-	for tile_pos: Vector2i in zone.tiles:
+	var tenant_tiles := _tenant_tiles(zone)
+	var target_per_parcel: int = ceili(float(tenant_tiles.size()) / float(parcel_tiles.size()))
+	for tile_pos: Vector2i in tenant_tiles:
 		if used.has(tile_pos):
 			continue
 		var best_idx: int = -1
@@ -209,8 +218,16 @@ static func _validate_and_repair(parcels: Array[Parcel], _zone: ZoneData, _fg: F
 static func _create_single_parcel(zone: ZoneData) -> Parcel:
 	var parcel := Parcel.new()
 	parcel.id = "parcel_0"
-	parcel.tiles = zone.tiles.duplicate()
+	parcel.tiles = _tenant_tiles(zone)
 	return parcel
+
+
+static func _tenant_tiles(zone: ZoneData) -> Array[Vector2i]:
+	var tenant_tiles: Array[Vector2i] = []
+	for tile_pos: Vector2i in zone.tiles:
+		if zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT) == GridTile.TileTypology.TENANT:
+			tenant_tiles.append(tile_pos)
+	return tenant_tiles
 
 
 static func _calculate_center(tiles: Array) -> Vector2i:
@@ -233,7 +250,10 @@ static func _calc_parcel_frontage(parcel: Parcel, fg: FloorGrid) -> Array[Vector
 			if not fg.is_valid_tile(nx, ny):
 				continue
 			var neighbor: GridTile = fg.get_tile(nx, ny)
-			if neighbor != null and (not neighbor.owned or neighbor.element == GridTile.TileElement.CIRCULATION):
+			if neighbor != null and (
+				not neighbor.owned or neighbor.element == GridTile.TileElement.CIRCULATION
+				or neighbor.typology == GridTile.TileTypology.TRANSIT
+			):
 				frontage.append(tile_pos)
 				break
 	return frontage
