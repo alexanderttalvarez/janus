@@ -6,7 +6,9 @@ extends Node
 const PREVIEW_Y: float = 1.2
 const DOOR_HEIGHT: float = 2.4
 const DOOR_WIDTH: float = 0.6
-const DOOR_THICKNESS: float = 0.08
+## Preview thickness intentionally exceeds the 0.1 m wall thickness so the
+## translucent placeholder remains visible in Full wall mode.
+const DOOR_THICKNESS: float = 0.22
 const VALID_COLOR: Color = Color(0.2, 0.9, 0.35, 0.65)
 const INVALID_COLOR: Color = Color(0.95, 0.2, 0.2, 0.65)
 

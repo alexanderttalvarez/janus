@@ -164,7 +164,7 @@ func _collect_wall_pieces(
 			var n: Vector2i = pos + dir
 			if not built.has(n):
 				var edge_key := _edge_key(pos, n)
-				_add_wall_piece(placed, pieces, pos, n, false, door_edges.has(edge_key))
+				_add_wall_piece(placed, pieces, pos, n, false, door_edges.has(edge_key), door_edges)
 
 	# 2) Zone perimeter — zone tile edges facing other built space.
 	#    Door gaps are explicit manual door flags.
@@ -176,7 +176,7 @@ func _collect_wall_pieces(
 					continue
 				if not built.has(n):
 					continue  # Exterior handled by the floor perimeter.
-				_add_wall_piece(placed, pieces, pos, n, door_edges.has(_edge_key(pos, n)))
+				_add_wall_piece(placed, pieces, pos, n, door_edges.has(_edge_key(pos, n)), false, door_edges)
 
 	# 3) Corridor walls — corridor tile edges facing non-corridor built space.
 	#    Skip zone-facing edges (door handled on the zone side) and exterior.
@@ -189,7 +189,7 @@ func _collect_wall_pieces(
 				continue
 			if zone_of.has(n):
 				continue
-			_add_wall_piece(placed, pieces, pos, n, false)
+			_add_wall_piece(placed, pieces, pos, n, false, false, door_edges)
 
 	return pieces
 
@@ -198,7 +198,8 @@ func _collect_wall_pieces(
 ## produce either a full-height corridor opening or an exterior door shape.
 func _add_wall_piece(
 	placed: Dictionary, pieces: Array, pos: Vector2i, neighbor: Vector2i,
-	has_door: bool, is_exterior_door: bool = false
+	has_door: bool, is_exterior_door: bool = false,
+	door_edges: Dictionary = {}
 ) -> void:
 	var key := _edge_key(pos, neighbor)
 	if placed.has(key):
@@ -206,9 +207,15 @@ func _add_wall_piece(
 	placed[key] = true
 	var normal := Vector3(float(neighbor.x - pos.x), 0.0, float(neighbor.y - pos.y))
 	if is_exterior_door:
-		pieces.append_array(_make_exterior_door_pieces(pos, normal))
+		var adjacent_start := _has_adjacent_door(pos, normal, true, door_edges)
+		var adjacent_end := _has_adjacent_door(pos, normal, false, door_edges)
+		pieces.append_array(_make_exterior_door_pieces(pos, normal, adjacent_start, adjacent_end))
 	elif has_door:
-		pieces.append_array(_make_door_pieces(pos, normal))
+		# Manual doors use the same side sections and upper lintel as the
+		# fixed building entrances, rather than cutting a full-height hole.
+		var adjacent_start := _has_adjacent_door(pos, normal, true, door_edges)
+		var adjacent_end := _has_adjacent_door(pos, normal, false, door_edges)
+		pieces.append_array(_make_exterior_door_pieces(pos, normal, adjacent_start, adjacent_end))
 	else:
 		pieces.append(_make_edge_piece(pos, normal))
 
@@ -255,19 +262,34 @@ func _make_door_pieces(pos: Vector2i, normal: Vector3) -> Array:
 
 ## Exterior door geometry keeps 10% side sections at full height and a
 ## centered lintel over the upper 25% of the wall.
-func _make_exterior_door_pieces(pos: Vector2i, normal: Vector3) -> Array:
+func _make_exterior_door_pieces(
+	pos: Vector2i, normal: Vector3, adjacent_start: bool = false, adjacent_end: bool = false
+) -> Array:
 	var piece := _make_edge_piece(pos, normal)
 	var side_width := 0.1
 	var side_a: Dictionary = piece.duplicate()
 	side_a["to"] = side_a["from"] + side_width
+	if adjacent_start:
+		side_a["height_from"] = WALL_HEIGHT * 0.75
 	var side_b: Dictionary = piece.duplicate()
 	side_b["from"] = side_b["to"] - side_width
+	if adjacent_end:
+		side_b["height_from"] = WALL_HEIGHT * 0.75
 	var lintel: Dictionary = piece.duplicate()
 	lintel["from"] = piece["from"] + side_width
 	lintel["to"] = piece["to"] - side_width
 	lintel["height_from"] = WALL_HEIGHT * 0.75
 	lintel["height_to"] = WALL_HEIGHT
 	return [side_a, side_b, lintel]
+
+
+func _has_adjacent_door(
+	pos: Vector2i, normal: Vector3, at_start: bool, door_edges: Dictionary
+) -> bool:
+	var along := Vector2i.DOWN if normal.x != 0.0 else Vector2i.RIGHT
+	var adjacent_pos := pos - along if at_start else pos + along
+	var normal_grid := Vector2i(int(normal.x), int(normal.z))
+	return door_edges.has(_edge_key(adjacent_pos, adjacent_pos + normal_grid))
 
 
 ## Merge all recorded pieces: group by (axis, line, normal direction), then

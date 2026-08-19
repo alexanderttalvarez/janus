@@ -248,13 +248,16 @@ func _on_zone_modified(zone_id: String) -> void:
 
 ## Remove visitors occupying a newly walled zone and repath remaining visitors.
 func _on_door_changed(from: Vector2i, to: Vector2i, enabled: bool) -> void:
+	# Opening a door cannot invalidate an existing visitor route. Leave current
+	# movement untouched; future target selection will use the new connection.
+	if enabled:
+		return
 	var exterior_side := _get_exterior_door_side(from, to)
 	if exterior_side != 0:
-		if not enabled:
-			_redirect_visitors_from_closed_door(exterior_side)
+		_redirect_visitors_from_closed_door(exterior_side)
 		return
-	# Internal door changes need building visitors to receive fresh routes, but
-	# that work is deferred so the placement/removal click remains responsive.
+	# Closing an internal door can invalidate routes, so repath building
+	# visitors after the current input event completes.
 	call_deferred("_repath_visitors_after_door_change")
 
 
