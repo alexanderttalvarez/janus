@@ -9,8 +9,9 @@ const DOOR_WIDTH: float = 0.6
 ## Preview thickness intentionally exceeds the 0.1 m wall thickness so the
 ## translucent placeholder remains visible in Full wall mode.
 const DOOR_THICKNESS: float = 0.22
-const VALID_COLOR: Color = Color(0.2, 0.9, 0.35, 0.65)
-const INVALID_COLOR: Color = Color(0.95, 0.2, 0.2, 0.65)
+const ADD_COLOR: Color = Color(0.2, 0.9, 0.35, 0.65)
+const REMOVE_COLOR: Color = Color(0.95, 0.2, 0.2, 0.65)
+const NEUTRAL_COLOR: Color = Color(0.55, 0.58, 0.62, 0.65)
 
 
 var is_active: bool = false
@@ -82,6 +83,11 @@ func _update_preview() -> void:
 	var to: Vector2i = edge["to"]
 	var has_door := gm.has_door_between(from, to)
 	var valid := gm.can_place_door_between(from, to) if not remove_mode else has_door
+	var preview_color := (
+		REMOVE_COLOR if has_door else NEUTRAL_COLOR
+	) if remove_mode else (
+		ADD_COLOR if valid else NEUTRAL_COLOR
+	)
 	_preview_mesh.visible = true
 	_preview_mesh.position = (
 		gm.grid_to_world(from.x, from.y) + gm.grid_to_world(to.x, to.y)
@@ -89,7 +95,7 @@ func _update_preview() -> void:
 	_preview_mesh.position.y = PREVIEW_Y
 	var delta: Vector2i = to - from
 	_preview_mesh.mesh = _vertical_mesh if delta.x != 0 else _horizontal_mesh
-	_preview_material.albedo_color = VALID_COLOR if valid else INVALID_COLOR
+	_preview_material.albedo_color = preview_color
 
 
 func _commit_at_mouse() -> void:
