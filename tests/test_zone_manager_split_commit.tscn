@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://c3hxi767322rt"]
+
+[ext_resource type="Script" uid="uid://jyh7tfldifvu" path="res://tests/test_zone_manager_split_commit.gd" id="1_gqgxl"]
+
+[node name="ZoneManagerSplitCommitTest" type="Node" unique_id=1773364146]
+script = ExtResource("1_gqgxl")

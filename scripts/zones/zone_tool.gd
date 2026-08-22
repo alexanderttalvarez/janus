@@ -212,13 +212,11 @@ func finish() -> void:
 			for tile_pos: Vector2i in _painted_tiles:
 				typologies[tile_pos] = _painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT)
 			zm.modify_zone(_editing_zone_id, combined, GridManager.DEFAULT_PLOT, typologies)
-			zm.split_zone(_editing_zone_id)
 	else:
 		var zone := zm.create_zone(
 			active_zone_type, _painted_tiles, "G", GridManager.DEFAULT_PLOT, _painted_typologies
 		)
 		if zone:
-			zm.split_zone(zone.id)
 			_show_zone_tiles(zone)
 	cancel()
 
