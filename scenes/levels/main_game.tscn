@@ -15,7 +15,6 @@
 [ext_resource type="Script" uid="uid://c5vqddles7fxg" path="res://scripts/simulation/tenant_manager.gd" id="8_tenant_manager"]
 [ext_resource type="PackedScene" uid="uid://bjgx2nrahet8x" path="res://scenes/world/roads/road_side.tscn" id="8_wg31f"]
 [ext_resource type="Script" uid="uid://cchqvwpgx2s14" path="res://scripts/simulation/economy_manager.gd" id="9_economy_manager"]
-[ext_resource type="PackedScene" uid="uid://cbqvbqvosik60" path="res://scenes/world/roads/crosswalk.tscn" id="9_s4nb1"]
 [ext_resource type="PackedScene" uid="uid://lhbxtcqddpek" path="res://scenes/world/roads/road_corner.tscn" id="10_dt2l1"]
 [ext_resource type="Script" uid="uid://dtgul3jtl4brv" path="res://scripts/simulation/prestige_manager.gd" id="10_prestige_manager"]
 [ext_resource type="Script" uid="uid://bsr42lv6kkxsm" path="res://scripts/simulation/tech_tree_manager.gd" id="11_tech_tree_manager"]
@@ -50,28 +49,6 @@ size = Vector3(5, 0.1, 5)
 
 [sub_resource type="BoxMesh" id="BoxMesh_qt8r4"]
 size = Vector3(5, 0.1, 5)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_s7iec"]
-albedo_color = Color(0.075, 0.085, 0.095, 1)
-roughness = 0.92
-
-[sub_resource type="BoxMesh" id="BoxMesh_3x1ow"]
-size = Vector3(6, 0.1, 6)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_e1i65"]
-albedo_color = Color(0.075, 0.085, 0.095, 1)
-roughness = 0.92
-
-[sub_resource type="BoxMesh" id="BoxMesh_kbm1k"]
-size = Vector3(35, 0.1, 6)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8c1vm"]
-albedo_color = Color(0.55, 0.57, 0.58, 1)
-roughness = 0.85
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mwvdt"]
-shading_mode = 0
-albedo_color = Color(0.96, 0.96, 0.92, 1)
 
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 1
@@ -157,246 +134,26 @@ mesh = SubResource("BoxMesh_qt8r4")
 [node name="RoadCorner_NorthWest" parent="World/Surroundings/Roads" unique_id=1462758133 instance=ExtResource("10_dt2l1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, -8)
 
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadCorner_NorthWest" unique_id=813858663]
-material_override = SubResource("StandardMaterial3D_s7iec")
-mesh = SubResource("BoxMesh_3x1ow")
-
 [node name="RoadCorner_NorthEast" parent="World/Surroundings/Roads" unique_id=1869688405 instance=ExtResource("10_dt2l1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33, 0, -8)
-
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadCorner_NorthEast" unique_id=2076012377]
-material_override = SubResource("StandardMaterial3D_s7iec")
-mesh = SubResource("BoxMesh_3x1ow")
 
 [node name="RoadCorner_SouthWest" parent="World/Surroundings/Roads" unique_id=1840336190 instance=ExtResource("10_dt2l1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 33)
 
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadCorner_SouthWest" unique_id=2139911461]
-material_override = SubResource("StandardMaterial3D_s7iec")
-mesh = SubResource("BoxMesh_3x1ow")
-
 [node name="RoadCorner_SouthEast" parent="World/Surroundings/Roads" unique_id=1358720002 instance=ExtResource("10_dt2l1")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33, 0, 33)
-
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadCorner_SouthEast" unique_id=1822928494]
-material_override = SubResource("StandardMaterial3D_s7iec")
-mesh = SubResource("BoxMesh_3x1ow")
 
 [node name="RoadSide_North" parent="World/Surroundings/Roads" unique_id=712253612 instance=ExtResource("8_wg31f")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, -8)
 
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=415531033]
-material_override = SubResource("StandardMaterial3D_e1i65")
-mesh = SubResource("BoxMesh_kbm1k")
-
-[node name="CurbOuter2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=992871288]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, -3.05)
-size = Vector3(35, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CurbInner2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=1273346111]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, 3.05)
-size = Vector3(25, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CenterLine_07" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=2085854143]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_08" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=2127973436]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_09" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=1963889913]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_10" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=839538277]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_11" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=592229866]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_12" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=388636520]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="PedestrianEdge2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_North" unique_id=483829102]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 2.82)
-size = Vector3(25, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="Crosswalk2" parent="World/Surroundings/Roads/RoadSide_North" unique_id=1664077858 instance=ExtResource("9_s4nb1")]
-
 [node name="RoadSide_East" parent="World/Surroundings/Roads" unique_id=1242465763 instance=ExtResource("8_wg31f")]
 transform = Transform3D(3.1391647e-07, 0, -1, 0, 1, 0, 1, 0, 3.1391647e-07, 33, 0, 12.5)
-
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=1876637697]
-material_override = SubResource("StandardMaterial3D_e1i65")
-mesh = SubResource("BoxMesh_kbm1k")
-
-[node name="CurbOuter2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=327058792]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, -3.05)
-size = Vector3(35, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CurbInner2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=1178369530]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, 3.05)
-size = Vector3(25, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CenterLine_07" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=1909967708]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_08" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=624115948]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_09" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=526416353]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_10" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=454582018]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_11" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=1752906708]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_12" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=1622925082]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="PedestrianEdge2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_East" unique_id=1299658795]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 2.82)
-size = Vector3(25, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="Crosswalk2" parent="World/Surroundings/Roads/RoadSide_East" unique_id=60080881 instance=ExtResource("9_s4nb1")]
 
 [node name="RoadSide_South" parent="World/Surroundings/Roads" unique_id=1280650436 instance=ExtResource("8_wg31f")]
 transform = Transform3D(-1, 0, -3.2584137e-07, 0, 1, 0, 3.2584137e-07, 0, -1, 12.5, 0, 33)
 
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=229649722]
-material_override = SubResource("StandardMaterial3D_e1i65")
-mesh = SubResource("BoxMesh_kbm1k")
-
-[node name="CurbOuter2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=847884276]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, -3.05)
-size = Vector3(35, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CurbInner2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=447605103]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, 3.05)
-size = Vector3(25, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CenterLine_07" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=969225945]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_08" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=1527867272]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_09" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=487948219]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_10" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=1377626155]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_11" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=490004854]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_12" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=242411480]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="PedestrianEdge2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_South" unique_id=2107555208]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 2.82)
-size = Vector3(25, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="Crosswalk2" parent="World/Surroundings/Roads/RoadSide_South" unique_id=1928593711 instance=ExtResource("9_s4nb1")]
-
 [node name="RoadSide_West" parent="World/Surroundings/Roads" unique_id=70291349 instance=ExtResource("8_wg31f")]
 transform = Transform3D(3.1391647e-07, 0, 1, 0, 1, 0, -1, 0, 3.1391647e-07, -8, 0, 12.5)
-
-[node name="Surface2" type="MeshInstance3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1846696693]
-material_override = SubResource("StandardMaterial3D_e1i65")
-mesh = SubResource("BoxMesh_kbm1k")
-
-[node name="CurbOuter2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1739098385]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, -3.05)
-size = Vector3(35, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CurbInner2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=2001129231]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, 3.05)
-size = Vector3(25, 0.18, 0.2)
-material = SubResource("StandardMaterial3D_8c1vm")
-
-[node name="CenterLine_07" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1207518197]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_08" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1013607869]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_09" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1627447298]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_10" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=990533616]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_11" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1653443966]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="CenterLine_12" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1156368911]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.065, 0)
-size = Vector3(2, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="PedestrianEdge2" type="CSGBox3D" parent="World/Surroundings/Roads/RoadSide_West" unique_id=1540008961]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 2.82)
-size = Vector3(25, 0.025, 0.12)
-material = SubResource("StandardMaterial3D_mwvdt")
-
-[node name="Crosswalk2" parent="World/Surroundings/Roads/RoadSide_West" unique_id=336949005 instance=ExtResource("9_s4nb1")]
 
 [node name="Visitors" type="Node3D" parent="World" unique_id=1205100646]
 
@@ -424,7 +181,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.35, -9.5)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.35, -9.5)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_North_Eastbound" unique_id=818442743]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28.5, 0.35, -9.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27, 0.35, -9.5)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_North_Eastbound" unique_id=1070545809]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38, 0.35, -9.5)
@@ -444,7 +201,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.35, -6.5)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.35, -6.5)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_North_Westbound" unique_id=594240944]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0.35, -6.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0.35, -6.5)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_North_Westbound" unique_id=1587226761]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 0.35, -6.5)
@@ -464,7 +221,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34.5, 0.35, 40)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34.5, 0.35, -3)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_East_Southbound" unique_id=898825693]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34.5, 0.35, 28.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34.5, 0.35, 27)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_East_Southbound" unique_id=496293835]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 34.5, 0.35, 38)
@@ -484,7 +241,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31.5, 0.35, -15)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31.5, 0.35, 28)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_East_Northbound" unique_id=2075390210]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31.5, 0.35, -3.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31.5, 0.35, -2)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_East_Northbound" unique_id=983326345]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31.5, 0.35, -13)
@@ -504,7 +261,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 0.35, 34.5)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28, 0.35, 34.5)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_South_Westbound" unique_id=1622778579]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.5, 0.35, 34.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0.35, 34.5)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_South_Westbound" unique_id=286040972]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 0.35, 34.5)
@@ -524,7 +281,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 40, 0.35, 31.5)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 0.35, 31.5)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_South_Eastbound" unique_id=1040650703]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 28.5, 0.35, 31.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27, 0.35, 31.5)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_South_Eastbound" unique_id=1940877202]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 38, 0.35, 31.5)
@@ -544,7 +301,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0.35, -15)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0.35, 28)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_West_Northbound" unique_id=2138914850]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0.35, -3.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0.35, -2)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_West_Northbound" unique_id=1330570651]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9.5, 0.35, -13)
@@ -564,7 +321,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 0.35, 40)
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 0.35, -3)
 
 [node name="IntersectionHold" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_West_Southbound" unique_id=364184679]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 0.35, 28.5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 0.35, 27)
 
 [node name="IntersectionClear" type="Marker3D" parent="World/TrafficLayout/Lanes/Lane_West_Southbound" unique_id=1787404110]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.5, 0.35, 38)
