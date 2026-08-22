@@ -25,7 +25,11 @@
       "environment": {
         "GODOTIQ_PROJECT_ROOT": "/home/aelxan/Programming/Games/janus"
       },
+      "timeout": 80000,
       "enabled": true
     }
+  },
+  "experimental": {
+    "mcp_timeout": 80000
   }
 }

@@ -11,12 +11,21 @@ signal car_spawned(lane_id: StringName, car_id: int)
 signal car_despawned(lane_id: StringName, car_id: int)
 signal crosswalk_hold_started(crosswalk_id: StringName, car_id: int)
 signal crosswalk_hold_finished(crosswalk_id: StringName, car_id: int)
+signal intersection_reservation_granted(zone_id: StringName, lane_id: StringName, car_id: int)
+signal intersection_reservation_released(zone_id: StringName, lane_id: StringName, car_id: int)
+signal intersection_reservation_wait_started(zone_id: StringName, lane_id: StringName, car_id: int)
 
 
 const CAR_SCENE_PATH: String = "res://assets/models/kenney_car_kit/sedan.glb"
 const CROSSWALK_APPROACHING: int = 0
 const CROSSWALK_HOLDING: int = 1
 const CROSSWALK_CLEARED: int = 2
+
+const INTERSECTION_SOURCE_RESERVED: int = 0
+const INTERSECTION_APPROACHING: int = 1
+const INTERSECTION_WAITING: int = 2
+const INTERSECTION_LATER_RESERVED: int = 3
+const INTERSECTION_CLEARED: int = 4
 
 const LANE_IDS: Array = [
 	&"Lane_North_Eastbound",
@@ -40,6 +49,17 @@ const LANE_CROSSWALKS: Dictionary = {
 	&"Lane_West_Southbound": &"Crosswalk_West",
 }
 
+const LANE_INTERSECTION_ZONES: Dictionary = {
+	&"Lane_North_Eastbound": [&"NW", &"NE"],
+	&"Lane_North_Westbound": [&"NE", &"NW"],
+	&"Lane_East_Southbound": [&"NE", &"SE"],
+	&"Lane_East_Northbound": [&"SE", &"NE"],
+	&"Lane_South_Westbound": [&"SE", &"SW"],
+	&"Lane_South_Eastbound": [&"SW", &"SE"],
+	&"Lane_West_Northbound": [&"SW", &"NW"],
+	&"Lane_West_Southbound": [&"NW", &"SW"],
+}
+
 const BODY_COLORS: Array = [
 	Color(0.78, 0.12, 0.06),
 	Color(0.06, 0.27, 0.72),
@@ -47,6 +67,31 @@ const BODY_COLORS: Array = [
 	Color(0.82, 0.58, 0.05),
 ]
 const WHEEL_COLOR: Color = Color(0.025, 0.03, 0.035)
+
+
+class IntersectionCoordinator:
+	var _occupants: Dictionary = {}
+
+	func request_entry(vehicle_id: int, lane_id: StringName, zone_id: StringName) -> bool:
+		if not is_entry_allowed(zone_id):
+			return false
+		_occupants[zone_id] = {"vehicle_id": vehicle_id, "lane_id": lane_id}
+		return true
+
+	func release_zone(vehicle_id: int, zone_id: StringName) -> bool:
+		if not _occupants.has(zone_id):
+			return false
+		var reservation: Dictionary = _occupants[zone_id]
+		if reservation.get("vehicle_id", -1) != vehicle_id:
+			return false
+		_occupants.erase(zone_id)
+		return true
+
+	func is_entry_allowed(zone_id: StringName) -> bool:
+		return not _occupants.has(zone_id)
+
+	func clear() -> void:
+		_occupants.clear()
 
 
 class CarState:
@@ -57,6 +102,9 @@ class CarState:
 	var desired_speed: float = 0.0
 	var crosswalk_phase: int = CROSSWALK_APPROACHING
 	var hold_remaining: float = 0.0
+	var intersection_phase: int = INTERSECTION_SOURCE_RESERVED
+	var current_intersection_zone: StringName
+	var reservation_request_order: int = 0
 
 
 class LaneState:
@@ -65,11 +113,20 @@ class LaneState:
 	var spawn: Marker3D
 	var stop_line: Marker3D
 	var exit: Marker3D
+	var source_clear: Marker3D
+	var intersection_hold: Marker3D
+	var intersection_clear: Marker3D
+	var source_zone_id: StringName
+	var later_zone_id: StringName
 	var start_position: Vector3
 	var direction: Vector3
 	var length: float = 0.0
 	var stop_distance: float = 0.0
+	var source_clear_distance: float = 0.0
+	var intersection_hold_distance: float = 0.0
+	var intersection_clear_distance: float = 0.0
 	var next_spawn_time: float = 0.0
+	var pending_spawn_request_order: int = 0
 	var cars: Array[CarState] = []
 
 
@@ -104,6 +161,8 @@ var _rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var _simulation_time: float = 0.0
 var _next_car_id: int = 1
 var _crosswalk_stop_requests: Dictionary = {}
+var _intersection_coordinator: IntersectionCoordinator = IntersectionCoordinator.new()
+var _next_reservation_request_order: int = 1
 
 
 func _ready() -> void:
@@ -155,6 +214,9 @@ func clear_active_cars() -> void:
 			if is_instance_valid(car.node):
 				car.node.queue_free()
 		lane.cars.clear()
+	_intersection_coordinator.clear()
+	for lane: LaneState in _lanes:
+		lane.pending_spawn_request_order = 0
 
 
 func get_active_car_count() -> int:
@@ -179,7 +241,16 @@ func _initialize_lanes() -> bool:
 		lane.spawn = lane_node.get_node_or_null("Spawn") as Marker3D
 		lane.stop_line = lane_node.get_node_or_null("StopLine") as Marker3D
 		lane.exit = lane_node.get_node_or_null("Exit") as Marker3D
-		if lane.spawn == null or lane.stop_line == null or lane.exit == null:
+		lane.source_clear = lane_node.get_node_or_null("SourceClear") as Marker3D
+		lane.intersection_hold = lane_node.get_node_or_null("IntersectionHold") as Marker3D
+		lane.intersection_clear = lane_node.get_node_or_null("IntersectionClear") as Marker3D
+		var zone_ids: Array = LANE_INTERSECTION_ZONES.get(lane_id, [])
+		if zone_ids.size() != 2:
+			push_error("TrafficManager intersection zones are incomplete: " + String(lane_id))
+			return false
+		lane.source_zone_id = zone_ids[0] as StringName
+		lane.later_zone_id = zone_ids[1] as StringName
+		if lane.spawn == null or lane.stop_line == null or lane.exit == null or lane.source_clear == null or lane.intersection_hold == null or lane.intersection_clear == null:
 			push_error("TrafficManager lane markers are incomplete: " + String(lane_id))
 			return false
 		lane.start_position = lane.spawn.global_position
@@ -190,8 +261,14 @@ func _initialize_lanes() -> bool:
 			return false
 		lane.direction = route / lane.length
 		lane.stop_distance = (lane.stop_line.global_position - lane.start_position).dot(lane.direction)
+		lane.source_clear_distance = (lane.source_clear.global_position - lane.start_position).dot(lane.direction)
+		lane.intersection_hold_distance = (lane.intersection_hold.global_position - lane.start_position).dot(lane.direction)
+		lane.intersection_clear_distance = (lane.intersection_clear.global_position - lane.start_position).dot(lane.direction)
 		if lane.stop_distance <= 0.0 or lane.stop_distance >= lane.length:
 			push_error("TrafficManager stop line is outside lane bounds: " + String(lane_id))
+			return false
+		if lane.source_clear_distance <= 0.0 or lane.intersection_hold_distance <= lane.source_clear_distance or lane.intersection_clear_distance <= lane.intersection_hold_distance or lane.intersection_clear_distance >= lane.length:
+			push_error("TrafficManager intersection markers are outside lane bounds: " + String(lane_id))
 			return false
 		lane.next_spawn_time = _rng.randf_range(0.75, 3.0)
 		_lanes.append(lane)
@@ -211,6 +288,7 @@ func _update_lane(lane: LaneState, delta: float) -> void:
 		var car := lane.cars[index]
 		if car.distance < lane.length:
 			continue
+		_release_current_intersection_zone(lane, car)
 		if is_instance_valid(car.node):
 			car.node.queue_free()
 		car_despawned.emit(lane.id, car.id)
@@ -228,6 +306,7 @@ func _update_car(lane: LaneState, car: CarState, leader: CarState, delta: float)
 		return
 
 	var target_speed := car.desired_speed
+	target_speed = minf(target_speed, _get_intersection_speed_limit(lane, car, leader))
 	if car.crosswalk_phase == CROSSWALK_APPROACHING:
 		if _should_stop_at_crosswalk(lane.crosswalk_id):
 			var remaining_to_stop := lane.stop_distance - car.distance
@@ -256,6 +335,16 @@ func _update_car(lane: LaneState, car: CarState, leader: CarState, delta: float)
 		_begin_crosswalk_hold(lane, car)
 		_apply_car_transform(lane, car)
 		return
+	if car.intersection_phase == INTERSECTION_APPROACHING and next_distance >= lane.intersection_hold_distance:
+		car.distance = lane.intersection_hold_distance
+		_begin_intersection_wait(lane, car)
+		_apply_car_transform(lane, car)
+		return
+	if car.intersection_phase == INTERSECTION_WAITING:
+		car.distance = lane.intersection_hold_distance
+		car.speed = 0.0
+		_apply_car_transform(lane, car)
+		return
 
 	if leader != null:
 		var required_gap := standstill_gap + time_headway * car.speed
@@ -265,6 +354,7 @@ func _update_car(lane: LaneState, car: CarState, leader: CarState, delta: float)
 			car.speed = minf(car.speed, maxf(0.0, (next_distance - car.distance) / delta))
 
 	car.distance = next_distance
+	_release_intersection_if_cleared(lane, car)
 	_apply_car_transform(lane, car)
 
 
@@ -276,15 +366,100 @@ func _begin_crosswalk_hold(lane: LaneState, car: CarState) -> void:
 	crosswalk_hold_started.emit(lane.crosswalk_id, car.id)
 
 
+func _get_intersection_speed_limit(lane: LaneState, car: CarState, leader: CarState) -> float:
+	_release_intersection_if_cleared(lane, car)
+	if car.intersection_phase == INTERSECTION_APPROACHING:
+		var remaining_to_hold := lane.intersection_hold_distance - car.distance
+		if remaining_to_hold <= 0.0:
+			_begin_intersection_wait(lane, car)
+			return 0.0
+		return _speed_to_stop(remaining_to_hold)
+	if car.intersection_phase == INTERSECTION_WAITING:
+		if _try_grant_later_intersection(lane, car, leader):
+			return INF
+		return 0.0
+	return INF
+
+
+func _begin_intersection_wait(lane: LaneState, car: CarState) -> void:
+	if car.intersection_phase == INTERSECTION_WAITING:
+		return
+	car.intersection_phase = INTERSECTION_WAITING
+	car.reservation_request_order = _next_reservation_request_order
+	_next_reservation_request_order += 1
+	intersection_reservation_wait_started.emit(lane.later_zone_id, lane.id, car.id)
+
+
+func _try_grant_later_intersection(lane: LaneState, car: CarState, leader: CarState) -> bool:
+	if not _is_oldest_zone_request(lane.later_zone_id, car.reservation_request_order):
+		return false
+	if leader != null and leader.distance < lane.intersection_clear_distance + standstill_gap:
+		return false
+	if not _intersection_coordinator.request_entry(car.id, lane.id, lane.later_zone_id):
+		return false
+	car.current_intersection_zone = lane.later_zone_id
+	car.intersection_phase = INTERSECTION_LATER_RESERVED
+	car.reservation_request_order = 0
+	intersection_reservation_granted.emit(lane.later_zone_id, lane.id, car.id)
+	return true
+
+
+func _release_intersection_if_cleared(lane: LaneState, car: CarState) -> void:
+	if car.intersection_phase == INTERSECTION_SOURCE_RESERVED and car.distance >= lane.source_clear_distance:
+		_release_current_intersection_zone(lane, car)
+		car.intersection_phase = INTERSECTION_APPROACHING
+	elif car.intersection_phase == INTERSECTION_LATER_RESERVED and car.distance >= lane.intersection_clear_distance:
+		_release_current_intersection_zone(lane, car)
+		car.intersection_phase = INTERSECTION_CLEARED
+
+
+func _release_current_intersection_zone(lane: LaneState, car: CarState) -> void:
+	if car.current_intersection_zone == &"":
+		return
+	var zone_id := car.current_intersection_zone
+	if _intersection_coordinator.release_zone(car.id, zone_id):
+		intersection_reservation_released.emit(zone_id, lane.id, car.id)
+	car.current_intersection_zone = &""
+
+
+func _is_oldest_zone_request(zone_id: StringName, request_order: int) -> bool:
+	for lane: LaneState in _lanes:
+		if lane.pending_spawn_request_order > 0 and lane.source_zone_id == zone_id and lane.pending_spawn_request_order < request_order:
+			return false
+		for waiting_car: CarState in lane.cars:
+			if waiting_car.intersection_phase == INTERSECTION_WAITING and lane.later_zone_id == zone_id and waiting_car.reservation_request_order < request_order:
+				return false
+	return true
+
+
 func _spawn_due_cars() -> void:
 	for lane: LaneState in _lanes:
 		if _simulation_time < lane.next_spawn_time:
 			continue
+		if lane.pending_spawn_request_order == 0:
+			lane.pending_spawn_request_order = _next_reservation_request_order
+			_next_reservation_request_order += 1
 		if get_active_car_count() >= max_active_cars or not _lane_can_spawn(lane):
 			lane.next_spawn_time = _simulation_time + _rng.randf_range(spawn_retry_min, spawn_retry_max)
 			continue
-		_spawn_car(lane)
-		lane.next_spawn_time = _simulation_time + _random_spawn_interval()
+		if _try_spawn_with_source_reservation(lane):
+			lane.next_spawn_time = _simulation_time + _random_spawn_interval()
+		else:
+			lane.next_spawn_time = _simulation_time + _rng.randf_range(spawn_retry_min, spawn_retry_max)
+
+
+func _try_spawn_with_source_reservation(lane: LaneState) -> bool:
+	if not _is_oldest_zone_request(lane.source_zone_id, lane.pending_spawn_request_order):
+		return false
+	var car_id := _next_car_id
+	if not _intersection_coordinator.request_entry(car_id, lane.id, lane.source_zone_id):
+		return false
+	if not _spawn_car(lane):
+		_intersection_coordinator.release_zone(car_id, lane.source_zone_id)
+		return false
+	lane.pending_spawn_request_order = 0
+	intersection_reservation_granted.emit(lane.source_zone_id, lane.id, car_id)
+	return true
 
 
 func _lane_can_spawn(lane: LaneState) -> bool:
@@ -294,16 +469,18 @@ func _lane_can_spawn(lane: LaneState) -> bool:
 	return true
 
 
-func _spawn_car(lane: LaneState) -> void:
+func _spawn_car(lane: LaneState) -> bool:
 	var car_node := _car_scene.instantiate() as Node3D
 	if car_node == null:
 		push_error("TrafficManager car scene did not instantiate as Node3D")
-		return
+		return false
 	_active_cars.add_child(car_node)
 	var car := CarState.new()
 	car.id = _next_car_id
 	_next_car_id += 1
 	car.node = car_node
+	car.current_intersection_zone = lane.source_zone_id
+	car.intersection_phase = INTERSECTION_SOURCE_RESERVED
 	car.desired_speed = _rng.randf_range(cruise_speed_min, cruise_speed_max)
 	_configure_car_visuals(car_node, BODY_COLORS[_rng.randi_range(0, BODY_COLORS.size() - 1)] as Color)
 	_set_car_opacity(0.0, car_node)
@@ -312,6 +489,7 @@ func _spawn_car(lane: LaneState) -> void:
 	lane.cars.append(car)
 	_apply_car_transform(lane, car)
 	car_spawned.emit(lane.id, car.id)
+	return true
 
 
 func _apply_car_transform(lane: LaneState, car: CarState) -> void:

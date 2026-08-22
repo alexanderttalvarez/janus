@@ -37,3 +37,5 @@ not implemented yet.
   visitor entry sources.
 - Traffic semantics remain in `World/TrafficLayout`; road visual scenes do not
   own lane paths or traffic-stop markers.
+- `World/TrafficLayout` also owns invisible per-corner intersection reservations;
+  a car must reserve a corner before spawning into or entering it.
