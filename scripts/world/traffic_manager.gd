@@ -319,6 +319,8 @@ func _apply_car_transform(lane: LaneState, car: CarState) -> void:
 		return
 	car.node.global_position = lane.start_position + lane.direction * car.distance
 	car.node.look_at(car.node.global_position + lane.direction, Vector3.UP)
+	# The sedan asset's authored forward axis is opposite Godot's look_at direction.
+	car.node.rotate_y(PI)
 
 
 func _configure_car_visuals(car_node: Node3D, body_color: Color) -> void:
