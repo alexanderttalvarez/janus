@@ -16,6 +16,9 @@ var boundary: Rect2i = Rect2i()
 ## Pedestrian-only boundary (cross-plot connections, road-level).
 var pedestrian_boundary: Rect2i = Rect2i()
 
+## Width of the pedestrian ring in tiles/meters.
+var pedestrian_margin: int = 5
+
 ## Cross-plot connections (empty in MVP).
 var connections: Array = []  # Array[PlotConnection]
 
@@ -24,15 +27,14 @@ var spawn_points: Array[Dictionary] = []
 
 
 ## Derive stable visitor spawn points from the plot boundary.
-func initialize_spawn_points(pedestrian_margin: float = 2.0) -> void:
+func initialize_spawn_points(pedestrian_margin_value: float = 5.0) -> void:
 	spawn_points.clear()
 	if boundary.size == Vector2i.ZERO:
 		return
-	var half_margin := pedestrian_margin * 0.5
-	var min_x := float(boundary.position.x) - half_margin
-	var min_z := float(boundary.position.y) - half_margin
-	var max_x := float(boundary.position.x + boundary.size.x) + half_margin
-	var max_z := float(boundary.position.y + boundary.size.y) + half_margin
+	var min_x := float(boundary.position.x) - pedestrian_margin_value
+	var min_z := float(boundary.position.y) - pedestrian_margin_value
+	var max_x := float(boundary.position.x + boundary.size.x) + pedestrian_margin_value
+	var max_z := float(boundary.position.y + boundary.size.y) + pedestrian_margin_value
 	spawn_points = [
 		{"id": "%s_corner_nw" % plot_id, "position": Vector3(min_x, 0.0, min_z), "direction": Vector3(1.0, 0.0, 1.0)},
 		{"id": "%s_corner_ne" % plot_id, "position": Vector3(max_x, 0.0, min_z), "direction": Vector3(-1.0, 0.0, 1.0)},
@@ -96,6 +98,7 @@ func serialize() -> Dictionary:
 		"floors": floor_data,
 		"boundary": {"x": boundary.position.x, "y": boundary.position.y, "w": boundary.size.x, "h": boundary.size.y},
 		"pedestrian_boundary": {"x": pedestrian_boundary.position.x, "y": pedestrian_boundary.position.y, "w": pedestrian_boundary.size.x, "h": pedestrian_boundary.size.y},
+		"pedestrian_margin": pedestrian_margin,
 		"spawn_points": spawn_data,
 	}
 
@@ -114,16 +117,9 @@ func deserialize(data: Dictionary) -> void:
 	var bd: Dictionary = data.get("boundary", {})
 	boundary = Rect2i(bd.get("x", 0), bd.get("y", 0), bd.get("w", 0), bd.get("h", 0))
 
-	var pd: Dictionary = data.get("pedestrian_boundary", {})
-	pedestrian_boundary = Rect2i(pd.get("x", 0), pd.get("y", 0), pd.get("w", 0), pd.get("h", 0))
-	spawn_points.clear()
-	for point_data: Dictionary in data.get("spawn_points", []):
-		var position_data: Dictionary = point_data.get("position", {})
-		var direction_data: Dictionary = point_data.get("direction", {})
-		spawn_points.append({
-			"id": point_data.get("id", ""),
-			"position": Vector3(position_data.get("x", 0.0), position_data.get("y", 0.0), position_data.get("z", 0.0)),
-			"direction": Vector3(direction_data.get("x", 0.0), direction_data.get("y", 0.0), direction_data.get("z", 0.0)),
-		})
-	if spawn_points.is_empty():
-		initialize_spawn_points()
+	pedestrian_margin = int(data.get("pedestrian_margin", 5))
+	pedestrian_boundary = Rect2i(
+		boundary.position - Vector2i(pedestrian_margin, pedestrian_margin),
+		boundary.size + Vector2i(pedestrian_margin * 2, pedestrian_margin * 2)
+	)
+	initialize_spawn_points(float(pedestrian_margin))

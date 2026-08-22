@@ -10,7 +10,7 @@ extends Node3D
 @export var plot_size: Vector2 = Vector2(25.0, 25.0)
 
 ## Width of the pedestrian ring in world units.
-@export var sidewalk_width: float = 2.0
+@export var sidewalk_width: float = 5.0
 
 ## Distance between perimeter waypoints.
 @export var waypoint_spacing: float = 1.0

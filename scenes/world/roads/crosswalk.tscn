@@ -1,0 +1,32 @@
+[gd_scene format=3 uid="uid://cbqvbqvosik60"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mwvdt"]
+shading_mode = 0
+albedo_color = Color(0.96, 0.96, 0.92, 1)
+
+[node name="Crosswalk" type="Node3D" unique_id=1664077858]
+
+[node name="Stripe_01" type="CSGBox3D" parent="." unique_id=1256778111]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, -2)
+size = Vector3(5, 0.025, 0.5)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="Stripe_02" type="CSGBox3D" parent="." unique_id=1523769918]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, -1)
+size = Vector3(5, 0.025, 0.5)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="Stripe_03" type="CSGBox3D" parent="." unique_id=830879468]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 0)
+size = Vector3(5, 0.025, 0.5)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="Stripe_04" type="CSGBox3D" parent="." unique_id=1424518118]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 1)
+size = Vector3(5, 0.025, 0.5)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="Stripe_05" type="CSGBox3D" parent="." unique_id=1098611707]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 2)
+size = Vector3(5, 0.025, 0.5)
+material = SubResource("StandardMaterial3D_mwvdt")

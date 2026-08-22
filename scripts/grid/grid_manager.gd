@@ -17,6 +17,9 @@ const DEFAULT_PLOT: String = "plot_0"
 ## Default floor level (ground floor).
 const GROUND_FLOOR: String = "G"
 
+## Width of the pedestrian ring around each plot in tiles/meters.
+const DEFAULT_PEDESTRIAN_MARGIN: int = 5
+
 ## Tile size in world units. Matches the 1.0-unit visual tile grid in floor.tscn.
 const TILE_SIZE: float = 1.0
 
@@ -52,11 +55,12 @@ func create_plot(
 	var plot := PlotData.new()
 	plot.plot_id = plot_id
 	plot.boundary = boundary if boundary != Rect2i() else Rect2i(0, 0, width, height)
+	plot.pedestrian_margin = DEFAULT_PEDESTRIAN_MARGIN
 	plot.pedestrian_boundary = Rect2i(
-		plot.boundary.position - Vector2i(2, 2),
-		plot.boundary.size + Vector2i(4, 4)
+		plot.boundary.position - Vector2i(plot.pedestrian_margin, plot.pedestrian_margin),
+		plot.boundary.size + Vector2i(plot.pedestrian_margin * 2, plot.pedestrian_margin * 2)
 	)
-	plot.initialize_spawn_points()
+	plot.initialize_spawn_points(float(plot.pedestrian_margin))
 
 	var footprint: Array
 	if not footprint_path.is_empty():

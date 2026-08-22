@@ -1,0 +1,71 @@
+[gd_scene format=3 uid="uid://bjgx2nrahet8x"]
+
+[ext_resource type="PackedScene" uid="uid://cbqvbqvosik60" path="res://scenes/world/roads/crosswalk.tscn" id="1_kbm1k"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_e1i65"]
+albedo_color = Color(0.075, 0.085, 0.095, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="BoxMesh_kbm1k"]
+size = Vector3(35, 0.1, 6)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_8c1vm"]
+albedo_color = Color(0.55, 0.57, 0.58, 1)
+roughness = 0.85
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_mwvdt"]
+shading_mode = 0
+albedo_color = Color(0.96, 0.96, 0.92, 1)
+
+[node name="RoadSide" type="Node3D" unique_id=712253612]
+
+[node name="Surface" type="MeshInstance3D" parent="." unique_id=415531033]
+material_override = SubResource("StandardMaterial3D_e1i65")
+mesh = SubResource("BoxMesh_kbm1k")
+
+[node name="CurbOuter" type="CSGBox3D" parent="." unique_id=992871288]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, -3.05)
+size = Vector3(35, 0.18, 0.2)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="CurbInner" type="CSGBox3D" parent="." unique_id=1273346111]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.09, 3.05)
+size = Vector3(25, 0.18, 0.2)
+material = SubResource("StandardMaterial3D_8c1vm")
+
+[node name="CenterLine_01" type="CSGBox3D" parent="." unique_id=2085854143]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -12.5, 0.065, 0)
+size = Vector3(2, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="CenterLine_02" type="CSGBox3D" parent="." unique_id=2127973436]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8.5, 0.065, 0)
+size = Vector3(2, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="CenterLine_03" type="CSGBox3D" parent="." unique_id=1963889913]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.5, 0.065, 0)
+size = Vector3(2, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="CenterLine_04" type="CSGBox3D" parent="." unique_id=839538277]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.5, 0.065, 0)
+size = Vector3(2, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="CenterLine_05" type="CSGBox3D" parent="." unique_id=592229866]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.5, 0.065, 0)
+size = Vector3(2, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="CenterLine_06" type="CSGBox3D" parent="." unique_id=388636520]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0.065, 0)
+size = Vector3(2, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="PedestrianEdge" type="CSGBox3D" parent="." unique_id=483829102]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.065, 2.82)
+size = Vector3(25, 0.025, 0.12)
+material = SubResource("StandardMaterial3D_mwvdt")
+
+[node name="Crosswalk" type="Node3D" parent="." unique_id=1664077858 instance=ExtResource("1_kbm1k")]

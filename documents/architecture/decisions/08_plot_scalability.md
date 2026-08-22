@@ -21,7 +21,8 @@ GridManager
 │   └── "plot_0" (PlotData)
 │       ├── floors: Dictionary[String, FloorGrid]
 │       ├── boundary: Rect2i
-│       ├── pedestrian_boundary: Rect2i
+│       ├── pedestrian_boundary: Rect2i  # default 5-tile margin
+│       ├── pedestrian_margin: int
 │       ├── spawn_points: Array[SpawnPointData]  # four derived corner anchors
 │       └── connections: Array[PlotConnection]  # empty in MVP
 ```
@@ -36,7 +37,7 @@ Each plot derives four stable spawn points from its building and pedestrian boun
 - `plot_id_corner_sw`
 
 The points are positioned at the four pedestrian-ring corners using the plot
-geometry and a configurable pedestrian margin. They are data owned by
+geometry and a configurable pedestrian margin (5 tiles by default). They are data owned by
 `PlotData`; `PedestrianArea` only provides traversal geometry, and
 `VisitorManager` consumes the points for spawning and voluntary exits.
 

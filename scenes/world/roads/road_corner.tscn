@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://lhbxtcqddpek"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_e1i65"]
+albedo_color = Color(0.075, 0.085, 0.095, 1)
+roughness = 0.92
+
+[sub_resource type="BoxMesh" id="BoxMesh_3x1ow"]
+size = Vector3(6, 0.1, 6)
+
+[node name="RoadCorner" type="Node3D" unique_id=1462758133]
+
+[node name="Surface" type="MeshInstance3D" parent="." unique_id=813858663]
+material_override = SubResource("StandardMaterial3D_e1i65")
+mesh = SubResource("BoxMesh_3x1ow")
