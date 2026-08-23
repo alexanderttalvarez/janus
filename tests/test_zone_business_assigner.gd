@@ -12,6 +12,7 @@ func _init() -> void:
 	_test_eligibility_and_purity()
 	_test_balanced_deterministic_ordering()
 	_test_catalog_and_parcel_persistence()
+	_test_non_rectangular_parcel_core_persistence_and_label_anchor()
 	print("ZoneBusinessAssigner tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 
@@ -113,3 +114,21 @@ func _test_catalog_and_parcel_persistence() -> void:
 		"assigned subtype ID persists with parcel serialization"
 	)
 	_assert(restored.display_number == 17, "parcel display number persists with parcel serialization")
+
+
+func _test_non_rectangular_parcel_core_persistence_and_label_anchor() -> void:
+	var parcel := Parcel.new()
+	var core_tiles: Array[Vector2i] = [
+		Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1),
+	]
+	var final_tiles: Array[Vector2i] = core_tiles.duplicate()
+	final_tiles.append(Vector2i(0, 2))
+	parcel.set_geometry(final_tiles, [])
+	parcel.set_core_geometry(core_tiles)
+	var restored := Parcel.deserialize(parcel.serialize())
+	_assert(restored.core_tiles == core_tiles, "rectangular core geometry persists with parcel serialization")
+	_assert(restored.core_bounds == Rect2i(0, 0, 2, 2), "rectangular core bounds persist after restoration")
+	_assert(
+		restored.label_anchor_tile() == Vector2i(0, 1),
+		"non-rectangular parcel label anchor remains inside the footprint near its centroid"
+	)

@@ -9,7 +9,12 @@ var id: String = ""
 ## Globally unique, positive debug display number allocated by ZoneManager.
 var display_number: int = 0
 
-## Canonically sorted tile positions in this parcel.
+## Canonically sorted rectangular core geometry allocated during split phase one.
+var core_tiles: Array[Vector2i] = []
+var core_bounds: Rect2i = Rect2i()
+
+## Canonically sorted final tile positions after residual growth.
+
 var tiles: Array[Vector2i] = []
 
 ## Axis-aligned bounds containing exactly the parcel tiles.
@@ -49,10 +54,43 @@ func set_geometry(p_tiles: Array[Vector2i], p_frontage_edges: Array[Dictionary])
 	bounds = _calculate_bounds(tiles)
 
 
+func set_core_geometry(p_tiles: Array[Vector2i]) -> void:
+	core_tiles = p_tiles.duplicate()
+	core_tiles.sort_custom(_sort_tile_positions)
+	core_bounds = _calculate_bounds(core_tiles)
+
+
+## Choose a deterministic final-parcel tile nearest its geometric centroid.
+## This keeps non-rectangular parcel labels inside the parcel footprint.
+func label_anchor_tile() -> Vector2i:
+	if tiles.is_empty():
+		return Vector2i.ZERO
+	var centroid := Vector2.ZERO
+	for tile: Vector2i in tiles:
+		centroid += Vector2(float(tile.x) + 0.5, float(tile.y) + 0.5)
+	centroid /= float(tiles.size())
+
+	var selected := tiles[0]
+	var best_distance_squared := Vector2(float(selected.x) + 0.5, float(selected.y) + 0.5).distance_squared_to(centroid)
+	for tile: Vector2i in tiles:
+		var tile_center := Vector2(float(tile.x) + 0.5, float(tile.y) + 0.5)
+		var distance_squared := tile_center.distance_squared_to(centroid)
+		if distance_squared < best_distance_squared or (
+			is_equal_approx(distance_squared, best_distance_squared) and _sort_tile_positions(tile, selected)
+		):
+			selected = tile
+			best_distance_squared = distance_squared
+	return selected
+
+
 func serialize() -> Dictionary:
 	var serialized_tiles: Array[Dictionary] = []
 	for tile: Vector2i in tiles:
 		serialized_tiles.append({"x": tile.x, "y": tile.y})
+
+	var serialized_core_tiles: Array[Dictionary] = []
+	for tile: Vector2i in core_tiles:
+		serialized_core_tiles.append({"x": tile.x, "y": tile.y})
 
 	var serialized_frontage: Array[Dictionary] = []
 	for edge: Dictionary in frontage_edges:
@@ -70,6 +108,7 @@ func serialize() -> Dictionary:
 		"id": id,
 		"display_number": display_number,
 		"tiles": serialized_tiles,
+		"core_tiles": serialized_core_tiles,
 		"frontage_edges": serialized_frontage,
 		"assigned_subtype_id": assigned_subtype_id,
 		"has_tenant": has_tenant,
@@ -85,6 +124,10 @@ static func deserialize(data: Dictionary) -> Parcel:
 	for tile_data: Dictionary in data.get("tiles", []):
 		restored_tiles.append(Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)))
 
+	var restored_core_tiles: Array[Vector2i] = []
+	for tile_data: Dictionary in data.get("core_tiles", []):
+		restored_core_tiles.append(Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)))
+
 	var restored_frontage: Array[Dictionary] = []
 	for edge_data: Dictionary in data.get("frontage_edges", []):
 		var tile_data: Dictionary = edge_data.get("tile", {})
@@ -98,6 +141,8 @@ static func deserialize(data: Dictionary) -> Parcel:
 		})
 
 	parcel.set_geometry(restored_tiles, restored_frontage)
+	# Legacy saves predate core geometry; adopt the old footprint as a compatibility core.
+	parcel.set_core_geometry(restored_core_tiles if not restored_core_tiles.is_empty() else restored_tiles)
 	parcel.assigned_subtype_id = data.get("assigned_subtype_id", "")
 	parcel.has_tenant = data.get("has_tenant", false)
 	parcel.tenant_id = data.get("tenant_id", "")

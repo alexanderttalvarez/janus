@@ -60,15 +60,28 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 	if zone == null:
 		return
 	_assert(zone.plot_id == "test_plot", "zone persists explicit plot ownership")
-	_assert(zone.parcels.size() == 6, "zone commit stores six parcels")
+	_assert(zone.parcel_layout_seed > 0, "zone commit allocates a persistent parcel layout seed")
+	_assert(
+		zone.parcels.size() == 4,
+		"zone commit stores four legal 2x2+ Retail cores for the constrained frontage"
+	)
 	var ids: Dictionary = {}
 	var display_numbers: Dictionary = {}
 	for parcel: Parcel in zone.parcels:
 		ids[parcel.id] = true
 		display_numbers[parcel.display_number] = true
 		_assert(parcel.display_number > 0, "committed parcel display number is positive")
+		_assert(parcel.core_bounds.size.x >= 2, "committed core is at least two tiles wide")
+		_assert(parcel.core_bounds.size.y >= 2, "committed core is at least two tiles deep")
+		_assert(parcel.core_tiles.size() >= 6, "committed Retail core meets the six-tile minimum")
 	_assert(ids.size() == zone.parcels.size(), "committed parcel IDs are globally unique")
 	_assert(display_numbers.size() == zone.parcels.size(), "committed parcel display numbers are globally unique")
+	var serialized_zones: Dictionary = zone_manager.serialize().get("zones", {})
+	var serialized_zone: Dictionary = serialized_zones.get(zone.id, {})
+	_assert(
+		int(serialized_zone.get("parcel_layout_seed", 0)) == zone.parcel_layout_seed,
+		"zone layout seed persists through ZoneManager serialization"
+	)
 	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
 	_assert(first_tile.zone_id == zone.id, "grid markings are written only after successful split")
 	_assert(zone_manager.last_assignment_result != null, "successful split produces a debug assignment result")
@@ -94,6 +107,7 @@ func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void
 		_assert(false, "successful zone exists before successful edit")
 		return
 	var original_display_numbers: Dictionary = {}
+	var original_layout_seed := zone.parcel_layout_seed
 	for parcel: Parcel in zone.parcels:
 		original_display_numbers[parcel.id] = parcel.display_number
 	zone.parcels[0].assigned_subtype_id = "stale.subtype"
@@ -106,6 +120,7 @@ func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void
 		"successful edit recalculates parcel subtype assignments"
 	)
 	_assert(updated.subtype.is_empty(), "successful debug edit leaves legacy zone subtype untouched")
+	_assert(updated.parcel_layout_seed == original_layout_seed, "successful edit preserves the parcel layout seed")
 	for parcel: Parcel in updated.parcels:
 		_assert(
 			parcel.display_number == original_display_numbers.get(parcel.id, 0),

@@ -12,6 +12,9 @@ const MINIMUM_AREA_BY_ZONE_TYPE: Dictionary = {
 	"Anchor": 30,
 }
 
+## Every phase-one parcel core must have at least this width and depth.
+const MINIMUM_CORE_DIMENSION: int = 2
+
 const CARDINAL_DIRECTIONS: Array[Vector2i] = [
 	Vector2i.UP,
 	Vector2i.LEFT,
@@ -20,7 +23,7 @@ const CARDINAL_DIRECTIONS: Array[Vector2i] = [
 ]
 
 
-## Split a zone into valid, fronted Tenant rectangles without mutating input.
+## Split a zone into fronted rectangular cores, then grow reachable residual Tenant tiles without mutating input.
 static func split(zone: ZoneData, floor_grid: FloorGrid, plot: PlotData) -> SplitResult:
 	if zone == null or floor_grid == null or plot == null:
 		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "MISSING_SPLIT_CONTEXT")
@@ -70,8 +73,18 @@ static func split(zone: ZoneData, floor_grid: FloorGrid, plot: PlotData) -> Spli
 			return SplitResult.failure(SplitResult.Status.NO_VALID_FRONTAGE, "NO_VALID_FRONTAGE")
 		return SplitResult.failure(SplitResult.Status.INSUFFICIENT_RENTABLE_SPACE, "NO_MINIMUM_SIZED_FRONTED_PARCEL")
 
+	# Phase two begins only after every component has allocated its rectangular cores.
+	var residual_tile_set := _tile_set(residual_tiles)
+	_grow_reachable_residuals(parcels, residual_tile_set, zone.parcel_layout_seed)
+	residual_tiles = _sorted_set_positions(residual_tile_set)
+	if not residual_tiles.is_empty():
+		diagnostics.append("TENANT_RESIDUALS_PROPOSED_FOR_DECORATION")
+
+	# Final parcels may be non-rectangular, so rebuild their full geometry and frontage metadata.
+	for parcel: Parcel in parcels:
+		var final_tiles := _normalized_tiles(parcel.tiles)
+		parcel.set_geometry(final_tiles, _frontage_edges(final_tiles, zone_tile_set, zone, floor_grid, plot))
 	parcels.sort_custom(_compare_parcels)
-	residual_tiles = _normalized_tiles(residual_tiles)
 	return SplitResult.success(parcels, residual_tiles, _normalized_diagnostics(diagnostics))
 
 
@@ -113,12 +126,13 @@ static func _split_component(
 
 		var parcel := Parcel.new()
 		parcel.set_geometry(candidate.get("tiles", []), candidate.get("frontage_edges", []))
+		parcel.set_core_geometry(parcel.tiles)
 		parcels.append(parcel)
 		for tile: Vector2i in parcel.tiles:
 			available.erase(tile)
 
-	if not available.is_empty():
-		diagnostics.append("TENANT_RESIDUALS_PROPOSED_FOR_DECORATION")
+	if parcels.is_empty() and not available.is_empty():
+		diagnostics.append("COMPONENT_NO_VALID_RECTANGULAR_CORE")
 	return {
 		"parcels": parcels,
 		"residual_tiles": _sorted_set_positions(available),
@@ -164,8 +178,8 @@ static func _select_candidate(
 	return candidates[0]
 
 
-## Grow from a frontage seed inward. It never expands toward the access edge,
-## so the seed remains a valid tenant-door candidate.
+## Select the best available rectangular core that preserves the supplied frontage seed.
+## Final parcel growth is intentionally deferred until every core has been selected.
 static func _grow_inward_rectangle(
 	edge: Dictionary, available: Dictionary, desired_area: int, minimum_area: int
 ) -> Rect2i:
@@ -174,31 +188,151 @@ static func _grow_inward_rectangle(
 	if outward == Vector2i.ZERO or not available.has(seed):
 		return Rect2i()
 
-	var bounds := Rect2i(seed, Vector2i.ONE)
-	var inward := -outward
-	var side_a := Vector2i.LEFT if absi(outward.y) == 1 else Vector2i.UP
-	var side_b := Vector2i.RIGHT if absi(outward.y) == 1 else Vector2i.DOWN
-
-	while _bounds_area(bounds) < desired_area:
-		var inward_bounds := _expanded_bounds(bounds, inward)
-		if _bounds_are_available(inward_bounds, available):
-			bounds = inward_bounds
-			continue
-		if _bounds_area(bounds) >= minimum_area:
-			break
-		var side_a_bounds := _expanded_bounds(bounds, side_a)
-		if _bounds_are_available(side_a_bounds, available):
-			bounds = side_a_bounds
-			continue
-		var side_b_bounds := _expanded_bounds(bounds, side_b)
-		if _bounds_are_available(side_b_bounds, available):
-			bounds = side_b_bounds
-			continue
-		break
-
-	if _bounds_area(bounds) < minimum_area:
+	var available_bounds := _bounds_for_tile_set(available)
+	if available_bounds.size.x < MINIMUM_CORE_DIMENSION or available_bounds.size.y < MINIMUM_CORE_DIMENSION:
 		return Rect2i()
-	return bounds
+	var dimensions: Array[Vector2i] = []
+	for width: int in range(MINIMUM_CORE_DIMENSION, available_bounds.size.x + 1):
+		for height: int in range(MINIMUM_CORE_DIMENSION, available_bounds.size.y + 1):
+			if width * height >= minimum_area:
+				dimensions.append(Vector2i(width, height))
+	dimensions.sort_custom(func(first: Vector2i, second: Vector2i) -> bool:
+		var first_difference := absi(first.x * first.y - desired_area)
+		var second_difference := absi(second.x * second.y - desired_area)
+		if first_difference != second_difference:
+			return first_difference < second_difference
+		var first_area := first.x * first.y
+		var second_area := second.x * second.y
+		if first_area != second_area:
+			return first_area > second_area
+		return first.y < second.y or (first.y == second.y and first.x < second.x)
+	)
+
+	var selected := Rect2i()
+	for size: Vector2i in dimensions:
+		for candidate_bounds: Rect2i in _bounds_from_frontage_seed(seed, outward, size):
+			if not _bounds_are_available(candidate_bounds, available):
+				continue
+			if selected.size == Vector2i.ZERO or _is_better_core_bounds(candidate_bounds, selected, desired_area):
+				selected = candidate_bounds
+		var selected_difference := absi(_bounds_area(selected) - desired_area) if selected.size != Vector2i.ZERO else -1
+		var current_difference := absi(size.x * size.y - desired_area)
+		if selected_difference >= 0 and current_difference > selected_difference:
+			break
+	return selected
+
+
+static func _bounds_for_tile_set(tile_set: Dictionary) -> Rect2i:
+	var positions := _sorted_set_positions(tile_set)
+	if positions.is_empty():
+		return Rect2i()
+	var min_x: int = positions[0].x
+	var max_x: int = positions[0].x
+	var min_y: int = positions[0].y
+	var max_y: int = positions[0].y
+	for position: Vector2i in positions:
+		min_x = mini(min_x, position.x)
+		max_x = maxi(max_x, position.x)
+		min_y = mini(min_y, position.y)
+		max_y = maxi(max_y, position.y)
+	return Rect2i(min_x, min_y, max_x - min_x + 1, max_y - min_y + 1)
+
+
+static func _bounds_from_frontage_seed(seed: Vector2i, outward: Vector2i, size: Vector2i) -> Array[Rect2i]:
+	var candidates: Array[Rect2i] = []
+	if absi(outward.y) == 1:
+		var y := seed.y if outward == Vector2i.UP else seed.y - size.y + 1
+		for horizontal_offset: int in range(size.x):
+			candidates.append(Rect2i(Vector2i(seed.x - horizontal_offset, y), size))
+	else:
+		var x := seed.x if outward == Vector2i.LEFT else seed.x - size.x + 1
+		for vertical_offset: int in range(size.y):
+			candidates.append(Rect2i(Vector2i(x, seed.y - vertical_offset), size))
+	return candidates
+
+
+static func _is_better_core_bounds(candidate: Rect2i, selected: Rect2i, desired_area: int) -> bool:
+	var candidate_difference := absi(_bounds_area(candidate) - desired_area)
+	var selected_difference := absi(_bounds_area(selected) - desired_area)
+	if candidate_difference != selected_difference:
+		return candidate_difference < selected_difference
+	var candidate_area := _bounds_area(candidate)
+	var selected_area := _bounds_area(selected)
+	if candidate_area != selected_area:
+		return candidate_area > selected_area
+	if candidate.position != selected.position:
+		return _compare_positions(candidate.position, selected.position)
+	return candidate.size.y < selected.size.y or (
+		candidate.size.y == selected.size.y and candidate.size.x < selected.size.x
+	)
+
+
+## Assign every residual Tenant tile reachable from a core using simultaneous breadth-first growth.
+static func _grow_reachable_residuals(parcels: Array[Parcel], residual_tiles: Dictionary, layout_seed: int) -> void:
+	if parcels.is_empty() or residual_tiles.is_empty():
+		return
+	parcels.sort_custom(_compare_parcels)
+	var pending_claims: Dictionary = {}
+	for parcel_index: int in range(parcels.size()):
+		for core_tile: Vector2i in parcels[parcel_index].tiles:
+			for direction: Vector2i in CARDINAL_DIRECTIONS:
+				var neighbor := core_tile + direction
+				if residual_tiles.has(neighbor):
+					_append_growth_claim(pending_claims, neighbor, parcel_index)
+
+	while not pending_claims.is_empty():
+		var current_tiles := _sorted_set_positions(pending_claims)
+		var winners: Dictionary = {}
+		for tile_position: Vector2i in current_tiles:
+			var candidate_owners: Array[int] = []
+			for owner: int in pending_claims.get(tile_position, []):
+				candidate_owners.append(owner)
+			winners[tile_position] = _select_growth_owner(candidate_owners, tile_position, layout_seed)
+
+		for tile_position: Vector2i in current_tiles:
+			if not residual_tiles.has(tile_position):
+				continue
+			var winning_owner: int = winners.get(tile_position, -1)
+			if winning_owner < 0:
+				continue
+			residual_tiles.erase(tile_position)
+			parcels[winning_owner].tiles.append(tile_position)
+
+		var next_claims: Dictionary = {}
+		for tile_position: Vector2i in current_tiles:
+			var winning_owner: int = winners.get(tile_position, -1)
+			if winning_owner < 0:
+				continue
+			for direction: Vector2i in CARDINAL_DIRECTIONS:
+				var neighbor := tile_position + direction
+				if residual_tiles.has(neighbor):
+					_append_growth_claim(next_claims, neighbor, winning_owner)
+		pending_claims = next_claims
+
+	for parcel: Parcel in parcels:
+		parcel.tiles = _normalized_tiles(parcel.tiles)
+
+
+static func _append_growth_claim(claims: Dictionary, tile_position: Vector2i, owner_index: int) -> void:
+	var owners: Array[int] = []
+	for existing_owner: int in claims.get(tile_position, []):
+		owners.append(existing_owner)
+	if not owners.has(owner_index):
+		owners.append(owner_index)
+	claims[tile_position] = owners
+
+
+static func _select_growth_owner(candidate_owners: Array[int], tile_position: Vector2i, layout_seed: int) -> int:
+	if candidate_owners.is_empty():
+		return -1
+	var ordered_owners := candidate_owners.duplicate()
+	ordered_owners.sort()
+	if ordered_owners.size() == 1:
+		return ordered_owners[0]
+	var hash_value: int = ("%d:%d:%d" % [layout_seed, tile_position.x, tile_position.y]).hash()
+	if hash_value < 0:
+		hash_value = -hash_value
+	return ordered_owners[hash_value % ordered_owners.size()]
 
 
 static func _frontage_edges(
@@ -310,22 +444,6 @@ static func _sorted_set_positions(tile_set: Dictionary) -> Array[Vector2i]:
 	return positions
 
 
-static func _expanded_bounds(bounds: Rect2i, direction: Vector2i) -> Rect2i:
-	var position := bounds.position
-	var size := bounds.size
-	if direction == Vector2i.UP:
-		position.y -= 1
-		size.y += 1
-	elif direction == Vector2i.DOWN:
-		size.y += 1
-	elif direction == Vector2i.LEFT:
-		position.x -= 1
-		size.x += 1
-	elif direction == Vector2i.RIGHT:
-		size.x += 1
-	return Rect2i(position, size)
-
-
 static func _bounds_are_available(bounds: Rect2i, available: Dictionary) -> bool:
 	if bounds.size.x <= 0 or bounds.size.y <= 0:
 		return false
@@ -387,7 +505,9 @@ static func _compare_candidates(a: Dictionary, b: Dictionary) -> bool:
 
 
 static func _compare_parcels(a: Parcel, b: Parcel) -> bool:
-	return _compare_positions(a.bounds.position, b.bounds.position)
+	var a_anchor := a.core_bounds.position if not a.core_tiles.is_empty() else a.bounds.position
+	var b_anchor := b.core_bounds.position if not b.core_tiles.is_empty() else b.bounds.position
+	return _compare_positions(a_anchor, b_anchor)
 
 
 static func _direction_rank(direction: Vector2i) -> int:

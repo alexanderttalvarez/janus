@@ -134,11 +134,8 @@ func _render_name_label(floor: Floor, parcel_group: Node3D, parcel: Parcel) -> v
 		display_name = "Unassigned Parcel"
 	var label := _make_label(display_name, NAME_FONT_SIZE)
 	label.name = "Name"
-	var grid_center := Vector2(
-		float(parcel.bounds.position.x) + float(parcel.bounds.size.x) * 0.5,
-		float(parcel.bounds.position.y) + float(parcel.bounds.size.y) * 0.5
-	)
-	label.position = floor.grid_coordinate_to_local(grid_center) + Vector3(0.0, NAME_LABEL_Y_OFFSET, 0.0)
+	var anchor_tile := parcel.label_anchor_tile()
+	label.position = floor.tile_center_to_local(anchor_tile) + Vector3(0.0, NAME_LABEL_Y_OFFSET, 0.0)
 	parcel_group.add_child(label)
 
 

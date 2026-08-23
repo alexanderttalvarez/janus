@@ -9,10 +9,10 @@ enum Status { SUCCESS, INVALID_ZONE_GEOMETRY, NO_VALID_FRONTAGE, INSUFFICIENT_RE
 ## Overall result of the split attempt.
 var status: Status = Status.INVALID_ZONE_GEOMETRY
 
-## Valid, non-overlapping fronted rectangular parcels.
+## Valid, non-overlapping fronted parcels with rectangular cores and 4-connected final footprints.
 var parcels: Array[Parcel] = []
 
-## Tenant tiles proposed for Decoration conversion on successful splits.
+## Tenant tiles unreachable from every valid core and proposed for Decoration conversion.
 var residual_tiles: Array[Vector2i] = []
 
 ## Stable diagnostics for future UI and notification handling.

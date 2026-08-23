@@ -37,6 +37,9 @@ var subtype: String = ""
 ## All tile positions belonging to this zone.
 @export var tiles: Array[Vector2i] = []
 
+## Persistent seed for deterministic parcel-growth tie resolution.
+@export var parcel_layout_seed: int = 0
+
 ## Per-tile typology classification.
 var typologies: Dictionary = {}  # Dictionary[Vector2i, GridTile.TileTypology]
 

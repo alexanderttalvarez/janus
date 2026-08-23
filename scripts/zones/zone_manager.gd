@@ -48,6 +48,7 @@ func create_zone(
 ) -> ZoneData:
 	var candidate := ZoneData.new()
 	candidate.id = _generate_zone_id()
+	candidate.parcel_layout_seed = _generate_parcel_layout_seed(candidate.id)
 	candidate.plot_id = plot_id
 	candidate.type = zone_type
 	candidate.floor = floor
@@ -210,6 +211,7 @@ func serialize() -> Dictionary:
 			"subtype": zone.subtype,
 			"floor": zone.floor,
 			"tiles": zone.tiles,
+			"parcel_layout_seed": zone.parcel_layout_seed,
 			"typologies": _serialize_typologies(zone.typologies),
 			"walls_enabled": zone.walls_enabled,
 			"zone_name": zone.zone_name,
@@ -238,6 +240,9 @@ func deserialize(data: Dictionary) -> void:
 		zone.subtype = zone_data.get("subtype", "")
 		zone.floor = zone_data.get("floor", GridManager.GROUND_FLOOR)
 		zone.tiles = zone_data.get("tiles", [])
+		zone.parcel_layout_seed = int(zone_data.get("parcel_layout_seed", _generate_parcel_layout_seed(zone.id)))
+		if zone.parcel_layout_seed <= 0:
+			zone.parcel_layout_seed = _generate_parcel_layout_seed(zone.id)
 		zone.typologies = _deserialize_typologies(zone_data.get("typologies", []))
 		zone.walls_enabled = zone_data.get("walls_enabled", true)
 		zone.zone_name = zone_data.get("zone_name", "")
@@ -376,6 +381,7 @@ func _copy_zone(source: ZoneData) -> ZoneData:
 	copy.subtype = source.subtype
 	copy.floor = source.floor
 	copy.tiles = source.tiles.duplicate()
+	copy.parcel_layout_seed = source.parcel_layout_seed
 	copy.typologies = source.typologies.duplicate()
 	copy.walls_enabled = source.walls_enabled
 	copy.zone_name = source.zone_name
@@ -389,6 +395,7 @@ func _copy_zone_state(source: ZoneData, destination: ZoneData) -> void:
 	destination.subtype = source.subtype
 	destination.floor = source.floor
 	destination.tiles = source.tiles.duplicate()
+	destination.parcel_layout_seed = source.parcel_layout_seed
 	destination.typologies = source.typologies.duplicate()
 	destination.walls_enabled = source.walls_enabled
 	destination.zone_name = source.zone_name
@@ -403,6 +410,12 @@ func _generate_zone_id() -> String:
 func _generate_parcel_id() -> String:
 	_parcel_counter += 1
 	return "parcel_%d" % _parcel_counter
+
+
+## Derive a stable random-looking seed from the persistent zone ID.
+func _generate_parcel_layout_seed(zone_id: String) -> int:
+	var seed: int = ("parcel_layout:%s" % zone_id).hash()
+	return -seed if seed < 0 else seed
 
 
 func _generate_parcel_display_number() -> int:
