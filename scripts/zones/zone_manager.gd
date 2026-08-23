@@ -58,15 +58,23 @@ func create_zone(
 
 	if not _validate_candidate_tiles(candidate, ""):
 		return null
-	if not _prepare_split(candidate):
+	var transaction := _prepare_access_transaction(candidate, null)
+	if transaction.is_empty():
 		return null
-
-	_assign_persistent_ids(candidate.parcels, [])
-	_assign_debug_subtypes(candidate)
+	candidate = transaction[0]
 	zones[candidate.id] = candidate
-	_mark_zone_tiles(candidate)
+	for committed_zone: ZoneData in transaction:
+		if committed_zone != candidate:
+			var existing: ZoneData = zones.get(committed_zone.id, null)
+			if existing != null:
+				_copy_zone_state(committed_zone, existing)
+				committed_zone = existing
+		_mark_zone_tiles(committed_zone)
 	_rebuild_pathfinding()
 	EventBus.zone_created.emit(candidate.id, candidate.type, candidate.tiles.size())
+	for committed_zone: ZoneData in transaction:
+		if committed_zone != candidate:
+			EventBus.zone_modified.emit(committed_zone.id)
 	return candidate
 
 
@@ -92,17 +100,25 @@ func modify_zone(
 	)
 	if not _validate_candidate_tiles(candidate, zone.id):
 		return null
-	if not _prepare_split(candidate):
+	var transaction := _prepare_access_transaction(candidate, zone)
+	if transaction.is_empty():
 		return null
-
-	_assign_persistent_ids(candidate.parcels, zone.parcels)
-	_assign_debug_subtypes(candidate)
+	candidate = transaction[0]
 	var old_tiles: Array[Vector2i] = zone.tiles.duplicate()
 	_clear_zone_tiles(old_tiles, zone.plot_id, zone.floor)
 	_copy_zone_state(candidate, zone)
+	for committed_zone: ZoneData in transaction:
+		if committed_zone != candidate:
+			var existing: ZoneData = zones.get(committed_zone.id, null)
+			if existing != null:
+				_copy_zone_state(committed_zone, existing)
+				_mark_zone_tiles(existing)
 	_mark_zone_tiles(zone)
 	_rebuild_pathfinding()
 	EventBus.zone_modified.emit(zone_id)
+	for committed_zone: ZoneData in transaction:
+		if committed_zone != candidate:
+			EventBus.zone_modified.emit(committed_zone.id)
 	return zone
 
 
@@ -256,14 +272,74 @@ func deserialize(data: Dictionary) -> void:
 # ── Atomic Split Preparation ───────────────────────────────────────────
 
 
-func _prepare_split(candidate: ZoneData) -> bool:
+func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -> Array[ZoneData]:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+		return []
+	var overlay: Dictionary = {}
+	if replaced_zone != null:
+		for tile_pos: Vector2i in replaced_zone.tiles:
+			overlay[tile_pos] = ""
+	for tile_pos: Vector2i in candidate.tiles:
+		overlay[tile_pos] = candidate.id
+	var context := FloorAccessContext.new(
+		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
+		grid_manager.get_plot(candidate.plot_id),
+		overlay
+	)
+	if not _prepare_split(candidate, context):
+		return []
+	var prior_parcels: Array[Parcel] = []
+	if replaced_zone != null:
+		prior_parcels = replaced_zone.parcels
+	_assign_persistent_ids(candidate.parcels, prior_parcels)
+	_assign_debug_subtypes(candidate)
+	var prepared: Array[ZoneData] = [candidate]
+	for affected_zone: ZoneData in _affected_zones(candidate, replaced_zone):
+		var affected_candidate := _copy_zone(affected_zone)
+		if not _prepare_split(affected_candidate, context):
+			return []
+		_assign_persistent_ids(affected_candidate.parcels, affected_zone.parcels)
+		_assign_debug_subtypes(affected_candidate)
+		prepared.append(affected_candidate)
+	return prepared
+
+
+func _affected_zones(candidate: ZoneData, replaced_zone: ZoneData) -> Array[ZoneData]:
+	var changed_tiles: Dictionary = {}
+	for tile_pos: Vector2i in candidate.tiles:
+		changed_tiles[tile_pos] = true
+	if replaced_zone != null:
+		for tile_pos: Vector2i in replaced_zone.tiles:
+			changed_tiles[tile_pos] = true
+	var affected: Array[ZoneData] = []
+	for zone_id: String in zones:
+		var zone: ZoneData = zones[zone_id]
+		if zone.id == candidate.id or zone.plot_id != candidate.plot_id or zone.floor != candidate.floor:
+			continue
+		var touches_changed_tile := false
+		for tile_pos: Vector2i in zone.tiles:
+			for direction: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+				if changed_tiles.has(tile_pos + direction):
+					touches_changed_tile = true
+					break
+			if touches_changed_tile:
+				break
+		if touches_changed_tile:
+			affected.append(zone)
+	affected.sort_custom(func(first: ZoneData, second: ZoneData) -> bool: return first.id < second.id)
+	return affected
+
+
+func _prepare_split(candidate: ZoneData, access_context: FloorAccessContext = null) -> bool:
 	var grid_manager := _get_grid_manager()
 	if grid_manager == null:
 		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
 		return false
 	var floor_grid := grid_manager.get_floor_grid(candidate.plot_id, candidate.floor)
 	var plot := grid_manager.get_plot(candidate.plot_id)
-	last_split_result = ZoneSplitter.split(candidate, floor_grid, plot)
+	last_split_result = ZoneSplitter.split(candidate, floor_grid, plot, access_context)
 	if not last_split_result.is_success():
 		return false
 	for residual_tile: Vector2i in last_split_result.residual_tiles:

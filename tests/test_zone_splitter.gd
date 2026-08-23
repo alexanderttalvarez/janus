@@ -10,6 +10,7 @@ var _failed: int = 0
 func _init() -> void:
 	_test_perimeter_rectangle_creates_valid_cores_and_full_coverage()
 	_test_residual_tiles_expand_from_cores()
+	_test_owned_unzoned_tiles_provide_implicit_frontage()
 	_test_internal_transit_provides_frontage_without_becoming_parcel_area()
 	_test_single_row_component_is_rejected_without_a_valid_core()
 	_test_interior_zone_without_frontage_is_rejected()
@@ -99,6 +100,21 @@ func _test_residual_tiles_expand_from_cores() -> void:
 	_assert(covered_tiles.size() == tiles.size(), "growth claims every reachable Tenant tile")
 
 
+func _test_owned_unzoned_tiles_provide_implicit_frontage() -> void:
+	var context := _make_context(8, 8)
+	var tiles: Array[Vector2i] = [
+		Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4),
+		Vector2i(4, 4), Vector2i(3, 5), Vector2i(4, 5),
+	]
+	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
+	_assert(result.is_success(), "owned built unzoned tiles provide implicit frontage")
+	_assert(result.parcels.size() == 1, "implicit frontage creates one valid Retail parcel")
+	_assert(
+		result.parcels[0].frontage_edges.any(func(edge: Dictionary) -> bool: return edge.get("access_kind") == "implicit_unzoned_circulation"),
+		"implicit frontage is recorded without mutating tile elements"
+	)
+
+
 func _test_internal_transit_provides_frontage_without_becoming_parcel_area() -> void:
 	var context := _make_context()
 	var tiles: Array[Vector2i] = []
@@ -142,6 +158,14 @@ func _test_interior_zone_without_frontage_is_rejected() -> void:
 		Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4),
 		Vector2i(4, 4), Vector2i(3, 5), Vector2i(4, 5),
 	]
+	var tile_set: Dictionary = {}
+	for tile: Vector2i in tiles:
+		tile_set[tile] = true
+	for tile: Vector2i in tiles:
+		for direction: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			var neighbor := tile + direction
+			if not tile_set.has(neighbor):
+				context.floor_grid.get_tile(neighbor.x, neighbor.y).owned = false
 	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
 	_assert(result.status == SplitResult.Status.NO_VALID_FRONTAGE, "interior zone without circulation is rejected")
 	_assert(result.parcels.is_empty(), "rejected zone returns no parcel")
