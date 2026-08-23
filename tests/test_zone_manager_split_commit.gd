@@ -10,6 +10,7 @@ var _failed: int = 0
 func _ready() -> void:
 	var context := _make_world()
 	_test_successful_creation_commits_parcels(context)
+	_test_preview_split_is_non_mutating(context)
 	_test_rejected_edit_leaves_committed_zone_unchanged(context)
 	print("ZoneManager split commit tests: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(0 if _failed == 0 else 1)
@@ -65,6 +66,30 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 	_assert(ids.size() == zone.parcels.size(), "committed parcel IDs are globally unique")
 	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
 	_assert(first_tile.zone_id == zone.id, "grid markings are written only after successful split")
+
+
+func _test_preview_split_is_non_mutating(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var grid_manager: GridManager = context.grid_manager
+	var existing_zone: ZoneData = zone_manager.zones.get("zone_1", null)
+	if existing_zone == null:
+		_assert(false, "successful zone exists before preview validation")
+		return
+	var committed_zone_count := zone_manager.zones.size()
+	var committed_tile_count := existing_zone.tiles.size()
+	var last_status := zone_manager.last_split_result.status
+	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
+	var committed_zone_id := first_tile.zone_id
+	var interior_tiles: Array[Vector2i] = [
+		Vector2i(1, 1), Vector2i(2, 1), Vector2i(1, 2),
+		Vector2i(2, 2), Vector2i(1, 3), Vector2i(2, 3),
+	]
+	var preview := zone_manager.preview_split("Retail", interior_tiles, "G", "test_plot")
+	_assert(preview.status == SplitResult.Status.NO_VALID_FRONTAGE, "preview reports rejected geometry")
+	_assert(zone_manager.zones.size() == committed_zone_count, "preview creates no zone")
+	_assert(existing_zone.tiles.size() == committed_tile_count, "preview preserves committed zone data")
+	_assert(first_tile.zone_id == committed_zone_id, "preview preserves grid markings")
+	_assert(zone_manager.last_split_result.status == last_status, "preview preserves last committed result")
 
 
 func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) -> void:

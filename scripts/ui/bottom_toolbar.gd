@@ -6,6 +6,7 @@ extends Control
 @onready var _mode_label: Label = $ModeLabel
 @onready var _buttons: HBoxContainer = $Buttons
 var _painting: bool = false
+var _finish_button: Button
 var _transit_button: Button
 var _door_mode: bool = false
 
@@ -47,9 +48,16 @@ func _enter_paint_mode(zone_type: String) -> void:
 		if tool and tool is ZoneTool:
 			if not (tool as ZoneTool).painting_state_changed.is_connected(_on_zone_painting_state_changed):
 				(tool as ZoneTool).painting_state_changed.connect(_on_zone_painting_state_changed)
+			if not (tool as ZoneTool).preview_validation_changed.is_connected(_on_preview_validation_changed):
+				(tool as ZoneTool).preview_validation_changed.connect(_on_preview_validation_changed)
 			(tool as ZoneTool).active_zone_type = zone_type
 			(tool as ZoneTool).is_active = true
-	_add_button("Finish Zone", func(): _exit_paint_mode())
+	_finish_button = _add_button("Finish Zone", func(): _exit_paint_mode())
+	_configure_finish_button(_finish_button)
+	if root:
+		var zone_tool := root.get_node_or_null("ZoneTool") as ZoneTool
+		if zone_tool:
+			_finish_button.disabled = not zone_tool.can_finish
 
 
 func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> void:
@@ -65,6 +73,11 @@ func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> vo
 	elif not has_tiles and _transit_button != null:
 		_transit_button.queue_free()
 		_transit_button = null
+
+
+func _on_preview_validation_changed(can_finish: bool, _status: int) -> void:
+	if _painting and _finish_button != null:
+		_finish_button.disabled = not can_finish
 
 
 func _enter_door_mode(remove_mode: bool) -> void:
@@ -105,14 +118,28 @@ func _exit_door_mode() -> void:
 
 
 func _exit_paint_mode() -> void:
-	_painting = false
 	var root := get_tree().current_scene
 	if root:
 		var tool: Node = root.get_node_or_null("ZoneTool")
 		if tool and tool is ZoneTool:
-			(tool as ZoneTool).finish()
+			if not (tool as ZoneTool).finish():
+				return
 			(tool as ZoneTool).is_active = false
+	_painting = false
 	GameManager.enter_observe_mode()
+
+
+func _configure_finish_button(button: Button) -> void:
+	# Enabled buttons inherit the regular toolbar theme. The red treatment is
+	# reserved for the disabled validation state.
+	button.add_theme_color_override("font_disabled_color", Color(1.0, 1.0, 1.0, 0.5))
+	var disabled_style := StyleBoxFlat.new()
+	disabled_style.bg_color = Color(0.85, 0.08, 0.08, 0.5)
+	disabled_style.corner_radius_top_left = 4
+	disabled_style.corner_radius_top_right = 4
+	disabled_style.corner_radius_bottom_left = 4
+	disabled_style.corner_radius_bottom_right = 4
+	button.add_theme_stylebox_override("disabled", disabled_style)
 
 
 func _add_button(text: String, callback: Callable) -> Button:
@@ -124,6 +151,7 @@ func _add_button(text: String, callback: Callable) -> Button:
 
 
 func _clear_buttons() -> void:
+	_finish_button = null
 	_transit_button = null
 	for child in _buttons.get_children():
 		child.queue_free()

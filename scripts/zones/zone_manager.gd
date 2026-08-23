@@ -96,6 +96,31 @@ func split_zone(zone_id: String) -> SplitResult:
 	return last_split_result
 
 
+## Validate pending ZoneTool data without mutating zones, grid state, counters, or events.
+func preview_split(
+	zone_type: String,
+	tiles: Array[Vector2i],
+	floor: String,
+	plot_id: String,
+	typologies: Dictionary = {}
+) -> SplitResult:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	var preview_zone := ZoneData.new()
+	preview_zone.id = "preview"
+	preview_zone.plot_id = plot_id
+	preview_zone.type = zone_type
+	preview_zone.floor = floor
+	preview_zone.tiles = _normalized_tiles(tiles)
+	preview_zone.typologies = _normalize_typologies(preview_zone.tiles, typologies)
+	return ZoneSplitter.split(
+		preview_zone,
+		grid_manager.get_floor_grid(preview_zone.plot_id, preview_zone.floor),
+		grid_manager.get_plot(preview_zone.plot_id)
+	)
+
+
 ## Delete a zone using the project's existing floor-demolition behavior.
 func delete_zone(zone_id: String, plot_id: String = "") -> void:
 	var zone: ZoneData = zones.get(zone_id, null)

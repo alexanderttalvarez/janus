@@ -4,6 +4,7 @@ extends Node
 
 
 signal painting_state_changed(has_tiles: bool, transit_mode: bool)
+signal preview_validation_changed(can_finish: bool, status: int)
 
 
 const ZONE_COLORS: Dictionary = {
@@ -23,6 +24,11 @@ const PAINTED_ALPHA: float = 0.4
 ## World Y for all tile visuals. Must sit clearly above the GridOverlay plane
 ## (floor.tscn places it at y=0.1) or the meshes are hidden/z-fight with it.
 const TILE_VISUAL_Y: float = 0.15
+const TILE_SIZE: float = 1.0
+const INVALID_PERIMETER_Y: float = 0.22
+const INVALID_PERIMETER_THICKNESS: float = 0.05
+const INVALID_PERIMETER_HEIGHT: float = 0.025
+const INVALID_PERIMETER_COLOR := Color(1.0, 0.08, 0.08, 0.95)
 
 var active_zone_type: String = ZoneData.ZONE_TYPE_NAMES[0]
 var is_active: bool = false
@@ -37,16 +43,149 @@ var _painting: bool = false
 var _visual_root: Node3D
 ## Painted tile position -> its visual mesh (visible during painting).
 var _painted_meshes: Dictionary = {}
+## Most recent non-mutating split validation of the pending zone data.
+var preview_split_result: SplitResult
+## True only when the pending zone passes the pure split contract.
+var can_finish: bool = false
+## Red perimeter feedback for invalid pending geometry.
+var _invalid_perimeter_root: Node3D
 
 
 func _ready() -> void:
 	_visual_root = Node3D.new()
 	_visual_root.name = "VisualRoot"
 	add_child(_visual_root)
+	_invalid_perimeter_root = Node3D.new()
+	_invalid_perimeter_root.name = "InvalidPerimeter"
+	_visual_root.add_child(_invalid_perimeter_root)
 	_create_preview_mesh()
 	# Hover updates run in _process; painting uses _unhandled_input so UI clicks
 	# (toolbar buttons) are consumed by the UI and never reach the tool.
 	set_process_unhandled_input(true)
+
+
+## Validate the pending ZoneTool state without committing any zone or grid mutation.
+func _update_preview_validation() -> void:
+	var previous_can_finish := can_finish
+	var previous_status := _preview_status()
+	if _painted_tiles.is_empty():
+		preview_split_result = null
+		can_finish = false
+		_clear_invalid_perimeter()
+	else:
+		var zone_manager := _get_zone_manager()
+		var pending_tiles := _combined_pending_tiles()
+		if zone_manager == null:
+			preview_split_result = SplitResult.failure(
+				SplitResult.Status.INVALID_ZONE_GEOMETRY,
+				"ZONE_MANAGER_UNAVAILABLE"
+			)
+		else:
+			preview_split_result = zone_manager.preview_split(
+				_preview_zone_type(),
+				pending_tiles,
+				_preview_floor(),
+				_preview_plot_id(),
+				_combined_pending_typologies()
+			)
+		can_finish = preview_split_result != null and preview_split_result.is_success()
+		if can_finish:
+			_clear_invalid_perimeter()
+		else:
+			_show_invalid_perimeter(pending_tiles)
+	if previous_can_finish != can_finish or previous_status != _preview_status():
+		preview_validation_changed.emit(can_finish, _preview_status())
+
+
+func _preview_status() -> int:
+	if preview_split_result == null:
+		return SplitResult.Status.INVALID_ZONE_GEOMETRY
+	return preview_split_result.status
+
+
+func _editing_zone() -> ZoneData:
+	if _editing_zone_id.is_empty():
+		return null
+	var zone_manager := _get_zone_manager()
+	if zone_manager == null:
+		return null
+	return zone_manager.zones.get(_editing_zone_id, null) as ZoneData
+
+
+func _combined_pending_tiles() -> Array[Vector2i]:
+	var combined: Array[Vector2i] = []
+	var existing := _editing_zone()
+	if existing != null:
+		combined = existing.tiles.duplicate()
+	for tile_pos in _painted_tiles:
+		if not combined.has(tile_pos):
+			combined.append(tile_pos)
+	return combined
+
+
+func _combined_pending_typologies() -> Dictionary:
+	var combined: Dictionary = {}
+	var existing := _editing_zone()
+	if existing != null:
+		combined = existing.typologies.duplicate()
+	for tile_pos in _painted_tiles:
+		combined[tile_pos] = _painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+	return combined
+
+
+func _preview_zone_type() -> String:
+	var existing := _editing_zone()
+	return existing.type if existing != null else active_zone_type
+
+
+func _preview_floor() -> String:
+	var existing := _editing_zone()
+	return existing.floor if existing != null else "G"
+
+
+func _preview_plot_id() -> String:
+	var existing := _editing_zone()
+	return existing.plot_id if existing != null else GridManager.DEFAULT_PLOT
+
+
+func _show_invalid_perimeter(tiles: Array[Vector2i]) -> void:
+	_clear_invalid_perimeter()
+	if tiles.is_empty() or _invalid_perimeter_root == null:
+		return
+	var tile_set: Dictionary = {}
+	for tile_pos in tiles:
+		tile_set[tile_pos] = true
+	var material := StandardMaterial3D.new()
+	material.albedo_color = INVALID_PERIMETER_COLOR
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	var horizontal_mesh := BoxMesh.new()
+	horizontal_mesh.size = Vector3(TILE_SIZE + INVALID_PERIMETER_THICKNESS, INVALID_PERIMETER_HEIGHT, INVALID_PERIMETER_THICKNESS)
+	var vertical_mesh := BoxMesh.new()
+	vertical_mesh.size = Vector3(INVALID_PERIMETER_THICKNESS, INVALID_PERIMETER_HEIGHT, TILE_SIZE + INVALID_PERIMETER_THICKNESS)
+	for tile_pos in tiles:
+		if not tile_set.has(tile_pos + Vector2i.UP):
+			_add_invalid_perimeter_segment(horizontal_mesh, material, tile_pos, Vector3(0.0, 0.0, -0.5))
+		if not tile_set.has(tile_pos + Vector2i.DOWN):
+			_add_invalid_perimeter_segment(horizontal_mesh, material, tile_pos, Vector3(0.0, 0.0, 0.5))
+		if not tile_set.has(tile_pos + Vector2i.LEFT):
+			_add_invalid_perimeter_segment(vertical_mesh, material, tile_pos, Vector3(-0.5, 0.0, 0.0))
+		if not tile_set.has(tile_pos + Vector2i.RIGHT):
+			_add_invalid_perimeter_segment(vertical_mesh, material, tile_pos, Vector3(0.5, 0.0, 0.0))
+
+
+func _add_invalid_perimeter_segment(mesh: BoxMesh, material: StandardMaterial3D, tile_pos: Vector2i, offset: Vector3) -> void:
+	var segment := MeshInstance3D.new()
+	segment.mesh = mesh
+	segment.material_override = material
+	segment.position = Vector3(float(tile_pos.x) + 0.5, INVALID_PERIMETER_Y, float(tile_pos.y) + 0.5) + offset
+	_invalid_perimeter_root.add_child(segment)
+
+
+func _clear_invalid_perimeter() -> void:
+	if _invalid_perimeter_root == null:
+		return
+	for child in _invalid_perimeter_root.get_children():
+		child.queue_free()
 
 
 func _create_preview_mesh() -> void:
@@ -100,11 +239,13 @@ func _paint_at_mouse() -> void:
 		_painted_typologies[tile_pos] = _typo_mode
 		_show_painted_tile(tile_pos)
 		painting_state_changed.emit(true, is_transit_mode())
+		_update_preview_validation()
 	else:
 		# Repainting an existing pending tile intentionally overrides its
 		# typology, allowing tenant/transit correction before finishing.
 		_painted_typologies[tile_pos] = _typo_mode
 		_refresh_painted_tile(tile_pos)
+		_update_preview_validation()
 
 
 func _erase_at_mouse() -> void:
@@ -114,6 +255,7 @@ func _erase_at_mouse() -> void:
 		_painted_typologies.erase(tile_pos)
 		_hide_painted_tile(tile_pos)
 		painting_state_changed.emit(not _painted_tiles.is_empty(), is_transit_mode())
+		_update_preview_validation()
 
 
 func _can_paint(tile_pos: Vector2i) -> bool:
@@ -194,39 +336,54 @@ func _hide_painted_tile(tile_pos: Vector2i) -> void:
 	_painted_meshes.erase(tile_pos)
 
 
-func finish() -> void:
-	if _painted_tiles.is_empty():
-		cancel()
-		return
-	var zm := _get_zone_manager()
-	if zm == null:
-		return
-	if not _editing_zone_id.is_empty():
-		var existing: Variant = zm.zones.get(_editing_zone_id, null)
-		if existing:
-			var combined: Array[Vector2i] = existing.tiles.duplicate()
-			for t: Vector2i in _painted_tiles:
-				if not combined.has(t):
-					combined.append(t)
-			var typologies: Dictionary = existing.typologies.duplicate()
-			for tile_pos: Vector2i in _painted_tiles:
-				typologies[tile_pos] = _painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT)
-			zm.modify_zone(_editing_zone_id, combined, GridManager.DEFAULT_PLOT, typologies)
-	else:
-		var zone := zm.create_zone(
-			active_zone_type, _painted_tiles, "G", GridManager.DEFAULT_PLOT, _painted_typologies
+## Commit only if the latest pure preview is valid. Invalid pending paint remains editable.
+func finish() -> bool:
+	_update_preview_validation()
+	if not can_finish:
+		return false
+	var zone_manager := _get_zone_manager()
+	if zone_manager == null:
+		return false
+	var committed_zone: ZoneData = null
+	var existing := _editing_zone()
+	if existing != null:
+		committed_zone = zone_manager.modify_zone(
+			existing.id,
+			_combined_pending_tiles(),
+			existing.plot_id,
+			_combined_pending_typologies()
 		)
-		if zone:
-			_show_zone_tiles(zone)
+	else:
+		committed_zone = zone_manager.create_zone(
+			active_zone_type,
+			_painted_tiles,
+			"G",
+			GridManager.DEFAULT_PLOT,
+			_painted_typologies
+		)
+	if committed_zone == null:
+		_update_preview_validation()
+		return false
+	if existing == null:
+		_show_zone_tiles(committed_zone)
 	cancel()
+	return true
 
 
+## Cancel is the only operation that discards pending zone paint.
 func cancel() -> void:
+	var previous_can_finish := can_finish
+	var previous_status := _preview_status()
 	_painted_tiles.clear()
 	_painted_typologies.clear()
 	_editing_zone_id = ""
-	set_transit_mode(false)
+	_typo_mode = GridTile.TileTypology.TENANT
+	preview_split_result = null
+	can_finish = false
+	_clear_invalid_perimeter()
 	painting_state_changed.emit(false, false)
+	if previous_can_finish or previous_status != _preview_status():
+		preview_validation_changed.emit(false, _preview_status())
 	_preview_mesh.visible = false
 	for mesh: Node in _painted_meshes.values():
 		mesh.queue_free()
@@ -271,6 +428,7 @@ func set_transit_mode(enabled: bool) -> void:
 	# actions. Existing pending tiles change only when explicitly repainted.
 	_typo_mode = GridTile.TileTypology.TRANSIT if enabled else GridTile.TileTypology.TENANT
 	painting_state_changed.emit(not _painted_tiles.is_empty(), enabled)
+	_update_preview_validation()
 
 
 func is_transit_mode() -> bool:

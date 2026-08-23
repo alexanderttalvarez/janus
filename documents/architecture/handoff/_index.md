@@ -8,7 +8,7 @@ This index is the implementation order and approval record for architecture hand
 |---:|---|---|---|
 | 01 | [Deterministic Parcel Splitting](01_parcel_splitting.md) | Approved — 2026-08-22 | Valid rectangular, fronted parcel geometry; identity and failure contracts. |
 | 02 | [Immediate Debug Business Assignment](02_immediate_debug_business_assignment.md) | Approved — 2026-08-22 | Immediate deterministic parcel subtype assignment; no tenant lifecycle. |
-| 03 | [Parcel Number Debug Visualization](03_parcel_number_debug_visualization.md) | Approved — 2026-08-22 | Per-tile parcel numbers, center names, and transient rejected-zone feedback. |
+| 03 | [Parcel Number Debug Visualization](03_parcel_number_debug_visualization.md) | Approved — 2026-08-22 | Per-tile parcel numbers and center names for committed parcels. |
 
 ## Rules
 

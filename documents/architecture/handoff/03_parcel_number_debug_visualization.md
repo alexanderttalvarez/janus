@@ -19,7 +19,6 @@ Neither handoff may expose partial state to this renderer.
 
 - Render one semi-transparent tile-number `Label3D` per committed parcel tile.
 - Render one larger semi-transparent parcel-name `Label3D` at the geometric center of each committed parcel.
-- Render transient `0` tile labels for a rejected finalization attempt's proposed Tenant tiles.
 - Control committed labels through a reusable `DebugManager` visibility flag.
 - Remove finalized colored tenant-tile fills while retaining ZoneTool hover/paint preview feedback.
 
@@ -38,7 +37,6 @@ Neither handoff may expose partial state to this renderer.
 | `ZoneManager` | Owns committed parcel data and allocates/preserves parcel display numbers as part of an accepted atomic commit. |
 | `Parcel` | Owns stable `display_number`, persistent parcel ID, tile geometry, and assigned subtype ID. |
 | `ParcelLabelRenderer` | Floor-scoped, read-only projection of committed parcel data into `Label3D` nodes. It never mutates game data. |
-| `ZoneTool` | Owns rejection-preview lifetime and proposed tile data. It does not create committed parcel data. |
 | `DebugManager` | Owns the reusable `show_parcel_labels` debug flag and emits a change signal. |
 | Subtype catalog | Resolves `assigned_subtype_id` to a display name. |
 
@@ -48,7 +46,7 @@ Neither handoff may expose partial state to this renderer.
 - `ZoneManager` allocates it only during a successful atomic commit, beginning at `1`.
 - Handoff 01 overlap-preservation also preserves the display number for a matched parcel.
 - New parcels receive new numbers; retired numbers are never reused.
-- `0` is reserved exclusively for transient rejected-finalization feedback and is never committed to a parcel.
+- `0` is never committed to a parcel.
 - `display_number` is persistent parcel state. It must be serialized with parcel identity/geometry when parcel save/load integration is implemented; visual nodes are always rebuilt after load.
 
 The display number is not a zone ID, subtype ID, tenant ID, tile coordinate, or array index.
@@ -64,10 +62,9 @@ Floor (Node3D)
 │   └── <parcel persistent ID> (Node3D)
 │       ├── Tile_<coordinate> (Label3D)
 │       └── Name (Label3D)
-└── ZoneToolRejectedPreviewContainer   # Transient, active-edit feedback only
 ```
 
-`ParcelLabelRenderer` owns `ParcelLabelContainer` and its committed children. `ZoneTool` owns the content lifetime of the rejected-preview container, which is hosted on the active floor so world transforms remain correct.
+`ParcelLabelRenderer` owns `ParcelLabelContainer` and its committed children.
 
 ## Label content, positioning, and opacity
 
@@ -87,12 +84,6 @@ Floor (Node3D)
 - It has a higher local vertical offset than tile-number labels to avoid overlap.
 - Opacity is **20%** (`alpha = 0.2`) at all times.
 
-### Rejected-finalization preview
-
-- When Handoff 01 returns a rejected split result, render text `0` only over proposed **Tenant** tiles.
-- Do not render center names, labels for Transit/Decoration tiles, or any committed parcel group.
-- Rejection labels are temporary. Clear them when the player changes the painted geometry/typology, cancels editing, switches floor, disables the debug flag, or successfully finalizes.
-
 Label positions must use the active instantiated `Floor`'s canonical tile-center conversion, including `GridOrigin`, tile spacing, and parent/floor transforms. Do not hard-code tile size, floor height, or call any diverging grid-to-world helper until its scale contract is reconciled.
 
 ## Visibility, lifecycle, and performance
@@ -111,13 +102,9 @@ Label positions must use the active instantiated `Floor`'s canonical tile-center
 Successful Handoff 01 + 02 atomic commit
     → existing committed zone create/modify/delete event
     → ParcelLabelRenderer refreshes only the affected active floor/zone
-
-Rejected Handoff 01 finalization
-    → no committed zone event or data mutation
-    → ZoneTool shows transient Tenant-tile 0 labels
 ```
 
-On an edit preview, hide the affected committed parcel-label group while the preview is active. Restore it on cancellation/rejection, or replace it after a successful commit. This prevents stale committed numbers overlapping preview zeroes.
+On an edit preview, hide the affected committed parcel-label group while the preview is active. Restore it on cancellation, or replace it after a successful commit.
 
 ## Finalized color behavior
 
@@ -130,10 +117,8 @@ On an edit preview, hide the affected committed parcel-label group while the pre
 - Every tile in every committed valid parcel on the active floor shows exactly that parcel's positive display number.
 - Distinct committed parcels never share a display number; a matched parcel retains its number through an accepted overlap-preserving edit.
 - Every committed parcel has one larger center label with its subtype display name or `Unassigned Parcel`.
-- All committed and rejected-preview labels render at 20% opacity.
-- Rejected finalization shows `0` only on proposed Tenant tiles, mutates no committed zone/grid/parcel data, and creates no center name.
-- Rejected-preview zeroes clear on paint mutation, cancellation, successful finalization, floor switch, and debug disable.
-- Rejected finalization leaves committed labels unchanged once the transient preview is cleared.
+- All committed labels render at 20% opacity.
+- Invalid-zone feedback is handled by Handoff 01 before finalization and never creates parcel labels.
 - Creation, modification, deletion, debug enable/disable, active-floor changes, and post-load hydration leave no stale or duplicate label groups.
 - Corner and interior labels use transformed floor tile centers correctly for non-origin `GridOrigin` transforms.
 - Finalized colored tenant fills are absent; ZoneTool previews remain functional.

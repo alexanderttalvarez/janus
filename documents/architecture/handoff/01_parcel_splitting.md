@@ -145,6 +145,17 @@ A valid-footprint unowned tile is never frontage and must not be treated as a pr
 
 **TODO — Notifications:** When the alert/notification system exists, publish a player-facing failure using the result status and zone/floor context. This handoff only requires diagnostics; it does not implement notification wiring.
 
+## Continuous pre-finalization validation
+
+ZoneTool must validate its pending painted tile/typology snapshot after every paint, erase, typology change, and edit-state change. It invokes a pure preview-validation entry point that uses the same split contract as finalization but never mutates `ZoneManager`, `GridManager`, zone IDs, parcel IDs, counters, events, or committed visuals.
+
+| Preview result | ZoneTool feedback |
+|---|---|
+| `SUCCESS` | Clear the invalid perimeter; enable Finish Zone. |
+| Any failure status | Render a clear red perimeter around the pending zone; keep all painted tiles editable; disable Finish Zone. |
+
+The disabled Finish Zone button uses red styling, white text, and 50% opacity. When validation succeeds, it returns to the normal toolbar button theme at 100% opacity; it must not retain a red enabled-state override. `ZoneTool.finish()` must defensively revalidate and return without clearing pending work when invalid. Only the Cancel action may discard the pending zone. Rejected finalization therefore never creates a committed zone, parcel, grid mutation, or post-commit event.
+
 ## Acceptance requirements
 
 - A fronted rectangular zone produces only non-overlapping, fronted rectangles that fully use parcel tiles.
