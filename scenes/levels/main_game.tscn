@@ -57,12 +57,6 @@ ambient_light_source = 2
 ambient_light_color = Color(0.6, 0.6, 0.65, 1)
 ambient_light_energy = 0.8
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ykusu"]
-albedo_color = Color(1, 0.54509807, 1, 1)
-
-[sub_resource type="PlaneMesh" id="PlaneMesh_ssju7"]
-material = SubResource("StandardMaterial3D_ykusu")
-
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
 
@@ -395,9 +389,6 @@ shadow_enabled = true
 
 [node name="GameUI" parent="." unique_id=1170613073 instance=ExtResource("14_game_ui")]
 visible = false
-
-[node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=746643617]
-mesh = SubResource("PlaneMesh_ssju7")
 
 [node name="DoorTool" type="Node" parent="." unique_id=1180338646]
 script = ExtResource("19_8c1vm")

@@ -1,75 +1,56 @@
-# Project Janus — Asset Index
+# Project Janus — Visual & Audio Asset Plan
 
-Master index of all visual and audio assets required for the game.
+This directory is the production contract for Janus visual and audio assets. It defines **what exists, why it exists, and the requirements it must satisfy**. It does not prescribe modelling, texturing, audio, or engine-integration workflows.
 
-## Game Overview
+## Project Stage
 
-Janus is a **low-poly 3D isometric** commercial district building simulation. The player designs multi-floor buildings, places zones (Retail, Food & Beverage, Entertainment, Services, Anchor), adds circulation (corridors, stairs, elevators), and watches visitors flow through the space. The art direction is **clean, modern, serene** — architectural visualization meets playful simulation.
+**Game-design stage:** The current tracker is at Phase 3; Phase 4 is listed next (`game_design/_status.md`). The playable project already contains structural, surrounding-world, traffic, UI, and shader systems. Asset status in this directory is **planning readiness only**; it never reports production completion or integration completion.
 
-## Asset Categories
+## Authoritative Sources
 
-| Category | Document | MVP Assets | Post-MVP Assets |
-|----------|----------|-----------|-----------------|
-| **Scale Reference** | [scale.md](scale.md) | Tile grid, floor height, camera | — |
-| **Style Guide** | [style_guide.md](style_guide.md) | Color palette, art direction | — |
-| **Characters** | [characters/](characters/) | Visitor mesh, staff meshes | Visitor variations, named staff |
-| **Environment** | [environment/](environment/) | Plot ground, road/pedestrian tiles | Multiple plots, skybridges |
-| **Buildings** | [buildings/](buildings/) | Floor plane, walls, stairs, elevators, columns, terraces | Escalators, skybridges, underground passages |
-| **Props** | [props/](props/) | Zone interior placeholders, basic amenities, garbage, signage | Detailed shop interiors, furniture, water features, art |
-| **Materials** | [materials/](materials/) | Floor material, wall material, zone color overlays | Concrete, glass, brick, metal, decorative materials |
-| **UI** | [ui/](ui/) | HUD bar, toolbar, panel frames, icons, heatmap legend | Advanced panel skins, custom cursors |
-| **Animations** | [animations/](animations/) | Visitor walk/idle, staff walk, construction phases | Visitor browse/queue, staff clean/patrol, door open/close |
-| **VFX** | [vfx/](vfx/) | Heatmap overlay, contextual indicators | Particle effects, weather |
-| **Music** | [music/](music/) | 1 ambient loop | Seasonal tracks, time-of-day variations |
-| **SFX** | [sfx/](sfx/) | UI click, generic confirm, generic error | Category-specific UI, world ambience, interaction feedback |
+1. `documents/game_design/` defines player-facing requirements and MVP/post-MVP scope.
+2. `documents/architecture/` defines representation and technical constraints.
+3. Confirmed human direction retained in [style_guide.md](style_guide.md) governs artistic coherence.
+4. Where those sources conflict, the conflict is recorded as an open question rather than silently resolved.
 
-## MVP Asset Count Summary
+## Core Contract
 
-| Category | Unique Assets | Reusable Variants |
-|----------|--------------|-------------------|
-| 3D Models | ~25 | ~15 |
-| Materials | ~8 | ~5 |
-| UI Elements | ~30 | ~10 |
-| Animations | ~10 | ~5 |
-| VFX | ~5 | ~3 |
-| Music Tracks | 1 | — |
-| SFX | ~8 | ~4 |
+| Document | Purpose |
+|---|---|
+| [asset_catalog.md](asset_catalog.md) | Master inventory, asset IDs, priorities, status, sources, and handoff links. |
+| [style_guide.md](style_guide.md) | Confirmed visual direction, reference hierarchy, anti-goals, and unresolved artistic decisions. |
+| [scale_guide.md](scale_guide.md) | Grid-relative dimensions and confirmed working-scale facts. |
+| [technical_guide.md](technical_guide.md) | Engine, rendering, localization, runtime, and unknown technical constraints. |
 
-## Key Scale Decisions
+## Detailed Family Specifications
 
-- **1 tile = 2m × 2m** in world units
-- **Floor height = 4m** (2 tiles tall)
-- **Wall height = 4m** (full floor)
-- **Visitor height = ~1.7m** (slightly under half a floor)
-- **Camera**: Orthographic, zoom range 5.0–50.0
+| Family | Specification |
+|---|---|
+| Civic perimeter and surrounding world | [environment/civic_perimeter.md](environment/civic_perimeter.md) |
+| Floors, walls, vertical circulation, terraces, columns | [buildings/building_kit.md](buildings/building_kit.md) |
+| Visitors and staff | [characters/agents.md](characters/agents.md) |
+| Tenant frontages, operations, hygiene, prestige amenities | [props/tenant_amenities.md](props/tenant_amenities.md) |
+| Reusable material and data-visualization families | [materials/material_system.md](materials/material_system.md) |
+| HUD, tools, panels, graphs, world labels, and notifications | [ui/game_ui.md](ui/game_ui.md) |
+| Zone, heatmap, construction, and contextual feedback overlays | [vfx/overlays.md](vfx/overlays.md) |
+| Visitor, staff, elevator, construction, and UI motion | [animations/agent_animation.md](animations/agent_animation.md) |
+| Music direction | [music/music_direction.md](music/music_direction.md) |
+| Sound-effect direction | [sfx/sfx_direction.md](sfx/sfx_direction.md) |
 
-## Asset Reuse Strategy
-
-- **Single visitor mesh** with color variations for different visitor types
-- **Single staff mesh** per type (Cleaner, Security) with uniform color coding
-- **Shared floor plane material** with color overlays for zone types
-- **Modular wall segments** generated procedurally from tile data
-- **Reusable amenity props** (plants, benches, trash cans) placed across zones
-- **Shared UI icon set** with consistent stroke/fill style
-
-## File Naming Convention
-
-```
-<category>_<name>_<variant>.<ext>
-```
-
-Examples:
-- `mesh_visitor_base.glb`
-- `mat_wall_concrete.tres`
-- `tex_zone_retile.png`
-- `sfx_ui_click.wav`
-- `anim_visitor_walk.res`
-
-## Status Legend
+## Planning Statuses
 
 | Status | Meaning |
-|--------|---------|
-| 🔴 Not Started | Asset not yet produced |
-| 🟡 In Progress | Asset being produced |
-| 🟢 Complete | Asset ready for use |
-| ⚪ MVP Placeholder | Temporary asset for gameplay testing |
+|---|---|
+| `discovered` | The asset requirement is known but lacks a useful specification. |
+| `specified` | The requirement is scoped, but a material decision still prevents a reliable production handoff. |
+| `blocked` | A design, scope, or direction decision must be made first. |
+| `ready_for_production` | A producer can start from the linked specification, including known non-blocking assumptions. |
+
+## Current Material Open Decisions
+
+- Confirm whether current road, pedestrian-ring, and traffic presentation is MVP scope; it is present in the live scene but multi-plot road ownership is post-MVP in game design.
+- Resolve the escalator scope contradiction: the tech-tree document includes it in the MVP tree, while the circulation document calls it post-MVP.
+- Resolve the Cutaway/Partial wall-strip height: the game-design wall specification says about 10% plus a cap plate, while the earlier wall-rendering decision says 5%.
+- Define the bathroom facility footprint, unlock, and placement rules. The visitor and staff systems require it, but no building specification exists.
+- Set target platform(s), interchange/audio formats, supported texture resolutions, mesh budgets, pivot/axis conventions, and LOD policy.
+- Approve audio mood and SFX stylization before audio assets can become production-ready.

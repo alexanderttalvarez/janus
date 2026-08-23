@@ -1,4 +1,3 @@
-```markdown
 # Style Guide — Project Janus
 
 ## Confirmed Direction
@@ -26,7 +25,7 @@ Visual references should not all be interpreted in the same way.
 
 ### Primary Style Reference
 
-The selected visual direction is based primarily on the second generated Janus visual reference.
+The selected visual direction is based primarily on [`general_style_2.png`](references/general_style_2.png).
 
 It defines:
 
@@ -40,11 +39,11 @@ It defines:
 - commercial signage density,
 - balance between playful and architectural forms.
 
-It should be treated as the main visual benchmark when evaluating newly generated assets.
+It should be treated as the main visual benchmark when evaluating new assets.
 
 ### Night Lighting Reference
 
-The approved nighttime variation defines the intended nighttime atmosphere.
+[`general_style_2_night.png`](references/general_style_2_night.png) defines the intended nighttime atmosphere.
 
 It establishes:
 
@@ -450,7 +449,7 @@ Character complexity should reflect their small on-screen size.
 
 ---
 
-# Asset Production Principles
+# Asset Requirements
 
 Every visual asset should satisfy these rules:
 
@@ -462,42 +461,9 @@ Every visual asset should satisfy these rules:
 6. **Compatible with day and night lighting**
 7. **Consistent with the approved visual references**
 8. **Reusable or modular where reasonable**
-9. **Reasonable for AI-assisted production**
-10. **Easy to modify and regenerate**
+9. **Appropriate production complexity for gameplay importance**
 
 Asset consistency is more important than maximizing the visual quality of a single asset.
-
----
-
-# AI-Assisted Asset Generation
-
-AI-generated assets should not automatically be treated as game-ready.
-
-For generated 3D assets, expect potential cleanup involving:
-
-- topology,
-- scale,
-- pivot,
-- normals,
-- UVs,
-- materials,
-- disconnected geometry,
-- excess polygons,
-- collision,
-- naming.
-
-Reference images intended for image-to-3D generation should preferably use:
-
-- isolated object,
-- neutral background,
-- clear silhouette,
-- even lighting,
-- minimal cast shadows,
-- no depth of field,
-- full object visible,
-- consistent proportions.
-
-Presentation artwork and 3D reconstruction references are different deliverables and should not be confused.
 
 ---
 
@@ -522,6 +488,15 @@ Everything else may use placeholder geometry until production quality is necessa
 
 ---
 
+# Assumptions
+
+1. **Reference interpretation:** The linked references govern the properties explicitly listed in their hierarchy sections; they do not require copying their exact building layout, embedded Japanese text, or every prop shown. Player-facing text remains localization-safe.
+2. **No implicit technical art rules:** The palette/material guidance here does not imply a texture budget, file format, axis convention, or target platform. Those remain open in [technical_guide.md](technical_guide.md).
+
+These assumptions do not override any confirmed direction above.
+
+---
+
 # Open Questions
 
 ## Technical Art
@@ -543,7 +518,6 @@ Everything else may use placeholder geometry until production quality is necessa
    - individual textures?
 
 4. What is the standard 3D interchange format?
-   - GLB recommended unless pipeline requirements suggest otherwise.
 
 5. What conventions should be used for:
    - pivots,
@@ -574,7 +548,7 @@ Still to decide:
 
 ---
 
-# Visual Validation Checklist
+# Visual Acceptance Checklist
 
 Before accepting a visual asset, verify:
 
@@ -585,8 +559,7 @@ Before accepting a visual asset, verify:
 - Does it fit the approved palette?
 - Does it work during both day and night?
 - Does it contain unnecessary detail?
-- Does it resemble the approved references rather than generic AI low-poly art?
+- Does it resemble the approved references rather than generic low-poly art?
 - Can similar assets be produced consistently?
 - Does it introduce visual noise into crowded scenes?
 - Is its production complexity justified by its gameplay importance?
-```
