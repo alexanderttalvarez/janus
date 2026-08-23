@@ -364,8 +364,6 @@ func finish() -> bool:
 	if committed_zone == null:
 		_update_preview_validation()
 		return false
-	if existing == null:
-		_show_zone_tiles(committed_zone)
 	cancel()
 	return true
 
@@ -388,39 +386,6 @@ func cancel() -> void:
 	for mesh: Node in _painted_meshes.values():
 		mesh.queue_free()
 	_painted_meshes.clear()
-
-
-func _show_zone_tiles(zone: ZoneData) -> void:
-	var color := ZONE_COLORS.get(zone.type, Color.GRAY) as Color
-	color.a = 0.4
-	var root := get_tree().current_scene
-	var floor_name := "floor_plot_0_G"
-	var world: Node3D = root.get_node_or_null("World") as Node3D
-	if world == null:
-		return
-	var floor := world.get_node_or_null(floor_name)
-	if floor == null:
-		return
-	var zone_container := floor.get_node_or_null("ZoneContainer") as Node3D
-	if zone_container == null:
-		return
-
-	var box := BoxMesh.new()
-	box.size = Vector3(0.96, 0.07, 0.96)
-	var mat := StandardMaterial3D.new()
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = color
-
-	for tile_pos: Vector2i in zone.tiles:
-		var mesh := MeshInstance3D.new()
-		mesh.mesh = box
-		var tile_color := _get_typology_color(zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT), 0.4)
-		var tile_material := mat.duplicate() as StandardMaterial3D
-		tile_material.albedo_color = tile_color
-		mesh.material_override = tile_material
-		mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y, float(tile_pos.y) + 0.5)
-		mesh.name = "zone_%s_tile_%d_%d" % [zone.id, tile_pos.x, tile_pos.y]
-		zone_container.add_child(mesh)
 
 
 func set_transit_mode(enabled: bool) -> void:

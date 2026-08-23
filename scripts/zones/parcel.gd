@@ -6,6 +6,9 @@ extends RefCounted
 ## Persistent parcel identifier allocated by ZoneManager after a successful split.
 var id: String = ""
 
+## Globally unique, positive debug display number allocated by ZoneManager.
+var display_number: int = 0
+
 ## Canonically sorted tile positions in this parcel.
 var tiles: Array[Vector2i] = []
 
@@ -22,8 +25,8 @@ var frontage_edges: Array[Dictionary] = []
 ## Legacy tile-only frontage view retained for compatibility with existing code.
 var frontage_tiles: Array[Vector2i] = []
 
-## Business type assigned by a later handoff.
-var business_type: String = ""
+## Stable debug subtype ID assigned by Handoff 02; this is not a tenant ID.
+var assigned_subtype_id: String = ""
 
 ## Whether a later tenant lifecycle has occupied this parcel.
 var has_tenant: bool = false
@@ -65,9 +68,10 @@ func serialize() -> Dictionary:
 
 	return {
 		"id": id,
+		"display_number": display_number,
 		"tiles": serialized_tiles,
 		"frontage_edges": serialized_frontage,
-		"business_type": business_type,
+		"assigned_subtype_id": assigned_subtype_id,
 		"has_tenant": has_tenant,
 		"tenant_id": tenant_id,
 	}
@@ -76,6 +80,7 @@ func serialize() -> Dictionary:
 static func deserialize(data: Dictionary) -> Parcel:
 	var parcel := Parcel.new()
 	parcel.id = data.get("id", "")
+	parcel.display_number = data.get("display_number", 0)
 	var restored_tiles: Array[Vector2i] = []
 	for tile_data: Dictionary in data.get("tiles", []):
 		restored_tiles.append(Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)))
@@ -93,7 +98,7 @@ static func deserialize(data: Dictionary) -> Parcel:
 		})
 
 	parcel.set_geometry(restored_tiles, restored_frontage)
-	parcel.business_type = data.get("business_type", "")
+	parcel.assigned_subtype_id = data.get("assigned_subtype_id", "")
 	parcel.has_tenant = data.get("has_tenant", false)
 	parcel.tenant_id = data.get("tenant_id", "")
 	return parcel

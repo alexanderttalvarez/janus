@@ -10,6 +10,7 @@ var _failed: int = 0
 func _ready() -> void:
 	var context := _make_world()
 	_test_successful_creation_commits_parcels(context)
+	_test_successful_edit_reassigns_debug_subtypes(context)
 	_test_preview_split_is_non_mutating(context)
 	_test_rejected_edit_leaves_committed_zone_unchanged(context)
 	print("ZoneManager split commit tests: %d passed, %d failed" % [_passed, _failed])
@@ -61,11 +62,55 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 	_assert(zone.plot_id == "test_plot", "zone persists explicit plot ownership")
 	_assert(zone.parcels.size() == 6, "zone commit stores six parcels")
 	var ids: Dictionary = {}
+	var display_numbers: Dictionary = {}
 	for parcel: Parcel in zone.parcels:
 		ids[parcel.id] = true
+		display_numbers[parcel.display_number] = true
+		_assert(parcel.display_number > 0, "committed parcel display number is positive")
 	_assert(ids.size() == zone.parcels.size(), "committed parcel IDs are globally unique")
+	_assert(display_numbers.size() == zone.parcels.size(), "committed parcel display numbers are globally unique")
 	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
 	_assert(first_tile.zone_id == zone.id, "grid markings are written only after successful split")
+	_assert(zone_manager.last_assignment_result != null, "successful split produces a debug assignment result")
+	_assert(not zone_manager.permits_tenant_lifecycle(), "DEBUG_IMMEDIATE mode disables tenant lifecycle handling")
+	_assert(zone.subtype.is_empty(), "debug assignment does not write legacy zone subtype")
+	for parcel: Parcel in zone.parcels:
+		_assert(parcel.assigned_subtype_id.begins_with("retail."), "committed parcel receives a Retail subtype ID")
+	for first_index: int in range(zone.parcels.size()):
+		for second_index: int in range(first_index + 1, zone.parcels.size()):
+			var first_parcel: Parcel = zone.parcels[first_index]
+			var second_parcel: Parcel = zone.parcels[second_index]
+			if _share_edge(first_parcel, second_parcel):
+				_assert(
+					first_parcel.assigned_subtype_id != second_parcel.assigned_subtype_id,
+					"edge-adjacent committed parcels receive distinct subtype IDs"
+				)
+
+
+func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var zone: ZoneData = zone_manager.zones.get("zone_1", null)
+	if zone == null or zone.parcels.is_empty():
+		_assert(false, "successful zone exists before successful edit")
+		return
+	var original_display_numbers: Dictionary = {}
+	for parcel: Parcel in zone.parcels:
+		original_display_numbers[parcel.id] = parcel.display_number
+	zone.parcels[0].assigned_subtype_id = "stale.subtype"
+	var updated := zone_manager.modify_zone(zone.id, zone.tiles, "test_plot", zone.typologies)
+	_assert(updated != null, "valid edit commits successfully")
+	if updated == null:
+		return
+	_assert(
+		updated.parcels[0].assigned_subtype_id != "stale.subtype",
+		"successful edit recalculates parcel subtype assignments"
+	)
+	_assert(updated.subtype.is_empty(), "successful debug edit leaves legacy zone subtype untouched")
+	for parcel: Parcel in updated.parcels:
+		_assert(
+			parcel.display_number == original_display_numbers.get(parcel.id, 0),
+			"matched parcel retains its display number after a successful edit"
+		)
 
 
 func _test_preview_split_is_non_mutating(context: Dictionary) -> void:
@@ -90,6 +135,17 @@ func _test_preview_split_is_non_mutating(context: Dictionary) -> void:
 	_assert(existing_zone.tiles.size() == committed_tile_count, "preview preserves committed zone data")
 	_assert(first_tile.zone_id == committed_zone_id, "preview preserves grid markings")
 	_assert(zone_manager.last_split_result.status == last_status, "preview preserves last committed result")
+
+
+func _share_edge(first: Parcel, second: Parcel) -> bool:
+	var second_tiles: Dictionary = {}
+	for tile_pos: Vector2i in second.tiles:
+		second_tiles[tile_pos] = true
+	for tile_pos: Vector2i in first.tiles:
+		for offset: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			if second_tiles.has(tile_pos + offset):
+				return true
+	return false
 
 
 func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) -> void:

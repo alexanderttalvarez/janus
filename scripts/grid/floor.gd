@@ -42,6 +42,23 @@ func get_grid_origin() -> Marker3D:
 	return $GridOrigin as Marker3D
 
 
+## Convert a fractional grid coordinate into this floor's local 3D position.
+## Labels and overlays must use this instead of duplicating grid scale/origin math.
+func grid_coordinate_to_local(grid_coordinate: Vector2) -> Vector3:
+	var grid_origin := get_grid_origin()
+	var origin_position := grid_origin.position if grid_origin != null else Vector3.ZERO
+	return origin_position + Vector3(
+		grid_coordinate.x * tile_size,
+		0.0,
+		grid_coordinate.y * tile_size
+	)
+
+
+## Return the canonical local center of one instantiated floor tile.
+func tile_center_to_local(tile_position: Vector2i) -> Vector3:
+	return grid_coordinate_to_local(Vector2(tile_position) + Vector2(0.5, 0.5))
+
+
 ## Add a tile visual to the TileContainer.
 func add_tile_visual(node: Node3D) -> void:
 	var container := $TileContainer

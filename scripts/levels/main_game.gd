@@ -17,6 +17,7 @@ extends Node3D
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 @onready var _wall_manager: WallManager = $World/WallManager
+var _parcel_label_renderer: ParcelLabelRenderer
 
 
 ## Human tile 13 in a zero-based 25×25 grid (index 12).
@@ -25,6 +26,7 @@ const FIXED_DOOR_TILE_INDEX: int = 12
 
 func _ready() -> void:
 	_initialize_grid()
+	_initialize_parcel_label_renderer()
 	_initialize_camera()
 	_initialize_time()
 	_initialize_visitors()
@@ -77,6 +79,17 @@ func _initialize_grid() -> void:
 	_create_floor_instance(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR, fg)
 	gm.rebuild_pathfinding()
 	print("MainGame: Grid initialized — plot_0, 25×25, all tiles owned.")
+
+
+func _initialize_parcel_label_renderer() -> void:
+	if _zone_manager == null:
+		push_error("MainGame: ZoneManager not found for ParcelLabelRenderer.")
+		return
+	_parcel_label_renderer = ParcelLabelRenderer.new()
+	_parcel_label_renderer.name = "ParcelLabelRenderer"
+	_parcel_label_renderer.zone_manager = _zone_manager
+	_parcel_label_renderer.camera_manager = _camera_manager
+	_world.add_child(_parcel_label_renderer)
 
 
 func _create_floor_instance(plot_id: String, floor_level: String, _floor_grid: FloorGrid) -> void:
@@ -166,6 +179,9 @@ func _initialize_visitors() -> void:
 func _initialize_tenants() -> void:
 	if _tenant_manager == null:
 		push_error("MainGame: TenantManager not found.")
+		return
+	if _zone_manager != null and not _zone_manager.permits_tenant_lifecycle():
+		print("MainGame: Tenant lifecycle disabled for DEBUG_IMMEDIATE assignment mode.")
 		return
 
 	_tenant_manager.initialize(_zone_manager)
@@ -311,3 +327,5 @@ func load_game(slot: int) -> void:
 	if _staff_manager: _staff_manager.deserialize(data.get("staff", {}))
 	if _synergy_manager: _synergy_manager.deserialize(data.get("synergy", {}))
 	if gm: gm.rebuild_pathfinding()
+	if _parcel_label_renderer:
+		_parcel_label_renderer.hydrate_active_floor()

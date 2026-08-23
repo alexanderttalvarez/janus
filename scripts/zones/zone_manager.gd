@@ -3,6 +3,11 @@ class_name ZoneManager
 extends Node
 
 
+enum AssignmentMode { DEBUG_IMMEDIATE }
+
+## Active parcel-subtype assignment policy for this handoff.
+var assignment_mode: AssignmentMode = AssignmentMode.DEBUG_IMMEDIATE
+
 ## All zones, keyed by zone ID.
 var zones: Dictionary = {}  # Dictionary[String, ZoneData]
 
@@ -12,8 +17,22 @@ var _zone_counter: int = 0
 ## Parcel ID counter for globally unique, persistent parcel IDs.
 var _parcel_counter: int = 0
 
+## Parcel display-number counter. Numbers are positive and never reused.
+var _parcel_display_number_counter: int = 0
+
 ## Most recent pure split attempt for future UI/debug feedback.
 var last_split_result: SplitResult
+
+## Most recent committed debug subtype assignment result.
+var last_assignment_result: BusinessAssignmentResult
+
+
+# ── Assignment Mode ───────────────────────────────────────────────────
+
+
+## Whether the active assignment mode permits the normal tenant lifecycle.
+func permits_tenant_lifecycle() -> bool:
+	return assignment_mode != AssignmentMode.DEBUG_IMMEDIATE
 
 
 # ── Zone CRUD ──────────────────────────────────────────────────────────
@@ -42,6 +61,7 @@ func create_zone(
 		return null
 
 	_assign_persistent_ids(candidate.parcels, [])
+	_assign_debug_subtypes(candidate)
 	zones[candidate.id] = candidate
 	_mark_zone_tiles(candidate)
 	_rebuild_pathfinding()
@@ -75,6 +95,7 @@ func modify_zone(
 		return null
 
 	_assign_persistent_ids(candidate.parcels, zone.parcels)
+	_assign_debug_subtypes(candidate)
 	var old_tiles: Array[Vector2i] = zone.tiles.duplicate()
 	_clear_zone_tiles(old_tiles, zone.plot_id, zone.floor)
 	_copy_zone_state(candidate, zone)
@@ -198,6 +219,7 @@ func serialize() -> Dictionary:
 		"zones": data,
 		"zone_counter": _zone_counter,
 		"parcel_counter": _parcel_counter,
+		"parcel_display_number_counter": _parcel_display_number_counter,
 	}
 
 
@@ -205,6 +227,7 @@ func deserialize(data: Dictionary) -> void:
 	zones.clear()
 	_zone_counter = data.get("zone_counter", 0)
 	_parcel_counter = data.get("parcel_counter", 0)
+	_parcel_display_number_counter = data.get("parcel_display_number_counter", 0)
 	var zones_data: Dictionary = data.get("zones", {})
 	for zone_id: String in zones_data:
 		var zone_data: Dictionary = zones_data[zone_id]
@@ -219,7 +242,9 @@ func deserialize(data: Dictionary) -> void:
 		zone.walls_enabled = zone_data.get("walls_enabled", true)
 		zone.zone_name = zone_data.get("zone_name", "")
 		for parcel_data: Dictionary in zone_data.get("parcels", []):
-			zone.parcels.append(Parcel.deserialize(parcel_data))
+			var parcel := Parcel.deserialize(parcel_data)
+			zone.parcels.append(parcel)
+			_parcel_display_number_counter = maxi(_parcel_display_number_counter, parcel.display_number)
 		zones[zone.id] = zone
 
 
@@ -240,6 +265,21 @@ func _prepare_split(candidate: ZoneData) -> bool:
 		candidate.typologies[residual_tile] = GridTile.TileTypology.DECORATION
 	candidate.parcels = last_split_result.parcels
 	return true
+
+
+## Apply the pure debug assignment result to the uncommitted zone candidate.
+func _assign_debug_subtypes(candidate: ZoneData) -> void:
+	if assignment_mode != AssignmentMode.DEBUG_IMMEDIATE:
+		return
+	var catalog_snapshot := DebugBusinessSubtypeCatalog.snapshot_for_zone_type(candidate.type)
+	var assignment_result := ZoneBusinessAssigner.assign(
+		candidate.parcels,
+		candidate.type,
+		catalog_snapshot
+	)
+	for parcel: Parcel in candidate.parcels:
+		parcel.assigned_subtype_id = assignment_result.subtype_for(parcel.id)
+	last_assignment_result = assignment_result
 
 
 func _validate_candidate_tiles(candidate: ZoneData, existing_zone_id: String) -> bool:
@@ -280,9 +320,11 @@ func _assign_persistent_ids(new_parcels: Array[Parcel], old_parcels: Array[Parce
 				best_overlap = overlap
 		if matched_parcel != null and best_overlap > 0:
 			parcel.id = matched_parcel.id
+			parcel.display_number = matched_parcel.display_number if matched_parcel.display_number > 0 else _generate_parcel_display_number()
 			used_old_ids[matched_parcel.id] = true
 		else:
 			parcel.id = _generate_parcel_id()
+			parcel.display_number = _generate_parcel_display_number()
 
 
 func _tile_overlap(first: Array[Vector2i], second: Array[Vector2i]) -> int:
@@ -361,6 +403,11 @@ func _generate_zone_id() -> String:
 func _generate_parcel_id() -> String:
 	_parcel_counter += 1
 	return "parcel_%d" % _parcel_counter
+
+
+func _generate_parcel_display_number() -> int:
+	_parcel_display_number_counter += 1
+	return _parcel_display_number_counter
 
 
 func _normalize_typologies(tiles: Array[Vector2i], typologies: Dictionary) -> Dictionary:
