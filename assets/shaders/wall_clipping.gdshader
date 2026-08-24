@@ -2,16 +2,12 @@ shader_type spatial;
 render_mode cull_back, depth_draw_opaque;
 
 // ── Wall Clipping Shader ──────────────────────────────────────────────
-// Applied to wall boxes, corner cubes, and their cap plates (BoxMesh
-// instances positioned in world space via their node transform).
+// Applied to structural wall boxes, thin parcel-boundary boxes, corner cubes,
+// and their cap plates.
 //
 // Global shader parameters (set by CameraManager and GameManager):
 //   camera_direction (vec2) — direction from the scene toward the camera
 //   wall_mode (int)         — 0=Cutaway, 1=Partial, 2=Full
-//
-// Door lintels are a special wall material variant. They remain visible in
-// Full mode, but are hidden in Cutaway and Partial so exterior door openings
-// remain visually open instead of showing a horizontal bar.
 
 uniform vec3 wall_color : source_color = vec3(0.85, 0.82, 0.78);
 
@@ -26,6 +22,10 @@ global uniform int wall_mode;
 // cube's diagonal, or the cap's parent box's outward direction).
 uniform bool is_cap = false;
 uniform bool is_door_lintel = false;
+// Parcel boundaries are shared by two interiors. In Cutaway they are clipped
+// symmetrically from either side instead of relying on an arbitrary outward
+// normal, while Full mode still shows them at full height.
+uniform bool is_parcel_boundary = false;
 uniform vec2 outward = vec2(0.0, 0.0);
 
 // Minimum dot(outward, camera_direction) for the box to count as
@@ -66,6 +66,14 @@ void fragment() {
 	if (is_door_lintel && wall_mode != 2) {
 		// The upper door bar is intentionally omitted in Cutaway and Partial.
 		keep_fragment = false;
+	} else if (is_parcel_boundary) {
+		// The same thin wall belongs to both parcels, so Cutaway treats it as
+		// front-facing from either side. This avoids camera-rotation asymmetry.
+		if (is_cap) {
+			keep_fragment = wall_mode != 2;
+		} else {
+			keep_fragment = wall_mode == 2 || in_keep_strip;
+		}
 	} else if (is_cap) {
 		// Cap plate: the "top" of a cut wall. Visible only where the wall
 		// is actually cut (front walls in Cutaway, all walls in Partial).

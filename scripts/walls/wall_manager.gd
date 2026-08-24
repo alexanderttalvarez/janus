@@ -36,9 +36,11 @@ extends Node
 
 ## Wall height in world units — matches GridManager.FLOOR_HEIGHT.
 const WALL_HEIGHT: float = 3.0
-## Wall thickness — matches the floor tile height (0.1) so walls read as
-## solid slabs, not paper planes.
+## Structural wall thickness — matches the floor tile height (0.1) so walls
+## read as solid slabs, not paper planes.
 const WALL_THICKNESS: float = 0.1
+## Interior boundary walls distinguish parcel divisions from structural walls.
+const PARCEL_WALL_THICKNESS: float = 0.04
 ## Wall color (concrete beige). Materials are post-MVP.
 const WALL_COLOR: Color = Color(0.85, 0.82, 0.78)
 ## Fraction of the wall height kept visible at the bottom in Cutaway/Partial
@@ -60,7 +62,6 @@ const MERGE_EPSILON: float = 0.01
 ## solid while only the camera-facing corner (dot ≈ 1) opens.
 const CORNER_FRONT_THRESHOLD: float = 0.5
 
-const _HALF_THICKNESS: float = WALL_THICKNESS * 0.5
 const _DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vector2i.DOWN]
 
 var _materials: Dictionary = {}  # material cache key -> ShaderMaterial
@@ -76,7 +77,6 @@ func _ready() -> void:
 	EventBus.zone_created.connect(func(_id: String, _t: String, _c: int): rebuild())
 	EventBus.zone_modified.connect(func(_id: String): rebuild())
 	EventBus.zone_deleted.connect(func(_id: String): rebuild())
-	EventBus.zone_wall_mode_changed.connect(func(_id: String, _on: bool): rebuild())
 	EventBus.door_changed.connect(func(_from: Vector2i, _to: Vector2i, _enabled: bool): rebuild())
 	EventBus.tile_purchased.connect(func(_f: int, _x: int, _y: int): rebuild())
 
@@ -98,15 +98,19 @@ func rebuild() -> void:
 
 	# Collect tile membership.
 	var zone_of: Dictionary = {}  # Vector2i -> zone_id
+	var parcel_of: Dictionary = {}  # Vector2i -> parcel_id
+	var parcel_zone_of: Dictionary = {}  # Vector2i -> zone_id
 	var zm := _get_zone_manager()
 	var zones: Array[ZoneData] = []
 	if zm:
 		for zone: ZoneData in zm.get_zones_on_floor("G"):
-			if not zone.walls_enabled:
-				continue
 			zones.append(zone)
-			for t: Vector2i in zone.tiles:
-				zone_of[t] = zone.id
+			for tile_pos: Vector2i in zone.tiles:
+				zone_of[tile_pos] = zone.id
+			for parcel: Parcel in zone.parcels:
+				for tile_pos: Vector2i in parcel.tiles:
+					parcel_of[tile_pos] = parcel.id
+					parcel_zone_of[tile_pos] = zone.id
 
 	var corridor: Dictionary = {}  # Vector2i -> true
 	var built: Dictionary = {}     # Vector2i -> true
@@ -130,12 +134,16 @@ func rebuild() -> void:
 				door_edges[_edge_key(pos, pos + Vector2i.LEFT)] = true
 
 	# Pipeline: edges -> pieces -> runs -> junctions -> boxes.
-	var pieces := _collect_wall_pieces(built, corridor, zones, zone_of, door_edges)
+	var pieces := _collect_wall_pieces(
+		built, corridor, zones, zone_of, parcel_of, parcel_zone_of, door_edges
+	)
 	var runs := _merge_pieces_into_runs(pieces)
 	var joints_by_run: Dictionary = {}  # run index -> Array[float]
 	var junctions := _find_wall_junctions(runs, joints_by_run)
 	for junction: Dictionary in junctions:
-		_build_corner_cube(container, junction["point"], junction["outward"])
+		_build_corner_cube(
+			container, junction["point"], junction["outward"], junction["thickness"], junction["is_parcel_boundary"]
+		)
 	for i in range(runs.size()):
 		_build_wall_segments(container, runs[i], joints_by_run.get(i, []))
 
@@ -153,7 +161,7 @@ func _clear_walls(container: Node3D) -> void:
 ## Edges are deduplicated canonically, so each boundary produces one wall.
 func _collect_wall_pieces(
 	built: Dictionary, corridor: Dictionary, zones: Array[ZoneData], zone_of: Dictionary,
-	door_edges: Dictionary
+	parcel_of: Dictionary, parcel_zone_of: Dictionary, door_edges: Dictionary
 ) -> Array:
 	var placed: Dictionary = {}  # edge key -> true
 	var pieces: Array = []
@@ -191,6 +199,20 @@ func _collect_wall_pieces(
 				continue
 			_add_wall_piece(placed, pieces, pos, n, false, false, door_edges)
 
+	# 4) Parcel boundaries — only shared edges between distinct parcels in
+	#    the same zone receive thin interior walls. Transit, Decoration,
+	#    residual, and zone-boundary edges remain structural behavior.
+	for zone: ZoneData in zones:
+		for parcel: Parcel in zone.parcels:
+			for pos: Vector2i in parcel.tiles:
+				for dir: Vector2i in _DIRS:
+					var n: Vector2i = pos + dir
+					if parcel_zone_of.get(n, "") != zone.id:
+						continue
+					if parcel_of.get(n, "") == parcel.id:
+						continue
+					_add_wall_piece(placed, pieces, pos, n, false, false, door_edges, true)
+
 	return pieces
 
 
@@ -199,7 +221,7 @@ func _collect_wall_pieces(
 func _add_wall_piece(
 	placed: Dictionary, pieces: Array, pos: Vector2i, neighbor: Vector2i,
 	has_door: bool, is_exterior_door: bool = false,
-	door_edges: Dictionary = {}
+	door_edges: Dictionary = {}, is_parcel_boundary: bool = false
 ) -> void:
 	var key := _edge_key(pos, neighbor)
 	if placed.has(key):
@@ -217,11 +239,13 @@ func _add_wall_piece(
 		var adjacent_end := _has_adjacent_door(pos, normal, false, door_edges)
 		pieces.append_array(_make_exterior_door_pieces(pos, normal, adjacent_start, adjacent_end))
 	else:
-		pieces.append(_make_edge_piece(pos, normal))
+		pieces.append(_make_edge_piece(pos, normal, is_parcel_boundary))
 
 
 ## Wall piece covering one full tile edge, centered on the boundary line.
-func _make_edge_piece(pos: Vector2i, normal: Vector3) -> Dictionary:
+func _make_edge_piece(
+	pos: Vector2i, normal: Vector3, is_parcel_boundary: bool = false
+) -> Dictionary:
 	if normal.x != 0.0:
 		# East/west edge — wall runs along Z at line x.
 		return {
@@ -232,6 +256,8 @@ func _make_edge_piece(pos: Vector2i, normal: Vector3) -> Dictionary:
 			"normal": normal,
 			"height_from": 0.0,
 			"height_to": WALL_HEIGHT,
+			"thickness": PARCEL_WALL_THICKNESS if is_parcel_boundary else WALL_THICKNESS,
+			"is_parcel_boundary": is_parcel_boundary,
 		}
 	# North/south edge — wall runs along X at line z.
 	return {
@@ -242,6 +268,8 @@ func _make_edge_piece(pos: Vector2i, normal: Vector3) -> Dictionary:
 		"normal": normal,
 		"height_from": 0.0,
 		"height_to": WALL_HEIGHT,
+		"thickness": PARCEL_WALL_THICKNESS if is_parcel_boundary else WALL_THICKNESS,
+		"is_parcel_boundary": is_parcel_boundary,
 	}
 
 
@@ -299,8 +327,9 @@ func _merge_pieces_into_runs(pieces: Array) -> Array:
 	for piece: Dictionary in pieces:
 		var normal: Vector3 = piece["normal"]
 		var dir_key: String = "p" if (normal.x + normal.z) > 0.0 else "m"
-		var key := "%s:%.4f:%s:%.2f:%.2f" % [
-			piece["axis"], piece["line"], dir_key, piece["height_from"], piece["height_to"]
+		var key := "%s:%.4f:%s:%.2f:%.2f:%.3f:%s" % [
+			piece["axis"], piece["line"], dir_key, piece["height_from"], piece["height_to"],
+			piece["thickness"], "parcel" if piece["is_parcel_boundary"] else "structural"
 		]
 		if not groups.has(key):
 			groups[key] = []
@@ -325,6 +354,8 @@ func _merge_pieces_into_runs(pieces: Array) -> Array:
 					"normal": group[0]["normal"],
 					"height_from": group[0]["height_from"],
 					"height_to": group[0]["height_to"],
+					"thickness": group[0]["thickness"],
+					"is_parcel_boundary": group[0]["is_parcel_boundary"],
 				})
 				run_from = piece["from"]
 				run_to = piece["to"]
@@ -336,6 +367,8 @@ func _merge_pieces_into_runs(pieces: Array) -> Array:
 			"normal": group[0]["normal"],
 			"height_from": group[0]["height_from"],
 			"height_to": group[0]["height_to"],
+			"thickness": group[0]["thickness"],
+			"is_parcel_boundary": group[0]["is_parcel_boundary"],
 		})
 	return runs
 
@@ -363,9 +396,16 @@ func _find_wall_junctions(runs: Array, joints_by_run: Dictionary) -> Array:
 				continue
 			var outward := Vector2(run_x["normal"].x, run_x["normal"].z) \
 				+ Vector2(run_z["normal"].x, run_z["normal"].z)
-			junctions.append({"point": point, "outward": outward.normalized()})
-			_add_joint(joints_by_run, i, point.x)
-			_add_joint(joints_by_run, j, point.y)
+			var thickness := maxf(float(run_x["thickness"]), float(run_z["thickness"]))
+			var is_parcel_boundary: bool = run_x["is_parcel_boundary"] and run_z["is_parcel_boundary"]
+			junctions.append({
+				"point": point,
+				"outward": outward.normalized(),
+				"thickness": thickness,
+				"is_parcel_boundary": is_parcel_boundary,
+			})
+			_add_joint(joints_by_run, i, point.x, thickness)
+			_add_joint(joints_by_run, j, point.y, thickness)
 	return junctions
 
 
@@ -375,23 +415,26 @@ func _span_covers(run: Dictionary, coord: float) -> bool:
 
 
 ## Record a junction coordinate on a run (sorted, deduplicated).
-func _add_joint(joints_by_run: Dictionary, run_index: int, coord: float) -> void:
+func _add_joint(joints_by_run: Dictionary, run_index: int, coord: float, thickness: float) -> void:
 	if not joints_by_run.has(run_index):
 		joints_by_run[run_index] = []
 	var joints: Array = joints_by_run[run_index]
-	for existing: float in joints:
-		if absf(existing - coord) <= MERGE_EPSILON:
+	for existing: Dictionary in joints:
+		if absf(float(existing["coord"]) - coord) <= MERGE_EPSILON:
+			existing["thickness"] = maxf(float(existing["thickness"]), thickness)
 			return
-	joints.append(coord)
-	joints.sort()
+	joints.append({"coord": coord, "thickness": thickness})
+	joints.sort_custom(func(first: Dictionary, second: Dictionary) -> bool:
+		return float(first["coord"]) < float(second["coord"])
+	)
 
 
-## Whether the run has a junction at `coord` (span ends included).
-func _has_joint_at(joints: Array, coord: float) -> bool:
-	for joint: float in joints:
-		if absf(joint - coord) <= MERGE_EPSILON:
-			return true
-	return false
+## Thickness of the junction cube that trims this run at `coord`.
+func _joint_thickness_at(joints: Array, coord: float) -> float:
+	for joint: Dictionary in joints:
+		if absf(float(joint["coord"]) - coord) <= MERGE_EPSILON:
+			return float(joint["thickness"])
+	return 0.0
 
 
 ## Build the wall boxes for one run: split at junction coords and trim each
@@ -399,18 +442,21 @@ func _has_joint_at(joints: Array, coord: float) -> bool:
 ## without overlapping. Free ends (e.g. door gaps) stay untrimmed.
 func _build_wall_segments(container: Node3D, run: Dictionary, joints: Array) -> void:
 	var cuts: Array[float] = [run["from"]]
-	for joint: float in joints:
-		if joint > run["from"] + MERGE_EPSILON and joint < run["to"] - MERGE_EPSILON:
-			cuts.append(joint)
+	for joint: Dictionary in joints:
+		var coord: float = joint["coord"]
+		if coord > run["from"] + MERGE_EPSILON and coord < run["to"] - MERGE_EPSILON:
+			cuts.append(coord)
 	cuts.append(run["to"])
 
 	for i in range(cuts.size() - 1):
 		var seg_from: float = cuts[i]
 		var seg_to: float = cuts[i + 1]
-		if _has_joint_at(joints, seg_from):
-			seg_from += _HALF_THICKNESS
-		if _has_joint_at(joints, seg_to):
-			seg_to -= _HALF_THICKNESS
+		var start_joint_thickness := _joint_thickness_at(joints, seg_from)
+		var end_joint_thickness := _joint_thickness_at(joints, seg_to)
+		if start_joint_thickness > 0.0:
+			seg_from += start_joint_thickness * 0.5
+		if end_joint_thickness > 0.0:
+			seg_to -= end_joint_thickness * 0.5
 		if seg_to - seg_from < MERGE_EPSILON:
 			continue
 		_spawn_wall_box(container, run, seg_from, seg_to)
@@ -425,38 +471,42 @@ func _spawn_wall_box(container: Node3D, run: Dictionary, from: float, to: float)
 	var height_from: float = run.get("height_from", 0.0)
 	var height_to: float = run.get("height_to", WALL_HEIGHT)
 	var height := height_to - height_from
+	var thickness: float = run["thickness"]
+	var is_parcel_boundary: bool = run["is_parcel_boundary"]
 	var size: Vector3
 	var center: Vector3
 	if run["axis"] == "z":
-		size = Vector3(WALL_THICKNESS, height, length)
+		size = Vector3(thickness, height, length)
 		center = Vector3(line, (height_from + height_to) * 0.5, mid)
 	else:
-		size = Vector3(length, height, WALL_THICKNESS)
+		size = Vector3(length, height, thickness)
 		center = Vector3(mid, (height_from + height_to) * 0.5, line)
 	var outward := Vector2(run["normal"].x, run["normal"].z)
 	var label := "Wall_%s_%.1f_%.1f_%.2f" % [run["axis"], line, mid, height_from]
 	var is_door_lintel := not is_zero_approx(height_from)
 	# Keep the 25% lintel visible; only its cap/thickness bar is hidden
 	# outside Full mode.
-	_spawn_box(container, center, size, outward, 0.0, false, label)
+	_spawn_box(container, center, size, outward, 0.0, false, label, false, is_parcel_boundary)
 	var cap_y := CAP_Y if is_zero_approx(height_from) else height_to + CAP_HEIGHT * 0.5
 	_spawn_box(
 		container, Vector3(center.x, cap_y, center.z),
-		_inset_cap_size(size), outward, 0.0, true, label + "_cap", is_door_lintel
+		_inset_cap_size(size), outward, 0.0, true, label + "_cap", is_door_lintel, is_parcel_boundary
 	)
 
 
 ## Spawn a corner cube (plus its cap) at a junction point. The cube fills
 ## the square where the trimmed runs meet, so the wall outline stays
 ## continuous with no overlaps. Its outward direction is the corner diagonal.
-func _build_corner_cube(container: Node3D, point: Vector2, outward: Vector2) -> void:
-	var size := Vector3(WALL_THICKNESS, WALL_HEIGHT, WALL_THICKNESS)
+func _build_corner_cube(
+	container: Node3D, point: Vector2, outward: Vector2, thickness: float, is_parcel_boundary: bool
+) -> void:
+	var size := Vector3(thickness, WALL_HEIGHT, thickness)
 	var center := Vector3(point.x, WALL_HEIGHT * 0.5, point.y)
-	var label := "Corner_%.0f_%.0f" % [point.x, point.y]
-	_spawn_box(container, center, size, outward, CORNER_FRONT_THRESHOLD, false, label)
+	var label := "ParcelCorner_%.0f_%.0f" % [point.x, point.y] if is_parcel_boundary else "Corner_%.0f_%.0f" % [point.x, point.y]
+	_spawn_box(container, center, size, outward, CORNER_FRONT_THRESHOLD, false, label, false, is_parcel_boundary)
 	_spawn_box(
 		container, Vector3(point.x, CAP_Y, point.y),
-		_inset_cap_size(size), outward, CORNER_FRONT_THRESHOLD, true, label + "_cap"
+		_inset_cap_size(size), outward, CORNER_FRONT_THRESHOLD, true, label + "_cap", false, is_parcel_boundary
 	)
 
 
@@ -464,11 +514,11 @@ func _build_corner_cube(container: Node3D, point: Vector2, outward: Vector2) -> 
 func _spawn_box(
 	container: Node3D, center: Vector3, size: Vector3,
 	outward: Vector2, front_threshold: float, is_cap: bool, label: String,
-	is_door_lintel: bool = false
+	is_door_lintel: bool = false, is_parcel_boundary: bool = false
 ) -> void:
 	var box := MeshInstance3D.new()
 	box.mesh = _get_box_mesh(size)
-	box.material_override = _get_wall_material(outward, front_threshold, is_cap, is_door_lintel)
+	box.material_override = _get_wall_material(outward, front_threshold, is_cap, is_door_lintel, is_parcel_boundary)
 	box.position = center
 	box.name = label
 	container.add_child(box)
@@ -499,11 +549,13 @@ func _get_box_mesh(size: Vector3) -> BoxMesh:
 ## shader classifies the whole box by the baked outward direction, so every
 ## face of a wall or cube opens or stays solid together.
 func _get_wall_material(
-	outward: Vector2, front_threshold: float, is_cap: bool, is_door_lintel: bool = false
+	outward: Vector2, front_threshold: float, is_cap: bool, is_door_lintel: bool = false,
+	is_parcel_boundary: bool = false
 ) -> ShaderMaterial:
-	var key := "%.2f|%.2f|%.2f|%s|%s" % [
+	var key := "%.2f|%.2f|%.2f|%s|%s|%s" % [
 		outward.x, outward.y, front_threshold,
-		"cap" if is_cap else "wall", "door_lintel" if is_door_lintel else "normal"
+		"cap" if is_cap else "wall", "door_lintel" if is_door_lintel else "normal",
+		"parcel" if is_parcel_boundary else "structural"
 	]
 	var mat := _materials.get(key) as ShaderMaterial
 	if mat == null:
@@ -514,6 +566,7 @@ func _get_wall_material(
 		mat.set_shader_parameter("front_threshold", front_threshold)
 		mat.set_shader_parameter("is_cap", is_cap)
 		mat.set_shader_parameter("is_door_lintel", is_door_lintel)
+		mat.set_shader_parameter("is_parcel_boundary", is_parcel_boundary)
 		_materials[key] = mat
 	return mat
 

@@ -53,9 +53,6 @@ signal zone_modified(zone_id: String)
 ## A zone was deleted/demolished.
 signal zone_deleted(zone_id: String)
 
-## A zone's wall mode changed.
-signal zone_wall_mode_changed(zone_id: String, walls_enabled: bool)
-
 ## A tile was purchased on a floor.
 signal tile_purchased(floor: int, tile_x: int, tile_y: int)
 

@@ -229,7 +229,6 @@ func serialize() -> Dictionary:
 			"tiles": zone.tiles,
 			"parcel_layout_seed": zone.parcel_layout_seed,
 			"typologies": _serialize_typologies(zone.typologies),
-			"walls_enabled": zone.walls_enabled,
 			"zone_name": zone.zone_name,
 			"parcels": serialized_parcels,
 		}
@@ -260,7 +259,6 @@ func deserialize(data: Dictionary) -> void:
 		if zone.parcel_layout_seed <= 0:
 			zone.parcel_layout_seed = _generate_parcel_layout_seed(zone.id)
 		zone.typologies = _deserialize_typologies(zone_data.get("typologies", []))
-		zone.walls_enabled = zone_data.get("walls_enabled", true)
 		zone.zone_name = zone_data.get("zone_name", "")
 		for parcel_data: Dictionary in zone_data.get("parcels", []):
 			var parcel := Parcel.deserialize(parcel_data)
@@ -459,7 +457,6 @@ func _copy_zone(source: ZoneData) -> ZoneData:
 	copy.tiles = source.tiles.duplicate()
 	copy.parcel_layout_seed = source.parcel_layout_seed
 	copy.typologies = source.typologies.duplicate()
-	copy.walls_enabled = source.walls_enabled
 	copy.zone_name = source.zone_name
 	copy.parcels = source.parcels.duplicate()
 	return copy
@@ -473,7 +470,6 @@ func _copy_zone_state(source: ZoneData, destination: ZoneData) -> void:
 	destination.tiles = source.tiles.duplicate()
 	destination.parcel_layout_seed = source.parcel_layout_seed
 	destination.typologies = source.typologies.duplicate()
-	destination.walls_enabled = source.walls_enabled
 	destination.zone_name = source.zone_name
 	destination.parcels = source.parcels.duplicate()
 

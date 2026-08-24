@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://d0m4todt7kfn2"]
+
+[ext_resource type="Script" uid="uid://d2424mn2fhcqe" path="res://tests/test_wall_manager.gd" id="1_qahp3"]
+
+[node name="WallManagerTest" type="Node" unique_id=509121865]
+script = ExtResource("1_qahp3")

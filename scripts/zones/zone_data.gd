@@ -43,9 +43,6 @@ var subtype: String = ""
 ## Per-tile typology classification.
 var typologies: Dictionary = {}  # Dictionary[Vector2i, GridTile.TileTypology]
 
-## Whether this zone has walls enabled.
-@export var walls_enabled: bool = true
-
 ## Display name for this zone (optional, for UI).
 @export var zone_name: String = ""
 
