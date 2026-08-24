@@ -7,6 +7,7 @@ extends Control
 @onready var _buttons: HBoxContainer = $Buttons
 var _painting: bool = false
 var _finish_button: Button
+var _remove_button: Button
 var _transit_button: Button
 var _door_mode: bool = false
 
@@ -51,13 +52,25 @@ func _enter_paint_mode(zone_type: String) -> void:
 			if not (tool as ZoneTool).preview_validation_changed.is_connected(_on_preview_validation_changed):
 				(tool as ZoneTool).preview_validation_changed.connect(_on_preview_validation_changed)
 			(tool as ZoneTool).active_zone_type = zone_type
+			(tool as ZoneTool).set_remove_mode(false)
 			(tool as ZoneTool).is_active = true
+	_remove_button = _add_button("Remove", func(): _toggle_remove_mode())
+	_remove_button.toggle_mode = true
 	_finish_button = _add_button("Finish Zone", func(): _exit_paint_mode())
 	_configure_finish_button(_finish_button)
 	if root:
 		var zone_tool := root.get_node_or_null("ZoneTool") as ZoneTool
 		if zone_tool:
 			_finish_button.disabled = not zone_tool.can_finish
+
+
+func _toggle_remove_mode() -> void:
+	var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
+	if tool == null:
+		return
+	tool.set_remove_mode(not tool.is_remove_mode())
+	if _remove_button != null:
+		_remove_button.button_pressed = tool.is_remove_mode()
 
 
 func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> void:
@@ -152,6 +165,7 @@ func _add_button(text: String, callback: Callable) -> Button:
 
 func _clear_buttons() -> void:
 	_finish_button = null
+	_remove_button = null
 	_transit_button = null
 	for child in _buttons.get_children():
 		child.queue_free()

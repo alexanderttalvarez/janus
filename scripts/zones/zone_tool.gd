@@ -20,6 +20,8 @@ const ZONE_COLORS: Dictionary = {
 const HOVER_ALPHA: float = 0.8
 ## Alpha for painted-but-unfinished zone tiles.
 const PAINTED_ALPHA: float = 0.4
+## Alpha for the rectangle shown while the left mouse button is held.
+const DRAG_PREVIEW_ALPHA: float = 0.55
 
 ## World Y for all tile visuals. Must sit clearly above the GridOverlay plane
 ## (floor.tscn places it at y=0.1) or the meshes are hidden/z-fight with it.
@@ -38,9 +40,13 @@ var _editing_zone_id: String = ""
 var _typo_mode: GridTile.TileTypology = GridTile.TileTypology.TENANT
 var _preview_mesh: MeshInstance3D
 var _painting: bool = false
+var _paint_start_tile: Vector2i = Vector2i.ZERO
+var _remove_mode: bool = false
 ## Node3D container for all tool visuals. MeshInstance3D children of a plain
 ## Node never reach the RenderingServer, so every mesh lives under this root.
 var _visual_root: Node3D
+## Temporary rectangle preview shown during a left-button drag.
+var _drag_preview_root: Node3D
 ## Painted tile position -> its visual mesh (visible during painting).
 var _painted_meshes: Dictionary = {}
 ## Most recent non-mutating split validation of the pending zone data.
@@ -58,6 +64,9 @@ func _ready() -> void:
 	_invalid_perimeter_root = Node3D.new()
 	_invalid_perimeter_root.name = "InvalidPerimeter"
 	_visual_root.add_child(_invalid_perimeter_root)
+	_drag_preview_root = Node3D.new()
+	_drag_preview_root.name = "DragPreview"
+	_visual_root.add_child(_drag_preview_root)
 	_create_preview_mesh()
 	# Hover updates run in _process; painting uses _unhandled_input so UI clicks
 	# (toolbar buttons) are consumed by the UI and never reach the tool.
@@ -209,16 +218,27 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
-				_painting = true
-				_paint_at_mouse()
+				var start_tile := _get_tile_under_mouse()
+				var can_start := _painted_tiles.has(start_tile) if _remove_mode else _can_paint_tile_for_rectangle(start_tile)
+				if can_start:
+					_painting = true
+					_paint_start_tile = start_tile
+					_update_drag_preview(start_tile)
 			else:
-				_painting = false
+				if _painting:
+					var end_tile := _get_tile_under_mouse()
+					_painting = false
+					_clear_drag_preview()
+					if _remove_mode:
+						_remove_rectangle(_paint_start_tile, end_tile)
+					else:
+						_paint_rectangle(_paint_start_tile, end_tile)
 		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 			_erase_at_mouse()
 
 	if event is InputEventMouseMotion:
 		if _painting:
-			_paint_at_mouse()
+			_update_drag_preview(_get_tile_under_mouse())
 		else:
 			_update_hover()
 
@@ -226,26 +246,96 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	if not is_active:
 		_preview_mesh.visible = false
+		_clear_drag_preview()
 		return
-	_update_hover()
+	if not _painting:
+		_update_hover()
+
+
+func _update_drag_preview(end_tile: Vector2i) -> void:
+	_clear_drag_preview()
+	if _drag_preview_root == null:
+		return
+	for tile_pos: Vector2i in rectangle_tiles(_paint_start_tile, end_tile):
+		if _remove_mode:
+			if not _painted_tiles.has(tile_pos):
+				continue
+		else:
+			if not _can_paint_tile_for_rectangle(tile_pos):
+				continue
+		var mesh := _make_tile_mesh(DRAG_PREVIEW_ALPHA)
+		mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y + 0.01, float(tile_pos.y) + 0.5)
+		_drag_preview_root.add_child(mesh)
+
+
+func _clear_drag_preview() -> void:
+	if _drag_preview_root == null:
+		return
+	for child: Node in _drag_preview_root.get_children():
+		child.free()
+
+
+func _remove_rectangle(start_tile: Vector2i, end_tile: Vector2i) -> void:
+	var removed := false
+	for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
+		if not _painted_tiles.has(tile_pos):
+			continue
+		_painted_tiles.erase(tile_pos)
+		_painted_typologies.erase(tile_pos)
+		_hide_painted_tile(tile_pos)
+		removed = true
+	if removed:
+		painting_state_changed.emit(not _painted_tiles.is_empty(), is_transit_mode())
+		_update_preview_validation()
 
 
 func _paint_at_mouse() -> void:
 	var tile_pos := _get_tile_under_mouse()
-	if not _can_paint(tile_pos):
-		return
-	if not _painted_tiles.has(tile_pos):
-		_painted_tiles.append(tile_pos)
+	_paint_rectangle(tile_pos, tile_pos)
+
+
+func _paint_rectangle(start_tile: Vector2i, end_tile: Vector2i) -> void:
+	var changed := false
+	for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
+		if not _can_paint_tile_for_rectangle(tile_pos):
+			continue
+		if not _painted_tiles.has(tile_pos):
+			_painted_tiles.append(tile_pos)
+			changed = true
 		_painted_typologies[tile_pos] = _typo_mode
-		_show_painted_tile(tile_pos)
-		painting_state_changed.emit(true, is_transit_mode())
+		if _painted_meshes.has(tile_pos):
+			_refresh_painted_tile(tile_pos)
+		else:
+			_show_painted_tile(tile_pos)
+	if changed:
+		painting_state_changed.emit(not _painted_tiles.is_empty(), is_transit_mode())
 		_update_preview_validation()
-	else:
-		# Repainting an existing pending tile intentionally overrides its
-		# typology, allowing tenant/transit correction before finishing.
-		_painted_typologies[tile_pos] = _typo_mode
-		_refresh_painted_tile(tile_pos)
-		_update_preview_validation()
+
+
+static func rectangle_tiles(start_tile: Vector2i, end_tile: Vector2i) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	var min_x := mini(start_tile.x, end_tile.x)
+	var max_x := maxi(start_tile.x, end_tile.x)
+	var min_y := mini(start_tile.y, end_tile.y)
+	var max_y := maxi(start_tile.y, end_tile.y)
+	for y: int in range(min_y, max_y + 1):
+		for x: int in range(min_x, max_x + 1):
+			result.append(Vector2i(x, y))
+	return result
+
+
+func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
+	var gm := _get_grid_manager()
+	if gm == null:
+		return false
+	var tile: GridTile = gm.get_tile(tile_pos.x, tile_pos.y)
+	if tile == null or not tile.owned:
+		return false
+	var zm := _get_zone_manager()
+	if zm == null:
+		return false
+	var occupying_zone := zm.get_zone_at_tile(tile_pos)
+	return occupying_zone == null or occupying_zone.id == _editing_zone_id
 
 
 func _erase_at_mouse() -> void:
@@ -265,17 +355,15 @@ func _can_paint(tile_pos: Vector2i) -> bool:
 	var tile: GridTile = gm.get_tile(tile_pos.x, tile_pos.y)
 	if tile == null or not tile.owned:
 		return false
+	if _remove_mode:
+		return _painted_tiles.has(tile_pos)
 	# Can't paint on occupied tiles (other zones).
 	var zm := _get_zone_manager()
 	if zm and zm.is_tile_in_zone(tile_pos):
 		return false
-	# Adjacency: first tile always ok, subsequent must be adjacent.
-	if _painted_tiles.is_empty():
-		return true
-	for existing: Vector2i in _painted_tiles:
-		if absi(tile_pos.x - existing.x) + absi(tile_pos.y - existing.y) == 1:
-			return true
-	return false
+	# Adjacency is retained for hover feedback only. Rectangle painting uses
+	# _can_paint_tile_for_rectangle() so the full drag area can be selected.
+	return _can_paint_tile_for_rectangle(tile_pos)
 
 
 func _update_hover() -> void:
@@ -376,6 +464,7 @@ func cancel() -> void:
 	_painted_typologies.clear()
 	_editing_zone_id = ""
 	_typo_mode = GridTile.TileTypology.TENANT
+	_remove_mode = false
 	preview_split_result = null
 	can_finish = false
 	_clear_invalid_perimeter()
@@ -383,9 +472,22 @@ func cancel() -> void:
 	if previous_can_finish or previous_status != _preview_status():
 		preview_validation_changed.emit(false, _preview_status())
 	_preview_mesh.visible = false
+	_clear_drag_preview()
 	for mesh: Node in _painted_meshes.values():
 		mesh.queue_free()
 	_painted_meshes.clear()
+
+
+func set_remove_mode(enabled: bool) -> void:
+	_remove_mode = enabled
+	if _painting:
+		_painting = false
+		_clear_drag_preview()
+	_update_hover()
+
+
+func is_remove_mode() -> bool:
+	return _remove_mode
 
 
 func set_transit_mode(enabled: bool) -> void:

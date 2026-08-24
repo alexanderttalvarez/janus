@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://blgf8a7bdtt58"]
+
+[ext_resource type="Script" uid="uid://dse6iuf0o2mo" path="res://tests/test_zone_tool.gd" id="1_v4m28"]
+
+[node name="ZoneToolTest" type="Node" unique_id=359444011]
+script = ExtResource("1_v4m28")
