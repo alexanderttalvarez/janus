@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://dgkroibmbhtmv"]
+
+[ext_resource type="Script" uid="uid://c4qs3aqkhy7es" path="res://scripts/ui/isometric_compass.gd" id="1_p3cdc"]
+
+[node name="IsometricCompass" type="Control" unique_id=1349840615]
+custom_minimum_size = Vector2(55, 45)
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -71.0
+offset_top = -101.0
+offset_right = -16.0
+offset_bottom = -56.0
+mouse_filter = 2
+script = ExtResource("1_p3cdc")

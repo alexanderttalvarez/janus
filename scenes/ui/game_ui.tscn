@@ -2,6 +2,8 @@
 
 [ext_resource type="Script" uid="uid://cvdnghlniwxd3" path="res://scripts/ui/hud_bar.gd" id="1_hud_bar"]
 [ext_resource type="Script" uid="uid://dkinkxq1xu7v6" path="res://scripts/ui/panel_manager.gd" id="2_panel_manager"]
+[ext_resource type="PackedScene" uid="uid://dgkroibmbhtmv" path="res://scenes/ui/isometric_compass.tscn" id="3_v1bdg"]
+[ext_resource type="Script" uid="uid://c4qs3aqkhy7es" path="res://scripts/ui/isometric_compass.gd" id="4_qrkc0"]
 [ext_resource type="Script" uid="uid://cs3y2pabgp62j" path="res://scripts/ui/game_ui.gd" id="5_game_ui"]
 [ext_resource type="Script" uid="uid://deigrs7gmgjqr" path="res://scripts/ui/bottom_toolbar.gd" id="6_toolbar"]
 
@@ -81,6 +83,21 @@ offset_right = 1443.0
 offset_bottom = 30.0
 text = "Camera"
 
+[node name="IsometricCompass" type="Control" parent="HUDLayer" unique_id=1349840615 instance=ExtResource("3_v1bdg")]
+custom_minimum_size = Vector2(55, 45)
+layout_mode = 3
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -71.0
+offset_top = -101.0
+offset_right = -16.0
+offset_bottom = -56.0
+mouse_filter = 2
+script = ExtResource("4_qrkc0")
+
 [node name="ToolbarLayer" type="CanvasLayer" parent="." unique_id=1260599950]
 layer = 2
 
@@ -91,6 +108,7 @@ anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_top = -40.0
+grow_horizontal = 2
 grow_vertical = 0
 script = ExtResource("6_toolbar")
 
