@@ -48,6 +48,7 @@ func create_zone(
 	plot_id: String,
 	typologies: Dictionary = {}
 ) -> ZoneData:
+	var counter_snapshot := _counter_snapshot()
 	var candidate := ZoneData.new()
 	candidate.id = _generate_zone_id()
 	candidate.parcel_layout_seed = _generate_parcel_layout_seed(candidate.id)
@@ -59,9 +60,11 @@ func create_zone(
 	candidate.zone_name = zone_type
 
 	if not _validate_candidate_tiles(candidate, ""):
+		_restore_counters(counter_snapshot)
 		return null
 	var transaction := _prepare_access_transaction(candidate, null)
 	if transaction.is_empty():
+		_restore_counters(counter_snapshot)
 		return null
 	candidate = transaction[0]
 	zones[candidate.id] = candidate
@@ -87,6 +90,7 @@ func modify_zone(
 	plot_id: String,
 	typologies: Dictionary = {}
 ) -> ZoneData:
+	var counter_snapshot := _counter_snapshot()
 	var zone: ZoneData = zones.get(zone_id, null)
 	if zone == null:
 		push_error("ZoneManager.modify_zone(): zone '%s' not found." % zone_id)
@@ -101,9 +105,11 @@ func modify_zone(
 		candidate.tiles, typologies if not typologies.is_empty() else zone.typologies
 	)
 	if not _validate_candidate_tiles(candidate, zone.id):
+		_restore_counters(counter_snapshot)
 		return null
 	var transaction := _prepare_access_transaction(candidate, zone)
 	if transaction.is_empty():
+		_restore_counters(counter_snapshot)
 		return null
 	candidate = transaction[0]
 	var old_tiles: Array[Vector2i] = zone.tiles.duplicate()
@@ -186,6 +192,13 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 	var result := ZoneSplitter.split(candidate, context.floor_grid, context.plot, context)
 	if not result.is_success():
 		return result
+	if replaced_zone != null:
+		_match_preview_parcels(result.parcels, replaced_zone.parcels)
+		var invalidated_door := _prior_door_invalidation_diagnostic(
+			candidate.id, result.parcels, replaced_zone.parcels
+		)
+		if not invalidated_door.is_empty():
+			return _existing_door_failure(result.parcels, invalidated_door)
 	if not _all_parcels_have_physical_door_frontage(result.parcels):
 		return _physical_door_failure(result.parcels, "NO_PHYSICAL_DOOR_FRONTAGE")
 
@@ -193,6 +206,12 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 		var affected_result := ZoneSplitter.split(affected_zone, context.floor_grid, context.plot, context)
 		if not affected_result.is_success():
 			return affected_result
+		_match_preview_parcels(affected_result.parcels, affected_zone.parcels)
+		var affected_invalidated_door := _prior_door_invalidation_diagnostic(
+			affected_zone.id, affected_result.parcels, affected_zone.parcels
+		)
+		if not affected_invalidated_door.is_empty():
+			return _existing_door_failure(affected_result.parcels, affected_invalidated_door)
 		if not _all_parcels_have_physical_door_frontage(affected_result.parcels):
 			return _physical_door_failure(
 				affected_result.parcels,
@@ -203,6 +222,12 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 
 func _physical_door_failure(parcels: Array[Parcel], diagnostic: String) -> SplitResult:
 	var failure := SplitResult.failure(SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE, diagnostic)
+	failure.parcels = parcels
+	return failure
+
+
+func _existing_door_failure(parcels: Array[Parcel], diagnostic: String) -> SplitResult:
+	var failure := SplitResult.failure(SplitResult.Status.EXISTING_DOOR_INVALIDATED, diagnostic)
 	failure.parcels = parcels
 	return failure
 
@@ -340,6 +365,10 @@ func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 	if replaced_zone != null:
 		prior_parcels = replaced_zone.parcels
 	_assign_persistent_ids(candidate.parcels, prior_parcels)
+	if not prior_parcels.is_empty() and not _validate_prior_selected_doors(
+		candidate.id, candidate.parcels, prior_parcels
+	):
+		return []
 	if not _assign_selected_door_edges(candidate.parcels, prior_parcels):
 		return []
 	_assign_debug_subtypes(candidate)
@@ -349,6 +378,10 @@ func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 		if not _prepare_split(affected_candidate, context):
 			return []
 		_assign_persistent_ids(affected_candidate.parcels, affected_zone.parcels)
+		if not _validate_prior_selected_doors(
+			affected_zone.id, affected_candidate.parcels, affected_zone.parcels
+		):
+			return []
 		if not _assign_selected_door_edges(affected_candidate.parcels, affected_zone.parcels):
 			return []
 		_assign_debug_subtypes(affected_candidate)
@@ -591,6 +624,45 @@ static func _door_direction_rank(direction: Vector2i) -> int:
 	return directions.size()
 
 
+func _validate_prior_selected_doors(
+	zone_id: String, new_parcels: Array[Parcel], old_parcels: Array[Parcel]
+) -> bool:
+	var diagnostic := _prior_door_invalidation_diagnostic(zone_id, new_parcels, old_parcels)
+	if diagnostic.is_empty():
+		return true
+	last_split_result = SplitResult.failure(SplitResult.Status.EXISTING_DOOR_INVALIDATED, diagnostic)
+	return false
+
+
+func _prior_door_invalidation_diagnostic(
+	zone_id: String, new_parcels: Array[Parcel], old_parcels: Array[Parcel]
+) -> String:
+	var new_parcels_by_id: Dictionary = {}
+	for parcel: Parcel in new_parcels:
+		new_parcels_by_id[parcel.id] = parcel
+	for old_parcel: Parcel in old_parcels:
+		if old_parcel.selected_door_edges.is_empty():
+			continue
+		var new_parcel: Parcel = new_parcels_by_id.get(old_parcel.id, null)
+		if new_parcel == null:
+			return "EXISTING_DOOR_INVALIDATED:%s:%s:PARCEL_NO_LONGER_MATCHED" % [zone_id, old_parcel.id]
+		var candidate_keys: Dictionary = {}
+		for edge: Dictionary in _physical_door_candidates(new_parcel):
+			candidate_keys[_door_edge_key(edge)] = true
+		for old_edge: Dictionary in old_parcel.selected_door_edges:
+			if not candidate_keys.has(_door_edge_key(old_edge)):
+				return "EXISTING_DOOR_INVALIDATED:%s:%s:%s:EDGE_NOT_IN_PROSPECTIVE_PARCEL" % [
+					zone_id, old_parcel.id, _door_edge_key(old_edge)
+				]
+	return ""
+
+
+func _match_preview_parcels(new_parcels: Array[Parcel], old_parcels: Array[Parcel]) -> void:
+	var counter_snapshot := _counter_snapshot()
+	_assign_persistent_ids(new_parcels, old_parcels)
+	_restore_counters(counter_snapshot)
+
+
 func _assign_persistent_ids(new_parcels: Array[Parcel], old_parcels: Array[Parcel]) -> void:
 	var used_old_ids: Dictionary = {}
 	for parcel: Parcel in new_parcels:
@@ -686,6 +758,20 @@ func _copy_zone_state(source: ZoneData, destination: ZoneData) -> void:
 	destination.typologies = source.typologies.duplicate()
 	destination.zone_name = source.zone_name
 	destination.parcels = source.parcels.duplicate()
+
+
+func _counter_snapshot() -> Dictionary:
+	return {
+		"zone": _zone_counter,
+		"parcel": _parcel_counter,
+		"display": _parcel_display_number_counter,
+	}
+
+
+func _restore_counters(snapshot: Dictionary) -> void:
+	_zone_counter = int(snapshot.get("zone", _zone_counter))
+	_parcel_counter = int(snapshot.get("parcel", _parcel_counter))
+	_parcel_display_number_counter = int(snapshot.get("display", _parcel_display_number_counter))
 
 
 func _generate_zone_id() -> String:

@@ -104,6 +104,8 @@ func _preview_mode_label(can_finish: bool, status: int) -> String:
 	match status:
 		SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE:
 			return "Build: %s — Add adjacent circulation or Transit" % zone_type
+		SplitResult.Status.EXISTING_DOOR_INVALIDATED:
+			return "Build: %s — Blocks an existing door" % zone_type
 		SplitResult.Status.NO_VALID_FRONTAGE:
 			return "Build: %s — No frontage" % zone_type
 		SplitResult.Status.INSUFFICIENT_RENTABLE_SPACE:

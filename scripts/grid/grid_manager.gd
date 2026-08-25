@@ -260,21 +260,34 @@ func can_place_door_between(from: Vector2i, to: Vector2i, plot_id: String = DEFA
 		return false
 	# A valid edge outside the footprint is the building-to-pedestrian boundary.
 	if to_tile == null and not floor_grid.is_valid_tile(to.x, to.y):
+		if not from_tile.zone_id.is_empty() and from_tile.typology != GridTile.TileTypology.TRANSIT:
+			return false
 		return true
 	if to_tile == null or not to_tile.owned or not to_tile.floor_built:
 		return false
+	# Different zones may connect only through Transit-to-Transit tiles.
+	if not from_tile.zone_id.is_empty() and not to_tile.zone_id.is_empty():
+		return (
+			from_tile.zone_id != to_tile.zone_id
+			and from_tile.typology == GridTile.TileTypology.TRANSIT
+			and to_tile.typology == GridTile.TileTypology.TRANSIT
+		)
 	if from_tile.zone_id == to_tile.zone_id and not from_tile.zone_id.is_empty():
 		return false
 	var from_corridor := from_tile.element == GridTile.TileElement.CIRCULATION
 	var to_corridor := to_tile.element == GridTile.TileElement.CIRCULATION
 	var from_is_zone := not from_tile.zone_id.is_empty()
 	var to_is_zone := not to_tile.zone_id.is_empty()
-	# Any zone-to-corridor boundary requires the zone-side tile to be transit,
-	# even when the corridor is represented as a normal walkable tile.
+	# Any zone-to-external boundary requires the zone-side tile to be Transit
+	# and the other tile to be explicit public circulation.
 	if from_is_zone != to_is_zone:
 		var zone_tile := from_tile if from_is_zone else to_tile
+		var external_tile := to_tile if from_is_zone else from_tile
 		if zone_tile.typology != GridTile.TileTypology.TRANSIT:
 			return false
+		if external_tile.element != GridTile.TileElement.CIRCULATION:
+			return false
+		return true
 	return from_tile.zone_id != to_tile.zone_id or from_corridor != to_corridor
 
 

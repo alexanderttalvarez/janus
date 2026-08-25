@@ -10,6 +10,9 @@ var _failed: int = 0
 func _ready() -> void:
 	var context := _make_world()
 	_test_successful_creation_commits_parcels(context)
+	_test_inter_zone_frontage_cannot_be_a_door(context)
+	_test_manual_doors_cannot_cross_zones(context)
+	_test_adjacent_zone_cannot_block_existing_door(context)
 	_test_successful_edit_reassigns_debug_subtypes(context)
 	_test_preview_split_is_non_mutating(context)
 	_test_create_zone_rejects_implicit_only_frontage(context)
@@ -117,6 +120,130 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 					first_parcel.assigned_subtype_id != second_parcel.assigned_subtype_id,
 					"edge-adjacent committed parcels receive distinct subtype IDs"
 				)
+
+
+func _test_inter_zone_frontage_cannot_be_a_door(context: Dictionary) -> void:
+	var grid_manager: GridManager = context.grid_manager
+	var existing_zone: ZoneData = context.zone_manager.zones.get("zone_1", null)
+	if existing_zone == null or existing_zone.tiles.is_empty():
+		_assert(false, "existing zone exists before inter-zone frontage test")
+		return
+	var candidate_zone := ZoneData.new()
+	candidate_zone.id = "zone_2"
+	candidate_zone.plot_id = "test_plot"
+	candidate_zone.floor = "G"
+	var floor_grid := grid_manager.get_floor_grid("test_plot", "G")
+	var plot := grid_manager.get_plot("test_plot")
+	var access_context := FloorAccessContext.new(floor_grid, plot)
+	var access_tile: Vector2i = existing_zone.tiles[0]
+	var access_kind := access_context.access_kind_for(access_tile, candidate_zone, {})
+	_assert(access_kind.is_empty(), "frontage to another zone is not physical door access")
+
+
+func _test_manual_doors_cannot_cross_zones(context: Dictionary) -> void:
+	var grid_manager: GridManager = context.grid_manager
+	var existing_zone: ZoneData = context.zone_manager.zones.get("zone_1", null)
+	if existing_zone == null or existing_zone.tiles.is_empty():
+		_assert(false, "existing zone exists before manual door validation test")
+		return
+	var from_pos: Vector2i = existing_zone.tiles[0]
+	var to_pos := Vector2i.ZERO
+	var found_neighbor := false
+	for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT, Vector2i.UP]:
+		var candidate := from_pos + direction
+		if grid_manager.get_floor_grid("test_plot", "G").is_valid_tile(candidate.x, candidate.y) and not existing_zone.tiles.has(candidate):
+			to_pos = candidate
+			found_neighbor = true
+			break
+	if not found_neighbor:
+		_assert(false, "manual door validation has an adjacent external tile")
+		return
+	var from_tile := grid_manager.get_tile(from_pos.x, from_pos.y, "test_plot", "G")
+	var to_tile := grid_manager.get_tile(to_pos.x, to_pos.y, "test_plot", "G")
+	var original_typology := from_tile.typology
+	from_tile.typology = GridTile.TileTypology.TRANSIT
+	to_tile.zone_id = existing_zone.id
+	to_tile.typology = GridTile.TileTypology.TRANSIT
+	_assert(
+		not grid_manager.can_place_door_between(from_pos, to_pos, "test_plot", "G"),
+		"manual doors cannot connect Transit tiles within the same zone"
+	)
+	to_tile.zone_id = "zone_other"
+	to_tile.typology = GridTile.TileTypology.TENANT
+	to_tile.element = GridTile.TileElement.NONE
+	_assert(
+		not grid_manager.can_place_door_between(from_pos, to_pos, "test_plot", "G"),
+		"manual doors cannot connect Transit to a non-Transit tile in another zone"
+	)
+	to_tile.typology = GridTile.TileTypology.TRANSIT
+	_assert(
+		grid_manager.can_place_door_between(from_pos, to_pos, "test_plot", "G"),
+		"manual doors can connect Transit tiles across different zones"
+	)
+	to_tile.zone_id = ""
+	to_tile.typology = GridTile.TileTypology.TENANT
+	to_tile.element = GridTile.TileElement.CIRCULATION
+	_assert(
+		grid_manager.can_place_door_between(from_pos, to_pos, "test_plot", "G"),
+		"manual Transit doors can connect to external circulation"
+	)
+	from_tile.typology = original_typology
+	to_tile.element = GridTile.TileElement.CIRCULATION
+
+
+func _test_adjacent_zone_cannot_block_existing_door(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var grid_manager: GridManager = context.grid_manager
+	var existing_zone: ZoneData = zone_manager.zones.get("zone_1", null)
+	if existing_zone == null or existing_zone.parcels.is_empty():
+		_assert(false, "existing zone exists before adjacent blocking test")
+		return
+	var source_parcel: Parcel = existing_zone.parcels[0]
+	if source_parcel.selected_door_edges.is_empty():
+		_assert(false, "existing parcel has a selected door before adjacent blocking test")
+		return
+	var blocked_edge: Dictionary = source_parcel.selected_door_edges[0]
+	var blocked_access: Vector2i = blocked_edge.get("access", Vector2i.ZERO)
+	var blocked_direction: Vector2i = blocked_edge.get("direction", Vector2i.UP)
+	var forward := Vector2i(signi(blocked_direction.x), signi(blocked_direction.y))
+	var side := Vector2i.DOWN if forward.x != 0 else Vector2i.RIGHT
+	var blocked_tiles: Array[Vector2i] = []
+	for depth: int in range(2):
+		for width: int in range(3):
+			var candidate_tile := blocked_access + forward * depth + side * width
+			if existing_zone.tiles.has(candidate_tile):
+				continue
+			blocked_tiles.append(candidate_tile)
+	if blocked_tiles.size() < 6:
+		_assert(false, "adjacent blocking candidate has enough tiles")
+		return
+	var original_door_keys := _door_edge_keys(source_parcel.selected_door_edges)
+	var original_zone_count := zone_manager.zones.size()
+	var original_serialized := zone_manager.serialize()
+	var preview := zone_manager.preview_split("Retail", blocked_tiles, "G", "test_plot")
+	_assert(
+		preview.status == SplitResult.Status.EXISTING_DOOR_INVALIDATED,
+		"preview rejects a new zone that blocks an existing door"
+	)
+	_assert(
+		preview.diagnostics.size() == 1 and preview.diagnostics[0].begins_with("EXISTING_DOOR_INVALIDATED"),
+		"preview reports the blocked existing door"
+	)
+	var rejected := zone_manager.create_zone("Retail", blocked_tiles, "G", "test_plot")
+	_assert(rejected == null, "adjacent zone blocking an existing door is rejected")
+	_assert(zone_manager.zones.size() == original_zone_count, "blocked-door rejection creates no new zone")
+	_assert(
+		_door_edge_keys(source_parcel.selected_door_edges) == original_door_keys,
+		"blocked-door rejection preserves the previous door"
+	)
+	_assert(
+		zone_manager.serialize() == original_serialized,
+		"blocked-door rejection preserves committed zone and counter state"
+	)
+	_assert(
+		grid_manager.get_tile(blocked_access.x, blocked_access.y, "test_plot", "G").zone_id.is_empty(),
+		"blocked-door rejection preserves the access tile"
+	)
 
 
 func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void:

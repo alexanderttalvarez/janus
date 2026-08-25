@@ -13,6 +13,7 @@ Every committed parcel receives deterministic physical doors to its eligible int
 - A physical eligible position is a distinct parcel Tenant tile with at least one directed frontage edge to either:
   - same-zone internal Transit; or
   - owned, built, external `TileElement.CIRCULATION`.
+- Frontage to a different committed zone is never automatic parcel-door access.
 - Exclude virtual exterior and implicit-unzoned circulation from physical door allocation.
 - The required door count is `ceil(physical_eligible_position_count / 10.0)`.
 - Select at most one edge per eligible parcel tile position.
@@ -27,21 +28,33 @@ Every committed parcel receives deterministic physical doors to its eligible int
 - Persist selected edges in `Parcel.selected_door_edges` and restore them through parcel serialization. Transit-area keys are derived candidate metadata and are not separately serialized.
 - A parcel without a physical eligible position rejects atomically with `NO_PHYSICAL_DOOR_FRONTAGE`.
 
+## Existing-door preservation invariant
+
+- A committed zone transaction must not block any previously selected automatic parcel door belonging to an existing affected zone.
+- If a new adjacent zone occupies an existing door’s access tile, or changes that access tile so the edge is no longer physically eligible, the entire transaction rejects atomically with `EXISTING_DOOR_INVALIDATED`.
+- Replacement frontage does not compensate for a blocked existing door. The old physical edge must remain legal on the matched persistent parcel.
+- Exact legal-edge identity includes parcel tile, edge direction, access tile, and `access_kind`; derived Transit-area keys do not affect legality.
+- The invariant applies to new-zone creation, affected-zone re-splits, and zone edits. It covers blocked circulation, changed Transit typology, lost frontage, and parcel rematching.
+- Rejected transactions do not commit zones, grid markings, parcel changes, counters, or events.
+
 ## Ownership and rendering
 
 - `ZoneSplitter` remains pure and produces all frontage candidates only, including deterministic connected Transit-area metadata.
 - `ZoneManager` derives selected edges after stable parcel-ID matching and before commit.
-- ZoneTool preview uses the same prospective layout seed, occupancy overlay, affected-zone checks, and physical-door eligibility checks as finalization, without mutating persistent state.
+- ZoneTool preview uses the same prospective layout seed, occupancy overlay, affected-zone checks, physical-door eligibility, and existing-door preservation checks as finalization, without mutating persistent state.
+- A blocked existing door reports a diagnostic beginning with `EXISTING_DOOR_INVALIDATED` and disables Finish with an actionable status.
 - Repainting a pending tile between Tenant and Transit immediately revalidates the preview.
 - Selected Parcel ↔ same-zone internal Transit edges create a centered gap in the thin parcel wall.
 - Selected Parcel ↔ external CIRCULATION edges create a centered gap in the existing structural zone-perimeter wall.
-- Manual grid-door flags retain their existing behavior; automatic parcel doors do not set grid-door flags or emit `EventBus.door_changed`.
+- Manual grid-door placement may connect a zone Transit tile to explicit external CIRCULATION, or connect Transit tiles across two different zones. It cannot connect a zone tile to a different zone’s non-Transit tile.
+- Manual grid-door flags retain their existing behavior otherwise; automatic parcel doors do not set grid-door flags or emit `EventBus.door_changed`.
 - The existing Cutaway, Partial, and Full wall modes apply to door jambs, lintels, caps, and all wall profiles.
 
 ## Explicit exclusions
 
 - Door collisions, navigation/pathfinding edges, interaction, or tenant lifecycle.
-- Physical doors for virtual exterior or implicit-unzoned frontage.
+- Automatic physical doors for virtual exterior, implicit-unzoned, or inter-zone frontage.
+- Manual doors between a zone tile and a different zone’s non-Transit tile.
 - Door meshes separate from the wall geometry.
 
 ## Validation requirements
@@ -50,8 +63,11 @@ Every committed parcel receives deterministic physical doors to its eligible int
 - No two selected doors originate on the same parcel tile.
 - One-door allocation prefers internal Transit over external circulation.
 - Two-door allocation prefers internal Transit first, then external circulation, then a different Transit area when external is unavailable.
+- Zone-to-zone frontage never produces an automatic door candidate.
+- Manual doors reject different-zone connections unless both tiles are Transit, and allow zone Transit to explicit external circulation.
 - Selection is deterministic, survives serialization, and preserves legal selections across parcel edits.
+- A new zone that blocks an existing selected door rejects atomically even if replacement frontage exists.
+- Preview and finalization report the same existing-door invalidation status and preserve committed state.
 - Internal-Transit selections create thin-wall gaps; external-CIRCULATION selections create structural-wall gaps.
 - Zero physical eligible positions reject without committing a zone mutation.
-- Preview and finalization agree for unchanged pending geometry and typologies.
 - Existing tests pass; runtime zones produce the expected selected-door count and gap geometry with no debugger errors.
