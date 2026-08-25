@@ -95,7 +95,8 @@ func _update_preview_validation() -> void:
 				pending_tiles,
 				_preview_floor(),
 				_preview_plot_id(),
-				_combined_pending_typologies()
+				_combined_pending_typologies(),
+				_editing_zone_id
 			)
 		can_finish = preview_split_result != null and preview_split_result.is_success()
 		if can_finish:
@@ -295,20 +296,26 @@ func _paint_at_mouse() -> void:
 
 
 func _paint_rectangle(start_tile: Vector2i, end_tile: Vector2i) -> void:
+	var added_tiles := false
 	var changed := false
 	for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
 		if not _can_paint_tile_for_rectangle(tile_pos):
 			continue
 		if not _painted_tiles.has(tile_pos):
 			_painted_tiles.append(tile_pos)
+			added_tiles = true
+		if _painted_typologies.get(tile_pos, -1) != _typo_mode:
 			changed = true
 		_painted_typologies[tile_pos] = _typo_mode
 		if _painted_meshes.has(tile_pos):
 			_refresh_painted_tile(tile_pos)
 		else:
 			_show_painted_tile(tile_pos)
-	if changed:
+	if added_tiles:
 		painting_state_changed.emit(not _painted_tiles.is_empty(), is_transit_mode())
+	if changed:
+		# Repainting an existing pending tile changes the split contract even
+		# though the painted tile count is unchanged.
 		_update_preview_validation()
 
 

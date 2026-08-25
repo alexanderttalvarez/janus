@@ -88,9 +88,28 @@ func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> vo
 		_transit_button = null
 
 
-func _on_preview_validation_changed(can_finish: bool, _status: int) -> void:
-	if _painting and _finish_button != null:
+func _on_preview_validation_changed(can_finish: bool, status: int) -> void:
+	if not _painting:
+		return
+	if _finish_button != null:
 		_finish_button.disabled = not can_finish
+	_mode_label.text = _preview_mode_label(can_finish, status)
+
+
+func _preview_mode_label(can_finish: bool, status: int) -> String:
+	var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
+	var zone_type := tool.active_zone_type if tool != null else "Zone"
+	if can_finish:
+		return "Build: %s — Ready" % zone_type
+	match status:
+		SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE:
+			return "Build: %s — Add adjacent circulation or Transit" % zone_type
+		SplitResult.Status.NO_VALID_FRONTAGE:
+			return "Build: %s — No frontage" % zone_type
+		SplitResult.Status.INSUFFICIENT_RENTABLE_SPACE:
+			return "Build: %s — Insufficient rentable space" % zone_type
+		_:
+			return "Build: %s — Invalid zone shape" % zone_type
 
 
 func _enter_door_mode(remove_mode: bool) -> void:

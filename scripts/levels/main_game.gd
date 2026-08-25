@@ -69,6 +69,9 @@ func _initialize_grid() -> void:
 				if tile != null:
 					tile.owned = true
 					tile.floor_built = true
+				# The default built floor is the public circulation field. Zone
+				# commits carve Tenant/Transit space out of this field explicitly.
+				tile.element = GridTile.TileElement.CIRCULATION
 
 	# MVP fixed exterior doors: tile 13 (index 12) at the middle of every side.
 	gm.set_tile_door(FIXED_DOOR_TILE_INDEX, 0, GridTile.DoorSide.NORTH)

@@ -13,10 +13,13 @@ Render a thin interior wall along every shared edge between two distinct committ
 - Parcel boundaries render for every zone. Do not add a per-zone wall option in this handoff.
 - Structural walls retain their existing thickness. Parcel-boundary walls must be visibly thinner.
 - Only a shared edge between different parcels in the same zone creates a parcel-boundary wall.
-- Do not create parcel-boundary walls against Transit, Decoration, residual, zone-boundary, or inter-zone tiles.
+- A Parcel Tenant edge directly adjacent to an internal Transit tile in the same committed zone creates a thin parcel-boundary wall.
+- Do not create parcel-boundary walls against external Transit, external circulation, Decoration, residual, zone-boundary, or inter-zone tiles.
 - `GameManager.wall_mode` remains the sole visibility control. Cutaway, Partial, and Full apply to both structural and parcel-boundary walls.
 - In Cutaway, parcel-boundary walls must clip symmetrically regardless of camera direction. In Full, they render at full height.
-- Extend the existing wall edge/run/junction pipeline. Runs must not merge across structural and parcel-boundary profiles. Junction cubes and trimming use the maximum participating wall thickness to prevent overlaps and z-fighting.
+- Extend the existing wall edge/run/junction pipeline. Runs must not merge across structural and parcel-boundary profiles.
+- L-corners and true crossings receive a junction cube using the maximum participating wall thickness.
+- T-junctions do not receive a redundant corner cube; only the terminating run is trimmed against the continuous run. This prevents false full-height pillars in Cutaway mode at Tenant↔Transit junctions.
 
 ## Data and event cleanup
 
@@ -33,6 +36,9 @@ Render a thin interior wall along every shared edge between two distinct committ
 
 - Adjacent parcels generate thin boundary-wall pieces that merge into the expected run.
 - Non-parcel gaps do not produce thin boundary walls.
+- Same-zone internal Transit produces a thin boundary wall; external circulation and Transit do not.
+- L-junctions and true crossings retain the required corner cube and maximum participating thickness.
+- Tenant↔Transit T-junctions do not spawn redundant corner cubes and trim only the terminating wall run.
 - Thin-only junctions retain the thin profile; mixed joints remain overlap-free.
 - Zone create, modify, and delete events rebuild wall geometry.
 - Runtime validation confirms parcel-boundary geometry is present and thinner than structural walls.

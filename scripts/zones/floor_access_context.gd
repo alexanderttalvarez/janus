@@ -56,3 +56,27 @@ func access_kind_for(
 	if plot.pedestrian_boundary.has_point(access):
 		return "virtual_exterior"
 	return ""
+
+
+## Return a stable key for the connected internal Transit area containing access.
+## The key is based on the minimum tile coordinate, not traversal order.
+func transit_area_key_for(access: Vector2i, candidate_zone: ZoneData, candidate_zone_tiles: Dictionary) -> String:
+	if not candidate_zone_tiles.has(access):
+		return ""
+	if candidate_zone.typologies.get(access, GridTile.TileTypology.TENANT) != GridTile.TileTypology.TRANSIT:
+		return ""
+	var pending: Array[Vector2i] = [access]
+	var visited: Dictionary = {}
+	var minimum := access
+	while not pending.is_empty():
+		var current: Vector2i = pending.pop_back()
+		if visited.has(current) or not candidate_zone_tiles.has(current):
+			continue
+		if candidate_zone.typologies.get(current, GridTile.TileTypology.TENANT) != GridTile.TileTypology.TRANSIT:
+			continue
+		visited[current] = true
+		if current.y < minimum.y or (current.y == minimum.y and current.x < minimum.x):
+			minimum = current
+		for direction: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+			pending.append(current + direction)
+	return "transit:%d,%d" % [minimum.x, minimum.y]

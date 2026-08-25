@@ -357,12 +357,17 @@ static func _frontage_edges(
 			var access: Vector2i = tile + direction
 			var access_kind := _access_kind(access, zone_tile_set, zone, access_context)
 			if not access_kind.is_empty():
-				edges.append({
+				var edge := {
 					"tile": tile,
 					"direction": direction,
 					"access": access,
 					"access_kind": access_kind,
-				})
+				}
+				if access_kind == "internal_transit":
+					edge["transit_area_key"] = access_context.transit_area_key_for(
+						access, zone, zone_tile_set
+					)
+				edges.append(edge)
 	edges.sort_custom(_compare_frontage_edges)
 	return edges
 

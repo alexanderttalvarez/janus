@@ -3,7 +3,13 @@ class_name SplitResult
 extends RefCounted
 
 
-enum Status { SUCCESS, INVALID_ZONE_GEOMETRY, NO_VALID_FRONTAGE, INSUFFICIENT_RENTABLE_SPACE }
+enum Status {
+	SUCCESS,
+	INVALID_ZONE_GEOMETRY,
+	NO_VALID_FRONTAGE,
+	INSUFFICIENT_RENTABLE_SPACE,
+	NO_PHYSICAL_DOOR_FRONTAGE,
+}
 
 
 ## Overall result of the split attempt.

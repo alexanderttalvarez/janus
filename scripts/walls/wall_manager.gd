@@ -10,9 +10,10 @@
 ##   - Walls are CENTERED on the boundary line — half the thickness on each
 ##     side, shared between the two adjacent tiles.
 ##   - Contiguous wall edges on the same line are MERGED into runs.
-##   - Every junction (L-corner, T-junction, or crossing) gets a CORNER CUBE
-##     (thickness × height × thickness) centered on the junction point.
-##   - Runs are SPLIT at junctions and trimmed flush against the cube faces.
+##   - L-corners and crossings get a CORNER CUBE (thickness × height ×
+##     thickness) centered on the junction point.
+##   - T-junctions suppress the redundant cube and trim only the terminating
+##     run against the continuous wall.
 ## Consequence: wall boxes never overlap and never share coplanar faces with
 ## same-facing normals — no z-fighting by construction.
 ##
@@ -114,7 +115,7 @@ func rebuild() -> void:
 
 	var corridor: Dictionary = {}  # Vector2i -> true
 	var built: Dictionary = {}     # Vector2i -> true
-	var door_edges: Dictionary = {}  # edge key -> true
+	var manual_door_edges: Dictionary = {}  # edge key -> true
 	for x in range(fg.width):
 		for y in range(fg.height):
 			var tile: GridTile = fg.get_tile(x, y)
@@ -125,17 +126,26 @@ func rebuild() -> void:
 			if tile.element == GridTile.TileElement.CIRCULATION:
 				corridor[pos] = true
 			if tile.has_door(GridTile.DoorSide.NORTH):
-				door_edges[_edge_key(pos, pos + Vector2i.UP)] = true
+				manual_door_edges[_edge_key(pos, pos + Vector2i.UP)] = true
 			if tile.has_door(GridTile.DoorSide.SOUTH):
-				door_edges[_edge_key(pos, pos + Vector2i.DOWN)] = true
+				manual_door_edges[_edge_key(pos, pos + Vector2i.DOWN)] = true
 			if tile.has_door(GridTile.DoorSide.EAST):
-				door_edges[_edge_key(pos, pos + Vector2i.RIGHT)] = true
+				manual_door_edges[_edge_key(pos, pos + Vector2i.RIGHT)] = true
 			if tile.has_door(GridTile.DoorSide.WEST):
-				door_edges[_edge_key(pos, pos + Vector2i.LEFT)] = true
+				manual_door_edges[_edge_key(pos, pos + Vector2i.LEFT)] = true
+
+	var automatic_parcel_door_edges: Dictionary = {}
+	for zone: ZoneData in zones:
+		for parcel: Parcel in zone.parcels:
+			for edge: Dictionary in parcel.selected_door_edges:
+				var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+				var access: Vector2i = edge.get("access", Vector2i.ZERO)
+				automatic_parcel_door_edges[_edge_key(tile, access)] = true
 
 	# Pipeline: edges -> pieces -> runs -> junctions -> boxes.
 	var pieces := _collect_wall_pieces(
-		built, corridor, zones, zone_of, parcel_of, parcel_zone_of, door_edges
+		built, corridor, zones, zone_of, parcel_of, parcel_zone_of,
+		manual_door_edges, automatic_parcel_door_edges
 	)
 	var runs := _merge_pieces_into_runs(pieces)
 	var joints_by_run: Dictionary = {}  # run index -> Array[float]
@@ -161,10 +171,14 @@ func _clear_walls(container: Node3D) -> void:
 ## Edges are deduplicated canonically, so each boundary produces one wall.
 func _collect_wall_pieces(
 	built: Dictionary, corridor: Dictionary, zones: Array[ZoneData], zone_of: Dictionary,
-	parcel_of: Dictionary, parcel_zone_of: Dictionary, door_edges: Dictionary
+	parcel_of: Dictionary, parcel_zone_of: Dictionary, manual_door_edges: Dictionary,
+	automatic_parcel_door_edges: Dictionary = {}
 ) -> Array:
 	var placed: Dictionary = {}  # edge key -> true
 	var pieces: Array = []
+	var all_door_edges := manual_door_edges.duplicate()
+	for edge_key: String in automatic_parcel_door_edges:
+		all_door_edges[edge_key] = true
 
 	# 1) Floor perimeter — built tile edges facing non-built space.
 	for pos: Vector2i in built.keys():
@@ -172,10 +186,10 @@ func _collect_wall_pieces(
 			var n: Vector2i = pos + dir
 			if not built.has(n):
 				var edge_key := _edge_key(pos, n)
-				_add_wall_piece(placed, pieces, pos, n, false, door_edges.has(edge_key), door_edges)
+				_add_wall_piece(placed, pieces, pos, n, false, manual_door_edges.has(edge_key), all_door_edges)
 
 	# 2) Zone perimeter — zone tile edges facing other built space.
-	#    Door gaps are explicit manual door flags.
+	#    Door gaps come from manual flags or automatic parcel selections.
 	for zone: ZoneData in zones:
 		for pos: Vector2i in zone.tiles:
 			for dir: Vector2i in _DIRS:
@@ -184,7 +198,12 @@ func _collect_wall_pieces(
 					continue
 				if not built.has(n):
 					continue  # Exterior handled by the floor perimeter.
-				_add_wall_piece(placed, pieces, pos, n, door_edges.has(_edge_key(pos, n)), false, door_edges)
+				var edge_key := _edge_key(pos, n)
+				_add_wall_piece(
+					placed, pieces, pos, n,
+					manual_door_edges.has(edge_key) or automatic_parcel_door_edges.has(edge_key),
+					false, all_door_edges
+				)
 
 	# 3) Corridor walls — corridor tile edges facing non-corridor built space.
 	#    Skip zone-facing edges (door handled on the zone side) and exterior.
@@ -197,21 +216,28 @@ func _collect_wall_pieces(
 				continue
 			if zone_of.has(n):
 				continue
-			_add_wall_piece(placed, pieces, pos, n, false, false, door_edges)
+			_add_wall_piece(placed, pieces, pos, n, false, false, all_door_edges)
 
-	# 4) Parcel boundaries — only shared edges between distinct parcels in
-	#    the same zone receive thin interior walls. Transit, Decoration,
-	#    residual, and zone-boundary edges remain structural behavior.
+	# 4) Parcel boundaries — shared edges between distinct parcels, plus
+	#    Parcel Tenant edges facing same-zone internal Transit, receive thin
+	#    interior walls. External circulation, Decoration, residual, and
+	#    zone-boundary edges retain their existing structural behavior.
 	for zone: ZoneData in zones:
 		for parcel: Parcel in zone.parcels:
 			for pos: Vector2i in parcel.tiles:
 				for dir: Vector2i in _DIRS:
 					var n: Vector2i = pos + dir
-					if parcel_zone_of.get(n, "") != zone.id:
+					var is_other_parcel: bool = parcel_zone_of.get(n, "") == zone.id and parcel_of.get(n, "") != parcel.id
+					var is_internal_transit: bool = (
+						zone_of.get(n, "") == zone.id
+						and zone.typologies.get(n, GridTile.TileTypology.TENANT) == GridTile.TileTypology.TRANSIT
+					)
+					if not is_other_parcel and not is_internal_transit:
 						continue
-					if parcel_of.get(n, "") == parcel.id:
-						continue
-					_add_wall_piece(placed, pieces, pos, n, false, false, door_edges, true)
+					_add_wall_piece(
+						placed, pieces, pos, n, automatic_parcel_door_edges.has(_edge_key(pos, n)),
+						false, all_door_edges, true
+					)
 
 	return pieces
 
@@ -231,13 +257,17 @@ func _add_wall_piece(
 	if is_exterior_door:
 		var adjacent_start := _has_adjacent_door(pos, normal, true, door_edges)
 		var adjacent_end := _has_adjacent_door(pos, normal, false, door_edges)
-		pieces.append_array(_make_exterior_door_pieces(pos, normal, adjacent_start, adjacent_end))
+		pieces.append_array(_make_exterior_door_pieces(
+			pos, normal, adjacent_start, adjacent_end, is_parcel_boundary
+		))
 	elif has_door:
-		# Manual doors use the same side sections and upper lintel as the
-		# fixed building entrances, rather than cutting a full-height hole.
+		# Manual and automatic doors use the existing side sections and upper
+		# lintel profile rather than cutting a full-height hole.
 		var adjacent_start := _has_adjacent_door(pos, normal, true, door_edges)
 		var adjacent_end := _has_adjacent_door(pos, normal, false, door_edges)
-		pieces.append_array(_make_exterior_door_pieces(pos, normal, adjacent_start, adjacent_end))
+		pieces.append_array(_make_exterior_door_pieces(
+			pos, normal, adjacent_start, adjacent_end, is_parcel_boundary
+		))
 	else:
 		pieces.append(_make_edge_piece(pos, normal, is_parcel_boundary))
 
@@ -291,9 +321,10 @@ func _make_door_pieces(pos: Vector2i, normal: Vector3) -> Array:
 ## Exterior door geometry keeps 10% side sections at full height and a
 ## centered lintel over the upper 25% of the wall.
 func _make_exterior_door_pieces(
-	pos: Vector2i, normal: Vector3, adjacent_start: bool = false, adjacent_end: bool = false
+	pos: Vector2i, normal: Vector3, adjacent_start: bool = false, adjacent_end: bool = false,
+	is_parcel_boundary: bool = false
 ) -> Array:
-	var piece := _make_edge_piece(pos, normal)
+	var piece := _make_edge_piece(pos, normal, is_parcel_boundary)
 	var side_width := 0.1
 	var side_a: Dictionary = piece.duplicate()
 	side_a["to"] = side_a["from"] + side_width
@@ -394,9 +425,21 @@ func _find_wall_junctions(runs: Array, joints_by_run: Dictionary) -> Array:
 			var point := Vector2(run_z["line"], run_x["line"])
 			if not _span_covers(run_x, point.x) or not _span_covers(run_z, point.y):
 				continue
+			var thickness := maxf(float(run_x["thickness"]), float(run_z["thickness"]))
+			var x_passes_through := _run_passes_through(run_x, point.x)
+			var z_passes_through := _run_passes_through(run_z, point.y)
+			if x_passes_through != z_passes_through:
+				# A T-junction does not need a corner cube. The continuous run
+				# already owns the junction volume; trim only the terminating run
+				# against its face to avoid a false Cutaway pillar.
+				if x_passes_through:
+					_add_joint(joints_by_run, j, point.y, thickness)
+				else:
+					_add_joint(joints_by_run, i, point.x, thickness)
+				continue
+
 			var outward := Vector2(run_x["normal"].x, run_x["normal"].z) \
 				+ Vector2(run_z["normal"].x, run_z["normal"].z)
-			var thickness := maxf(float(run_x["thickness"]), float(run_z["thickness"]))
 			var is_parcel_boundary: bool = run_x["is_parcel_boundary"] and run_z["is_parcel_boundary"]
 			junctions.append({
 				"point": point,
@@ -413,6 +456,13 @@ func _find_wall_junctions(runs: Array, joints_by_run: Dictionary) -> Array:
 func _span_covers(run: Dictionary, coord: float) -> bool:
 	return coord >= run["from"] - MERGE_EPSILON and coord <= run["to"] + MERGE_EPSILON
 
+
+## Whether the run continues on both sides of an intersection coordinate.
+func _run_passes_through(run: Dictionary, coord: float) -> bool:
+	return (
+		coord > float(run["from"]) + MERGE_EPSILON
+		and coord < float(run["to"]) - MERGE_EPSILON
+	)
 
 ## Record a junction coordinate on a run (sorted, deduplicated).
 func _add_joint(joints_by_run: Dictionary, run_index: int, coord: float, thickness: float) -> void:

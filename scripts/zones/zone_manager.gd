@@ -5,6 +5,8 @@ extends Node
 
 enum AssignmentMode { DEBUG_IMMEDIATE }
 
+const PHYSICAL_DOOR_ACCESS_KINDS: Array[String] = ["external_circulation", "internal_transit"]
+
 ## Active parcel-subtype assignment policy for this handoff.
 var assignment_mode: AssignmentMode = AssignmentMode.DEBUG_IMMEDIATE
 
@@ -140,23 +142,69 @@ func preview_split(
 	tiles: Array[Vector2i],
 	floor: String,
 	plot_id: String,
-	typologies: Dictionary = {}
+	typologies: Dictionary = {},
+	preview_zone_id: String = ""
 ) -> SplitResult:
 	var grid_manager := _get_grid_manager()
 	if grid_manager == null:
 		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
 	var preview_zone := ZoneData.new()
-	preview_zone.id = "preview"
+	var replaced_zone: ZoneData = zones.get(preview_zone_id, null)
+	if replaced_zone != null:
+		preview_zone.id = replaced_zone.id
+		preview_zone.parcel_layout_seed = replaced_zone.parcel_layout_seed
+	else:
+		# Match the ID and deterministic growth seed that the next create commit
+		# will allocate without advancing any persistent counters.
+		preview_zone.id = "zone_%d" % (_zone_counter + 1)
+		preview_zone.parcel_layout_seed = _generate_parcel_layout_seed(preview_zone.id)
 	preview_zone.plot_id = plot_id
 	preview_zone.type = zone_type
 	preview_zone.floor = floor
 	preview_zone.tiles = _normalized_tiles(tiles)
 	preview_zone.typologies = _normalize_typologies(preview_zone.tiles, typologies)
-	return ZoneSplitter.split(
-		preview_zone,
-		grid_manager.get_floor_grid(preview_zone.plot_id, preview_zone.floor),
-		grid_manager.get_plot(preview_zone.plot_id)
+	return _preview_access_transaction(preview_zone, replaced_zone)
+
+
+## Plan the same pure split and physical-door validation transaction as commit
+## without assigning IDs, mutating counters, grid state, or existing zones.
+func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -> SplitResult:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	var overlay: Dictionary = {}
+	if replaced_zone != null:
+		for tile_pos: Vector2i in replaced_zone.tiles:
+			overlay[tile_pos] = ""
+	for tile_pos: Vector2i in candidate.tiles:
+		overlay[tile_pos] = candidate.id
+	var context := FloorAccessContext.new(
+		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
+		grid_manager.get_plot(candidate.plot_id),
+		overlay
 	)
+	var result := ZoneSplitter.split(candidate, context.floor_grid, context.plot, context)
+	if not result.is_success():
+		return result
+	if not _all_parcels_have_physical_door_frontage(result.parcels):
+		return _physical_door_failure(result.parcels, "NO_PHYSICAL_DOOR_FRONTAGE")
+
+	for affected_zone: ZoneData in _affected_zones(candidate, replaced_zone):
+		var affected_result := ZoneSplitter.split(affected_zone, context.floor_grid, context.plot, context)
+		if not affected_result.is_success():
+			return affected_result
+		if not _all_parcels_have_physical_door_frontage(affected_result.parcels):
+			return _physical_door_failure(
+				affected_result.parcels,
+				"AFFECTED_ZONE_NO_PHYSICAL_DOOR_FRONTAGE:%s" % affected_zone.id
+			)
+	return result
+
+
+func _physical_door_failure(parcels: Array[Parcel], diagnostic: String) -> SplitResult:
+	var failure := SplitResult.failure(SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE, diagnostic)
+	failure.parcels = parcels
+	return failure
 
 
 ## Delete a zone using the project's existing floor-demolition behavior.
@@ -292,6 +340,8 @@ func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 	if replaced_zone != null:
 		prior_parcels = replaced_zone.parcels
 	_assign_persistent_ids(candidate.parcels, prior_parcels)
+	if not _assign_selected_door_edges(candidate.parcels, prior_parcels):
+		return []
 	_assign_debug_subtypes(candidate)
 	var prepared: Array[ZoneData] = [candidate]
 	for affected_zone: ZoneData in _affected_zones(candidate, replaced_zone):
@@ -299,6 +349,8 @@ func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 		if not _prepare_split(affected_candidate, context):
 			return []
 		_assign_persistent_ids(affected_candidate.parcels, affected_zone.parcels)
+		if not _assign_selected_door_edges(affected_candidate.parcels, affected_zone.parcels):
+			return []
 		_assign_debug_subtypes(affected_candidate)
 		prepared.append(affected_candidate)
 	return prepared
@@ -374,13 +426,169 @@ func _validate_candidate_tiles(candidate: ZoneData, existing_zone_id: String) ->
 		if tile == null or not tile.owned or not tile.floor_built:
 			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_ZONE_TILE")
 			return false
-		if tile.element != GridTile.TileElement.NONE:
+		if tile.element != GridTile.TileElement.NONE and tile.element != GridTile.TileElement.CIRCULATION:
 			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "OCCUPIED_ZONE_TILE")
 			return false
 		if not tile.zone_id.is_empty() and tile.zone_id != existing_zone_id:
 			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "OVERLAPPING_ZONE_TILE")
 			return false
 	return true
+
+
+## Select deterministic physical door edges after parcel IDs are stable and before commit.
+func _assign_selected_door_edges(new_parcels: Array[Parcel], old_parcels: Array[Parcel]) -> bool:
+	var old_parcels_by_id: Dictionary = {}
+	for old_parcel: Parcel in old_parcels:
+		if not old_parcel.id.is_empty():
+			old_parcels_by_id[old_parcel.id] = old_parcel
+
+	for parcel: Parcel in new_parcels:
+		var physical_candidates := _physical_door_candidates(parcel)
+		if physical_candidates.is_empty():
+			last_split_result = SplitResult.failure(
+				SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE,
+				"NO_PHYSICAL_DOOR_FRONTAGE"
+			)
+			return false
+
+		var eligible_positions: Dictionary = {}
+		var candidates_by_key: Dictionary = {}
+		for edge: Dictionary in physical_candidates:
+			eligible_positions[edge.get("tile", Vector2i.ZERO)] = true
+			candidates_by_key[_door_edge_key(edge)] = edge
+		var required_count := ceili(float(eligible_positions.size()) / 10.0)
+
+		var selected: Array[Dictionary] = []
+		var selected_positions: Dictionary = {}
+		var previous: Parcel = old_parcels_by_id.get(parcel.id, null)
+		if previous != null:
+			var prior_edges := previous.selected_door_edges.duplicate()
+			prior_edges.sort_custom(_compare_door_edges)
+			for prior_edge: Dictionary in prior_edges:
+				var legal_edge: Dictionary = candidates_by_key.get(_door_edge_key(prior_edge), {})
+				var tile: Vector2i = legal_edge.get("tile", Vector2i.ZERO)
+				if legal_edge.is_empty() or selected_positions.has(tile) or selected.size() >= required_count:
+					continue
+				selected.append(legal_edge.duplicate())
+				selected_positions[tile] = true
+
+		var covered_transit_areas: Dictionary = {}
+		for selected_edge: Dictionary in selected:
+			var selected_area := _transit_area_key(selected_edge)
+			if not selected_area.is_empty():
+				covered_transit_areas[selected_area] = true
+
+		while selected.size() < required_count:
+			var next_edge := _preferred_door_candidate(
+				physical_candidates, selected.size(), selected_positions, covered_transit_areas
+			)
+			if next_edge.is_empty():
+				break
+			selected.append(next_edge.duplicate())
+			var selected_tile: Vector2i = next_edge.get("tile", Vector2i.ZERO)
+			selected_positions[selected_tile] = true
+			var transit_area := _transit_area_key(next_edge)
+			if not transit_area.is_empty():
+				covered_transit_areas[transit_area] = true
+		parcel.selected_door_edges = selected
+	return true
+
+
+func _preferred_door_candidate(
+	candidates: Array[Dictionary],
+	slot_index: int,
+	selected_positions: Dictionary,
+	covered_transit_areas: Dictionary
+) -> Dictionary:
+	var preferred: Array[Dictionary] = []
+	var fallback: Array[Dictionary] = []
+	for edge: Dictionary in candidates:
+		var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+		if selected_positions.has(tile):
+			continue
+		fallback.append(edge)
+		var access_kind: String = edge.get("access_kind", "")
+		var transit_area := _transit_area_key(edge)
+		if slot_index == 0:
+			if access_kind == "internal_transit":
+				preferred.append(edge)
+		elif slot_index == 1:
+			if access_kind == "external_circulation":
+				preferred.append(edge)
+			elif access_kind == "internal_transit" and not covered_transit_areas.has(transit_area):
+				# Used only when no external candidate exists; see fallback below.
+				pass
+		else:
+			if access_kind == "internal_transit" and not covered_transit_areas.has(transit_area):
+				preferred.append(edge)
+	if not preferred.is_empty():
+		return preferred[0]
+	if slot_index == 1:
+		for edge: Dictionary in fallback:
+			if edge.get("access_kind", "") == "internal_transit":
+				if not covered_transit_areas.has(_transit_area_key(edge)):
+					return edge
+	return fallback[0] if not fallback.is_empty() else {}
+
+
+func _transit_area_key(edge: Dictionary) -> String:
+	if edge.get("access_kind", "") != "internal_transit":
+		return ""
+	var explicit_key: String = edge.get("transit_area_key", "")
+	if not explicit_key.is_empty():
+		return explicit_key
+	var access: Vector2i = edge.get("access", Vector2i.ZERO)
+	return "transit:%d,%d" % [access.x, access.y]
+
+
+func _all_parcels_have_physical_door_frontage(parcels: Array[Parcel]) -> bool:
+	for parcel: Parcel in parcels:
+		if _physical_door_candidates(parcel).is_empty():
+			return false
+	return true
+
+
+func _physical_door_candidates(parcel: Parcel) -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	for edge: Dictionary in parcel.frontage_edges:
+		var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+		var direction: Vector2i = edge.get("direction", Vector2i.ZERO)
+		var access: Vector2i = edge.get("access", Vector2i.ZERO)
+		var access_kind: String = edge.get("access_kind", "")
+		if direction == Vector2i.ZERO or access != tile + direction:
+			continue
+		if not PHYSICAL_DOOR_ACCESS_KINDS.has(access_kind):
+			continue
+		candidates.append(edge.duplicate())
+	candidates.sort_custom(_compare_door_edges)
+	return candidates
+
+
+static func _door_edge_key(edge: Dictionary) -> String:
+	var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+	var direction: Vector2i = edge.get("direction", Vector2i.ZERO)
+	var access: Vector2i = edge.get("access", Vector2i.ZERO)
+	return "%d,%d|%d,%d|%d,%d|%s" % [
+		tile.x, tile.y, direction.x, direction.y, access.x, access.y, edge.get("access_kind", "")
+	]
+
+
+static func _compare_door_edges(first: Dictionary, second: Dictionary) -> bool:
+	var first_tile: Vector2i = first.get("tile", Vector2i.ZERO)
+	var second_tile: Vector2i = second.get("tile", Vector2i.ZERO)
+	if first_tile != second_tile:
+		return _compare_tile_positions(first_tile, second_tile)
+	return _door_direction_rank(first.get("direction", Vector2i.ZERO)) < _door_direction_rank(
+		second.get("direction", Vector2i.ZERO)
+	)
+
+
+static func _door_direction_rank(direction: Vector2i) -> int:
+	var directions: Array[Vector2i] = [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]
+	for index: int in range(directions.size()):
+		if directions[index] == direction:
+			return index
+	return directions.size()
 
 
 func _assign_persistent_ids(new_parcels: Array[Parcel], old_parcels: Array[Parcel]) -> void:
@@ -426,6 +634,11 @@ func _mark_zone_tiles(zone: ZoneData) -> void:
 		return
 	for tile_pos: Vector2i in zone.tiles:
 		grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, zone.id, zone.plot_id, zone.floor)
+		# Zone-owned tiles are no longer public circulation; their semantic
+		# access comes from Tenant/Transit typology and frontage metadata.
+		grid_manager.set_tile_element(
+			tile_pos.x, tile_pos.y, GridTile.TileElement.NONE, zone.plot_id, zone.floor
+		)
 		grid_manager.set_tile_typology(
 			tile_pos.x,
 			tile_pos.y,
@@ -441,6 +654,7 @@ func _clear_zone_tiles(tiles: Array[Vector2i], plot_id: String, floor: String) -
 		return
 	for tile_pos: Vector2i in tiles:
 		grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, "", plot_id, floor)
+		grid_manager.set_tile_element(tile_pos.x, tile_pos.y, GridTile.TileElement.CIRCULATION, plot_id, floor)
 		grid_manager.set_tile_typology(tile_pos.x, tile_pos.y, GridTile.TileTypology.TENANT, plot_id, floor)
 
 

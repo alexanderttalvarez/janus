@@ -30,6 +30,10 @@ var frontage_edges: Array[Dictionary] = []
 ## Legacy tile-only frontage view retained for compatibility with existing code.
 var frontage_tiles: Array[Vector2i] = []
 
+## Deterministically selected physical door edges owned by ZoneManager.
+## Each dictionary uses the same tile/direction/access/access_kind schema as frontage_edges.
+var selected_door_edges: Array[Dictionary] = []
+
 ## Stable debug subtype ID assigned by Handoff 02; this is not a tenant ID.
 var assigned_subtype_id: String = ""
 
@@ -92,17 +96,8 @@ func serialize() -> Dictionary:
 	for tile: Vector2i in core_tiles:
 		serialized_core_tiles.append({"x": tile.x, "y": tile.y})
 
-	var serialized_frontage: Array[Dictionary] = []
-	for edge: Dictionary in frontage_edges:
-		var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
-		var direction: Vector2i = edge.get("direction", Vector2i.ZERO)
-		var access: Vector2i = edge.get("access", Vector2i.ZERO)
-		serialized_frontage.append({
-			"tile": {"x": tile.x, "y": tile.y},
-			"direction": {"x": direction.x, "y": direction.y},
-			"access": {"x": access.x, "y": access.y},
-			"access_kind": edge.get("access_kind", ""),
-		})
+	var serialized_frontage := _serialize_edges(frontage_edges)
+	var serialized_selected_door_edges := _serialize_edges(selected_door_edges)
 
 	return {
 		"id": id,
@@ -110,6 +105,7 @@ func serialize() -> Dictionary:
 		"tiles": serialized_tiles,
 		"core_tiles": serialized_core_tiles,
 		"frontage_edges": serialized_frontage,
+		"selected_door_edges": serialized_selected_door_edges,
 		"assigned_subtype_id": assigned_subtype_id,
 		"has_tenant": has_tenant,
 		"tenant_id": tenant_id,
@@ -128,17 +124,8 @@ static func deserialize(data: Dictionary) -> Parcel:
 	for tile_data: Dictionary in data.get("core_tiles", []):
 		restored_core_tiles.append(Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)))
 
-	var restored_frontage: Array[Dictionary] = []
-	for edge_data: Dictionary in data.get("frontage_edges", []):
-		var tile_data: Dictionary = edge_data.get("tile", {})
-		var direction_data: Dictionary = edge_data.get("direction", {})
-		var access_data: Dictionary = edge_data.get("access", {})
-		restored_frontage.append({
-			"tile": Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)),
-			"direction": Vector2i(direction_data.get("x", 0), direction_data.get("y", 0)),
-			"access": Vector2i(access_data.get("x", 0), access_data.get("y", 0)),
-			"access_kind": edge_data.get("access_kind", ""),
-		})
+	var restored_frontage := _deserialize_edges(data.get("frontage_edges", []))
+	parcel.selected_door_edges = _deserialize_edges(data.get("selected_door_edges", []))
 
 	parcel.set_geometry(restored_tiles, restored_frontage)
 	# Legacy saves predate core geometry; adopt the old footprint as a compatibility core.
@@ -147,6 +134,36 @@ static func deserialize(data: Dictionary) -> Parcel:
 	parcel.has_tenant = data.get("has_tenant", false)
 	parcel.tenant_id = data.get("tenant_id", "")
 	return parcel
+
+
+static func _serialize_edges(edges: Array[Dictionary]) -> Array[Dictionary]:
+	var serialized: Array[Dictionary] = []
+	for edge: Dictionary in edges:
+		var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+		var direction: Vector2i = edge.get("direction", Vector2i.ZERO)
+		var access: Vector2i = edge.get("access", Vector2i.ZERO)
+		serialized.append({
+			"tile": {"x": tile.x, "y": tile.y},
+			"direction": {"x": direction.x, "y": direction.y},
+			"access": {"x": access.x, "y": access.y},
+			"access_kind": edge.get("access_kind", ""),
+		})
+	return serialized
+
+
+static func _deserialize_edges(data: Array) -> Array[Dictionary]:
+	var restored: Array[Dictionary] = []
+	for edge_data: Dictionary in data:
+		var tile_data: Dictionary = edge_data.get("tile", {})
+		var direction_data: Dictionary = edge_data.get("direction", {})
+		var access_data: Dictionary = edge_data.get("access", {})
+		restored.append({
+			"tile": Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)),
+			"direction": Vector2i(direction_data.get("x", 0), direction_data.get("y", 0)),
+			"access": Vector2i(access_data.get("x", 0), access_data.get("y", 0)),
+			"access_kind": edge_data.get("access_kind", ""),
+		})
+	return restored
 
 
 static func _sort_tile_positions(a: Vector2i, b: Vector2i) -> bool:

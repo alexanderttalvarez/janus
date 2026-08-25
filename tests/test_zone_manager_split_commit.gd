@@ -12,7 +12,8 @@ func _ready() -> void:
 	_test_successful_creation_commits_parcels(context)
 	_test_successful_edit_reassigns_debug_subtypes(context)
 	_test_preview_split_is_non_mutating(context)
-	_test_create_zone_rejects_orphaning_implicit_frontage(context)
+	_test_create_zone_rejects_implicit_only_frontage(context)
+	_test_door_count_and_selection_preservation(context)
 	_test_rejected_edit_leaves_committed_zone_unchanged(context)
 	print("ZoneManager split commit tests: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(0 if _failed == 0 else 1)
@@ -39,7 +40,7 @@ func _make_world() -> Dictionary:
 	zone_manager.name = "ZoneManager"
 	world.add_child(zone_manager)
 
-	var plot := grid_manager.create_plot("test_plot", 12, 12)
+	var plot := grid_manager.create_plot("test_plot", 20, 20)
 	var floor_grid := plot.get_floor(GridManager.GROUND_FLOOR)
 	for x: int in range(floor_grid.width):
 		for y: int in range(floor_grid.height):
@@ -51,21 +52,19 @@ func _make_world() -> Dictionary:
 
 func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 	var tiles: Array[Vector2i] = []
-	for y: int in range(6):
-		for x: int in range(6):
+	for y in range(2, 8):
+		for x in range(2, 8):
 			tiles.append(Vector2i(x, y))
 	var zone_manager: ZoneManager = context.zone_manager
 	var grid_manager: GridManager = context.grid_manager
+	_set_external_circulation_frame(grid_manager, Rect2i(2, 2, 6, 6))
 	var zone := zone_manager.create_zone("Retail", tiles, "G", "test_plot")
 	_assert(zone != null, "fronted zone creation succeeds")
 	if zone == null:
 		return
 	_assert(zone.plot_id == "test_plot", "zone persists explicit plot ownership")
 	_assert(zone.parcel_layout_seed > 0, "zone commit allocates a persistent parcel layout seed")
-	_assert(
-		zone.parcels.size() == 6,
-		"implicit unzoned frontage enables the six legal Retail cores"
-	)
+	_assert(zone.parcels.size() == 6, "physical external circulation enables the six legal Retail cores")
 	var ids: Dictionary = {}
 	var display_numbers: Dictionary = {}
 	for parcel: Parcel in zone.parcels:
@@ -83,13 +82,32 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 		int(serialized_zone.get("parcel_layout_seed", 0)) == zone.parcel_layout_seed,
 		"zone layout seed persists through ZoneManager serialization"
 	)
-	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
+	var first_tile := grid_manager.get_tile(2, 2, "test_plot", "G")
 	_assert(first_tile.zone_id == zone.id, "grid markings are written only after successful split")
 	_assert(zone_manager.last_assignment_result != null, "successful split produces a debug assignment result")
 	_assert(not zone_manager.permits_tenant_lifecycle(), "DEBUG_IMMEDIATE mode disables tenant lifecycle handling")
 	_assert(zone.subtype.is_empty(), "debug assignment does not write legacy zone subtype")
 	for parcel: Parcel in zone.parcels:
 		_assert(parcel.assigned_subtype_id.begins_with("retail."), "committed parcel receives a Retail subtype ID")
+		var physical_positions := _physical_positions(parcel.frontage_edges)
+		_assert(
+			parcel.selected_door_edges.size() == ceili(float(physical_positions.size()) / 10.0),
+			"committed parcel selects the required physical door count"
+		)
+		_assert(
+			_physical_positions(parcel.selected_door_edges).size() == parcel.selected_door_edges.size(),
+			"committed parcel selects at most one door per physical tile"
+		)
+		for edge: Dictionary in parcel.selected_door_edges:
+			_assert(
+				ZoneManager.PHYSICAL_DOOR_ACCESS_KINDS.has(edge.get("access_kind", "")),
+				"selected door uses physical frontage only"
+			)
+		var restored_parcel := Parcel.deserialize(parcel.serialize())
+		_assert(
+			_door_edge_keys(restored_parcel.selected_door_edges) == _door_edge_keys(parcel.selected_door_edges),
+			"selected door edges persist through parcel serialization"
+		)
 	for first_index: int in range(zone.parcels.size()):
 		for second_index: int in range(first_index + 1, zone.parcels.size()):
 			var first_parcel: Parcel = zone.parcels[first_index]
@@ -107,10 +125,20 @@ func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void
 	if zone == null or zone.parcels.is_empty():
 		_assert(false, "successful zone exists before successful edit")
 		return
+	var preview := zone_manager.preview_split(
+		zone.type, zone.tiles, zone.floor, zone.plot_id, zone.typologies, zone.id
+	)
+	_assert(preview.is_success(), "edit preview uses the prospective physical-door transaction")
+	_assert(
+		_parcel_geometry_keys(preview.parcels) == _parcel_geometry_keys(zone.parcels),
+		"edit preview uses the committed zone layout seed"
+	)
 	var original_display_numbers: Dictionary = {}
+	var original_selected_door_keys: Dictionary = {}
 	var original_layout_seed := zone.parcel_layout_seed
 	for parcel: Parcel in zone.parcels:
 		original_display_numbers[parcel.id] = parcel.display_number
+		original_selected_door_keys[parcel.id] = _door_edge_keys(parcel.selected_door_edges)
 	zone.parcels[0].assigned_subtype_id = "stale.subtype"
 	var updated := zone_manager.modify_zone(zone.id, zone.tiles, "test_plot", zone.typologies)
 	_assert(updated != null, "valid edit commits successfully")
@@ -127,6 +155,10 @@ func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void
 			parcel.display_number == original_display_numbers.get(parcel.id, 0),
 			"matched parcel retains its display number after a successful edit"
 		)
+		_assert(
+			_door_edge_keys(parcel.selected_door_edges) == original_selected_door_keys.get(parcel.id, []),
+			"matched parcel preserves legal selected doors after a successful edit"
+		)
 
 
 func _test_preview_split_is_non_mutating(context: Dictionary) -> void:
@@ -139,67 +171,159 @@ func _test_preview_split_is_non_mutating(context: Dictionary) -> void:
 	var committed_zone_count := zone_manager.zones.size()
 	var committed_tile_count := existing_zone.tiles.size()
 	var last_status := zone_manager.last_split_result.status
-	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
+	var first_tile := grid_manager.get_tile(2, 2, "test_plot", "G")
 	var committed_zone_id := first_tile.zone_id
 	var interior_tiles: Array[Vector2i] = [
-		Vector2i(1, 1), Vector2i(2, 1), Vector2i(1, 2),
-		Vector2i(2, 2), Vector2i(1, 3), Vector2i(2, 3),
+		Vector2i(14, 14), Vector2i(15, 14), Vector2i(14, 15),
+		Vector2i(15, 15), Vector2i(14, 16), Vector2i(15, 16),
 	]
 	var preview := zone_manager.preview_split("Retail", interior_tiles, "G", "test_plot")
-	_assert(preview.status == SplitResult.Status.NO_VALID_FRONTAGE, "preview reports rejected geometry")
+	_assert(
+		preview.status == SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE,
+		"preview reports missing physical door frontage"
+	)
+	_assert(not preview.parcels.is_empty(), "physical-door preview retains parcel evidence for diagnostics")
 	_assert(zone_manager.zones.size() == committed_zone_count, "preview creates no zone")
 	_assert(existing_zone.tiles.size() == committed_tile_count, "preview preserves committed zone data")
 	_assert(first_tile.zone_id == committed_zone_id, "preview preserves grid markings")
 	_assert(zone_manager.last_split_result.status == last_status, "preview preserves last committed result")
 
 
-func _test_create_zone_rejects_orphaning_implicit_frontage(context: Dictionary) -> void:
+func _test_create_zone_rejects_implicit_only_frontage(context: Dictionary) -> void:
 	var zone_manager: ZoneManager = context.zone_manager
 	var grid_manager: GridManager = context.grid_manager
-	var protected_frontage := Vector2i(5, 6)
-	for tile_pos: Vector2i in [
-		Vector2i(5, 7), Vector2i(5, 8),
-		Vector2i(8, 6), Vector2i(8, 7), Vector2i(8, 8),
-		Vector2i(6, 5), Vector2i(7, 5), Vector2i(6, 9), Vector2i(7, 9),
-	]:
-		grid_manager.get_tile(tile_pos.x, tile_pos.y, "test_plot", "G").element = GridTile.TileElement.COLUMN
-	var protected_tiles: Array[Vector2i] = [
-		Vector2i(6, 6), Vector2i(7, 6), Vector2i(6, 7),
-		Vector2i(7, 7), Vector2i(6, 8), Vector2i(7, 8),
+	var implicit_tiles: Array[Vector2i] = [
+		Vector2i(14, 14), Vector2i(15, 14), Vector2i(14, 15),
+		Vector2i(15, 15), Vector2i(14, 16), Vector2i(15, 16),
 	]
-	var protected_zone := zone_manager.create_zone("Retail", protected_tiles, "G", "test_plot")
-	_assert(protected_zone != null, "zone with one implicit frontage tile succeeds")
-	if protected_zone == null:
-		return
-	var protected_parcel_ids: Array[String] = []
-	for parcel: Parcel in protected_zone.parcels:
-		protected_parcel_ids.append(parcel.id)
-	var consuming_tiles: Array[Vector2i] = [
-		Vector2i(3, 6), Vector2i(4, 6), Vector2i(5, 6),
-		Vector2i(3, 7), Vector2i(4, 7), Vector2i(5, 7),
-	]
-	var rejected_zone := zone_manager.create_zone("Retail", consuming_tiles, "G", "test_plot")
-	_assert(rejected_zone == null, "zone creation that consumes another zone's only implicit frontage is rejected")
-	_assert(zone_manager.zones.size() == 2, "failed neighboring zone creation is atomic")
-	var retained_parcel_ids: Array[String] = []
-	for parcel: Parcel in protected_zone.parcels:
-		retained_parcel_ids.append(parcel.id)
-	_assert(retained_parcel_ids == protected_parcel_ids, "failed neighboring zone creation retains existing parcel IDs")
+	var zones_before := zone_manager.zones.size()
+	var rejected_zone := zone_manager.create_zone("Retail", implicit_tiles, "G", "test_plot")
+	_assert(rejected_zone == null, "implicit-only frontage cannot commit a parcel door")
 	_assert(
-		grid_manager.get_tile(protected_frontage.x, protected_frontage.y, "test_plot", "G").zone_id.is_empty(),
-		"failed neighboring zone creation leaves implicit frontage unzoned"
+		zone_manager.last_split_result.status == SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE,
+		"implicit-only frontage reports the physical-door failure"
+	)
+	_assert(zone_manager.zones.size() == zones_before, "physical-door rejection creates no zone")
+	_assert(
+		grid_manager.get_tile(14, 14, "test_plot", "G").zone_id.is_empty(),
+		"physical-door rejection leaves grid markings unchanged"
 	)
 
 
-func _share_edge(first: Parcel, second: Parcel) -> bool:
-	var second_tiles: Dictionary = {}
-	for tile_pos: Vector2i in second.tiles:
-		second_tiles[tile_pos] = true
-	for tile_pos: Vector2i in first.tiles:
-		for offset: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
-			if second_tiles.has(tile_pos + offset):
-				return true
-	return false
+func _test_door_count_and_selection_preservation(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	for test_case: Dictionary in [
+		{"positions": 1, "doors": 1},
+		{"positions": 10, "doors": 1},
+		{"positions": 11, "doors": 2},
+		{"positions": 20, "doors": 2},
+		{"positions": 21, "doors": 3},
+		{"positions": 30, "doors": 3},
+	]:
+		var position_count: int = test_case.get("positions", 0)
+		var expected_doors: int = test_case.get("doors", 0)
+		var parcel := _make_physical_frontage_parcel("count_%d" % position_count, position_count)
+		_assert(
+			zone_manager._assign_selected_door_edges([parcel], []),
+			"physical candidates can allocate deterministic parcel doors"
+		)
+		_assert(
+			parcel.selected_door_edges.size() == expected_doors,
+			"%d physical positions allocate %d doors" % [position_count, expected_doors]
+		)
+		_assert(
+			_physical_positions(parcel.selected_door_edges).size() == expected_doors,
+			"allocated door positions remain unique"
+		)
+
+	var internal_transit_parcel := _make_physical_frontage_parcel("internal_transit", 1, "internal_transit")
+	_assert(
+		zone_manager._assign_selected_door_edges([internal_transit_parcel], []),
+		"same-zone internal Transit frontage can allocate a parcel door"
+	)
+	_assert(
+		internal_transit_parcel.selected_door_edges[0].get("access_kind", "") == "internal_transit",
+		"internal Transit selection keeps its physical access kind"
+	)
+
+	var one_door_mixed := Parcel.new()
+	one_door_mixed.id = "one_door_mixed"
+	one_door_mixed.set_geometry(
+		[Vector2i(0, 0)],
+		[
+			{"tile": Vector2i(0, 0), "direction": Vector2i.DOWN, "access": Vector2i(0, 1), "access_kind": "external_circulation"},
+			{"tile": Vector2i(0, 0), "direction": Vector2i.UP, "access": Vector2i(0, -1), "access_kind": "internal_transit", "transit_area_key": "transit:a"},
+		]
+	)
+	_assert(zone_manager._assign_selected_door_edges([one_door_mixed], []), "mixed one-door frontage allocates")
+	_assert(
+		one_door_mixed.selected_door_edges[0].get("access_kind", "") == "internal_transit",
+		"one-door frontage prefers internal Transit"
+	)
+
+	var two_door_mixed := Parcel.new()
+	two_door_mixed.id = "two_door_mixed"
+	var mixed_tiles: Array[Vector2i] = []
+	var mixed_edges: Array[Dictionary] = []
+	for index: int in range(11):
+		var mixed_tile := Vector2i(index, 0)
+		mixed_tiles.append(mixed_tile)
+		mixed_edges.append({
+			"tile": mixed_tile,
+			"direction": Vector2i.UP,
+			"access": mixed_tile + Vector2i.UP,
+			"access_kind": "internal_transit",
+			"transit_area_key": "transit:a",
+		})
+	mixed_edges.append({
+		"tile": Vector2i(10, 0),
+		"direction": Vector2i.DOWN,
+		"access": Vector2i(10, 1),
+		"access_kind": "external_circulation",
+	})
+	two_door_mixed.set_geometry(mixed_tiles, mixed_edges)
+	_assert(zone_manager._assign_selected_door_edges([two_door_mixed], []), "two-door mixed frontage allocates")
+	_assert(
+		two_door_mixed.selected_door_edges[0].get("access_kind", "") == "internal_transit",
+		"first door prefers internal Transit"
+	)
+	_assert(
+		two_door_mixed.selected_door_edges[1].get("access_kind", "") == "external_circulation",
+		"second door prefers external circulation"
+	)
+
+	var transit_fallback := Parcel.new()
+	transit_fallback.id = "transit_fallback"
+	var transit_tiles: Array[Vector2i] = []
+	var transit_edges: Array[Dictionary] = []
+	for index: int in range(11):
+		var transit_tile := Vector2i(index, 0)
+		transit_tiles.append(transit_tile)
+		transit_edges.append({
+			"tile": transit_tile,
+			"direction": Vector2i.UP,
+			"access": transit_tile + Vector2i.UP,
+			"access_kind": "internal_transit",
+			"transit_area_key": "transit:a" if index < 10 else "transit:b",
+		})
+	transit_fallback.set_geometry(transit_tiles, transit_edges)
+	_assert(zone_manager._assign_selected_door_edges([transit_fallback], []), "Transit-only two-door frontage allocates")
+	_assert(
+		_transit_area_keys(transit_fallback.selected_door_edges).size() == 2,
+		"second door prefers a different internal Transit area when external is unavailable"
+	)
+
+	var previous := _make_physical_frontage_parcel("preserved", 20)
+	previous.selected_door_edges = [previous.frontage_edges[15].duplicate()]
+	var edited := _make_physical_frontage_parcel("preserved", 20)
+	_assert(
+		zone_manager._assign_selected_door_edges([edited], [previous]),
+		"edited parcel allocates physical doors"
+	)
+	_assert(
+		_door_edge_keys(edited.selected_door_edges).has(_door_edge_key(previous.selected_door_edges[0])),
+		"edited parcel preserves a still-legal selected door"
+	)
 
 
 func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) -> void:
@@ -215,8 +339,8 @@ func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) ->
 		committed_parcel_ids.append(parcel.id)
 
 	var interior_tiles: Array[Vector2i] = [
-		Vector2i(1, 1), Vector2i(2, 1), Vector2i(1, 2),
-		Vector2i(2, 2), Vector2i(1, 3), Vector2i(2, 3),
+		Vector2i(14, 14), Vector2i(15, 14), Vector2i(14, 15),
+		Vector2i(15, 15), Vector2i(14, 16), Vector2i(15, 16),
 	]
 	var interior_set: Dictionary = {}
 	for tile_pos: Vector2i in interior_tiles:
@@ -234,5 +358,89 @@ func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) ->
 	for parcel: Parcel in zone.parcels:
 		retained_ids.append(parcel.id)
 	_assert(retained_ids == committed_parcel_ids, "rejected edit leaves parcel IDs unchanged")
-	var first_tile := grid_manager.get_tile(0, 0, "test_plot", "G")
+	var first_tile := grid_manager.get_tile(2, 2, "test_plot", "G")
 	_assert(first_tile.zone_id == zone.id, "rejected edit leaves committed grid markings unchanged")
+
+
+func _set_external_circulation_frame(grid_manager: GridManager, bounds: Rect2i) -> void:
+	for y: int in range(bounds.position.y - 1, bounds.end.y + 1):
+		for x: int in range(bounds.position.x - 1, bounds.end.x + 1):
+			if x != bounds.position.x - 1 and x != bounds.end.x and y != bounds.position.y - 1 and y != bounds.end.y:
+				continue
+			grid_manager.get_tile(x, y, "test_plot", "G").element = GridTile.TileElement.CIRCULATION
+
+
+func _make_physical_frontage_parcel(
+	parcel_id: String, position_count: int, access_kind: String = "external_circulation"
+) -> Parcel:
+	var parcel := Parcel.new()
+	parcel.id = parcel_id
+	var tiles: Array[Vector2i] = []
+	var frontage_edges: Array[Dictionary] = []
+	for index: int in range(position_count):
+		var tile := Vector2i(index, 0)
+		tiles.append(tile)
+		frontage_edges.append({
+			"tile": tile,
+			"direction": Vector2i.DOWN,
+			"access": tile + Vector2i.DOWN,
+			"access_kind": access_kind,
+		})
+	parcel.set_geometry(tiles, frontage_edges)
+	return parcel
+
+
+func _physical_positions(edges: Array[Dictionary]) -> Dictionary:
+	var positions: Dictionary = {}
+	for edge: Dictionary in edges:
+		if ZoneManager.PHYSICAL_DOOR_ACCESS_KINDS.has(edge.get("access_kind", "")):
+			positions[edge.get("tile", Vector2i.ZERO)] = true
+	return positions
+
+
+func _parcel_geometry_keys(parcels: Array[Parcel]) -> Array[String]:
+	var keys: Array[String] = []
+	for parcel: Parcel in parcels:
+		var tile_parts: Array[String] = []
+		for tile: Vector2i in parcel.tiles:
+			tile_parts.append("%d,%d" % [tile.x, tile.y])
+		keys.append(";".join(tile_parts))
+	keys.sort()
+	return keys
+
+
+func _door_edge_keys(edges: Array[Dictionary]) -> Array[String]:
+	var keys: Array[String] = []
+	for edge: Dictionary in edges:
+		keys.append(_door_edge_key(edge))
+	keys.sort()
+	return keys
+
+
+func _transit_area_keys(edges: Array[Dictionary]) -> Dictionary:
+	var keys: Dictionary = {}
+	for edge: Dictionary in edges:
+		var area_key: String = edge.get("transit_area_key", "")
+		if not area_key.is_empty():
+			keys[area_key] = true
+	return keys
+
+
+func _door_edge_key(edge: Dictionary) -> String:
+	var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+	var direction: Vector2i = edge.get("direction", Vector2i.ZERO)
+	var access: Vector2i = edge.get("access", Vector2i.ZERO)
+	return "%d,%d|%d,%d|%d,%d|%s" % [
+		tile.x, tile.y, direction.x, direction.y, access.x, access.y, edge.get("access_kind", "")
+	]
+
+
+func _share_edge(first: Parcel, second: Parcel) -> bool:
+	var second_tiles: Dictionary = {}
+	for tile_pos: Vector2i in second.tiles:
+		second_tiles[tile_pos] = true
+	for tile_pos: Vector2i in first.tiles:
+		for offset: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
+			if second_tiles.has(tile_pos + offset):
+				return true
+	return false

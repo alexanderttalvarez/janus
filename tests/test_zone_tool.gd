@@ -11,6 +11,7 @@ func _ready() -> void:
 	_test_forward_rectangle()
 	_test_reverse_rectangle()
 	_test_single_tile_rectangle()
+	_test_repainting_existing_tiles_revalidates_typology()
 	print("ZoneTool tests: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(0 if _failed == 0 else 1)
 
@@ -40,3 +41,41 @@ func _test_reverse_rectangle() -> void:
 func _test_single_tile_rectangle() -> void:
 	var tiles := ZoneTool.rectangle_tiles(Vector2i(7, 8), Vector2i(7, 8))
 	_assert(tiles == [Vector2i(7, 8)], "click without movement selects one tile")
+
+
+func _test_repainting_existing_tiles_revalidates_typology() -> void:
+	var world := Node.new()
+	world.name = "World"
+	add_child(world)
+	var grid_manager := GridManager.new()
+	grid_manager.name = "GridManager"
+	world.add_child(grid_manager)
+	var zone_manager := ZoneManager.new()
+	zone_manager.name = "ZoneManager"
+	world.add_child(zone_manager)
+	var plot := grid_manager.create_plot(GridManager.DEFAULT_PLOT, 8, 8)
+	var floor_grid := plot.get_floor(GridManager.GROUND_FLOOR)
+	for x: int in range(floor_grid.width):
+		for y: int in range(floor_grid.height):
+			var tile := floor_grid.get_tile(x, y)
+			tile.owned = true
+			tile.floor_built = true
+	for y: int in range(1, 6):
+		for x: int in range(1, 5):
+			if x != 1 and x != 4 and y != 1 and y != 5:
+				continue
+			grid_manager.get_tile(x, y).element = GridTile.TileElement.CIRCULATION
+
+	var tool := ZoneTool.new()
+	tool.is_active = true
+	add_child(tool)
+	tool._paint_rectangle(Vector2i(2, 2), Vector2i(3, 4))
+	_assert(tool.can_finish, "physical Tenant rectangle starts as finishable")
+	tool.set_transit_mode(true)
+	tool._paint_rectangle(Vector2i(2, 2), Vector2i(3, 4))
+	_assert(not tool.can_finish, "repainting existing tiles as Transit immediately revalidates")
+	tool.set_transit_mode(false)
+	tool._paint_rectangle(Vector2i(2, 2), Vector2i(3, 4))
+	_assert(tool.can_finish, "repainting existing Transit tiles as Tenant immediately revalidates")
+	tool.queue_free()
+	world.queue_free()
