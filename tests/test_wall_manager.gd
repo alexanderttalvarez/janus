@@ -179,6 +179,21 @@ func _test_t_junctions_do_not_spawn_corner_pillars(wall_manager: WallManager) ->
 	var crossing_junctions := wall_manager._find_wall_junctions(crossing_runs, crossing_joints)
 	_assert(crossing_junctions.size() == 1, "crossings retain one corner cube")
 
+	var inter_zone_transit_runs: Array = [
+		{"axis": "x", "line": 2.0, "from": 0.0, "to": 6.0, "normal": Vector3.DOWN, "thickness": WallManager.PARCEL_WALL_THICKNESS, "is_parcel_boundary": true},
+		{"axis": "z", "line": 3.0, "from": 0.0, "to": 4.0, "normal": Vector3.RIGHT, "thickness": WallManager.WALL_THICKNESS, "is_parcel_boundary": false},
+	]
+	var inter_zone_joints: Dictionary = {}
+	var inter_zone_junctions := wall_manager._find_wall_junctions(inter_zone_transit_runs, inter_zone_joints)
+	_assert(
+		inter_zone_junctions.is_empty(),
+		"aligned inter-zone Transit boundaries do not spawn a structural corner pillar"
+	)
+	_assert(
+		inter_zone_joints.has(0) and not inter_zone_joints.has(1),
+		"mixed inter-zone crossing trims only the thin Tenant-to-Transit run"
+	)
+
 
 func _make_zone(parcel_definitions: Array) -> ZoneData:
 	var zone := ZoneData.new()

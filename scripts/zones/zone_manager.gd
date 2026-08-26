@@ -202,6 +202,7 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 	if not _all_parcels_have_physical_door_frontage(result.parcels):
 		return _physical_door_failure(result.parcels, "NO_PHYSICAL_DOOR_FRONTAGE")
 
+	var prospective_zones: Array[ZoneData] = [_zone_with_split_residuals(candidate, result)]
 	for affected_zone: ZoneData in _affected_zones(candidate, replaced_zone):
 		var affected_result := ZoneSplitter.split(affected_zone, context.floor_grid, context.plot, context)
 		if not affected_result.is_success():
@@ -217,6 +218,12 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 				affected_result.parcels,
 				"AFFECTED_ZONE_NO_PHYSICAL_DOOR_FRONTAGE:%s" % affected_zone.id
 			)
+		prospective_zones.append(_zone_with_split_residuals(affected_zone, affected_result))
+	var manual_door_diagnostic := _manual_door_invalidation_diagnostic(
+		candidate, replaced_zone, prospective_zones
+	)
+	if not manual_door_diagnostic.is_empty():
+		return _existing_door_failure(result.parcels, manual_door_diagnostic)
 	return result
 
 
@@ -386,6 +393,10 @@ func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 			return []
 		_assign_debug_subtypes(affected_candidate)
 		prepared.append(affected_candidate)
+	var manual_door_diagnostic := _manual_door_invalidation_diagnostic(candidate, replaced_zone, prepared)
+	if not manual_door_diagnostic.is_empty():
+		last_split_result = SplitResult.failure(SplitResult.Status.EXISTING_DOOR_INVALIDATED, manual_door_diagnostic)
+		return []
 	return prepared
 
 
@@ -695,6 +706,144 @@ func _tile_overlap(first: Array[Vector2i], second: Array[Vector2i]) -> int:
 		if second_set.has(tile):
 			overlap += 1
 	return overlap
+
+
+# ── Manual Door Preservation ───────────────────────────────────────────
+
+
+func _zone_with_split_residuals(source: ZoneData, result: SplitResult) -> ZoneData:
+	var projected := _copy_zone(source)
+	for tile_pos: Vector2i in result.residual_tiles:
+		projected.typologies[tile_pos] = GridTile.TileTypology.DECORATION
+	return projected
+
+
+func _manual_door_invalidation_diagnostic(
+	candidate: ZoneData, replaced_zone: ZoneData, prospective_zones: Array[ZoneData]
+) -> String:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return ""
+	var floor_grid := grid_manager.get_floor_grid(candidate.plot_id, candidate.floor)
+	if floor_grid == null:
+		return ""
+	var overrides: Dictionary = {}
+	var changed_tiles: Dictionary = {}
+	if replaced_zone != null:
+		for tile_pos: Vector2i in replaced_zone.tiles:
+			overrides[tile_pos] = {
+				"zone_id": "",
+				"typology": GridTile.TileTypology.TENANT,
+				"element": GridTile.TileElement.CIRCULATION,
+			}
+			changed_tiles[tile_pos] = true
+	for zone: ZoneData in prospective_zones:
+		for tile_pos: Vector2i in zone.tiles:
+			overrides[tile_pos] = {
+				"zone_id": zone.id,
+				"typology": zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT),
+				"element": GridTile.TileElement.NONE,
+			}
+			changed_tiles[tile_pos] = true
+
+	var edges: Dictionary = {}
+	var directions: Array[Dictionary] = [
+		{"offset": Vector2i.UP, "side": GridTile.DoorSide.NORTH},
+		{"offset": Vector2i.LEFT, "side": GridTile.DoorSide.WEST},
+		{"offset": Vector2i.RIGHT, "side": GridTile.DoorSide.EAST},
+		{"offset": Vector2i.DOWN, "side": GridTile.DoorSide.SOUTH},
+	]
+	for y: int in range(floor_grid.height):
+		for x: int in range(floor_grid.width):
+			var from := Vector2i(x, y)
+			var tile := floor_grid.get_tile(x, y)
+			if tile == null:
+				continue
+			for direction_data: Dictionary in directions:
+				if not tile.has_door(direction_data["side"]):
+					continue
+				var to: Vector2i = from + direction_data["offset"]
+				edges[_manual_door_edge_key(from, to)] = {"from": from, "to": to}
+	var keys: Array[String] = []
+	for key: String in edges:
+		keys.append(key)
+	keys.sort()
+	for key: String in keys:
+		var edge: Dictionary = edges[key]
+		var from: Vector2i = edge["from"]
+		var to: Vector2i = edge["to"]
+		if not changed_tiles.has(from) and not changed_tiles.has(to):
+			continue
+		var reason := _prospective_manual_door_invalid_reason(floor_grid, overrides, from, to)
+		if not reason.is_empty():
+			return "EXISTING_DOOR_INVALIDATED:MANUAL_DOOR:%s:%s" % [key, reason]
+	return ""
+
+
+func _prospective_manual_door_invalid_reason(
+	floor_grid: FloorGrid, overrides: Dictionary, from: Vector2i, to: Vector2i
+) -> String:
+	var from_valid := floor_grid.is_valid_tile(from.x, from.y)
+	var to_valid := floor_grid.is_valid_tile(to.x, to.y)
+	if not from_valid and not to_valid:
+		return "INVALID_ENDPOINT"
+	if not from_valid or not to_valid:
+		var interior := to if from_valid else from
+		var interior_state := _prospective_manual_tile_state(floor_grid, overrides, interior)
+		if interior_state.is_empty() or not interior_state["owned"] or not interior_state["floor_built"]:
+			return "INVALID_ENDPOINT"
+		if not String(interior_state["zone_id"]).is_empty() and interior_state["typology"] != GridTile.TileTypology.TRANSIT:
+			return "EXTERIOR_REQUIRES_TRANSIT"
+		return ""
+	var from_state := _prospective_manual_tile_state(floor_grid, overrides, from)
+	var to_state := _prospective_manual_tile_state(floor_grid, overrides, to)
+	if from_state.is_empty() or to_state.is_empty() or not from_state["owned"] or not to_state["owned"] or not from_state["floor_built"] or not to_state["floor_built"]:
+		return "INVALID_ENDPOINT"
+	var from_zone: String = from_state["zone_id"]
+	var to_zone: String = to_state["zone_id"]
+	if not from_zone.is_empty() and not to_zone.is_empty():
+		if from_zone == to_zone:
+			return "SAME_ZONE_FORBIDDEN"
+		if from_state["typology"] != GridTile.TileTypology.TRANSIT or to_state["typology"] != GridTile.TileTypology.TRANSIT:
+			return "INTER_ZONE_REQUIRES_TRANSIT"
+		return ""
+	if not from_zone.is_empty() or not to_zone.is_empty():
+		var zone_state: Dictionary = from_state if not from_zone.is_empty() else to_state
+		var external_state: Dictionary = to_state if not from_zone.is_empty() else from_state
+		if zone_state["typology"] != GridTile.TileTypology.TRANSIT:
+			return "ZONE_TO_CIRCULATION_REQUIRES_TRANSIT"
+		if external_state["element"] != GridTile.TileElement.CIRCULATION:
+			return "ZONE_TO_CIRCULATION_REQUIRES_EXPLICIT_CIRCULATION"
+		return ""
+	if from_state["element"] == to_state["element"]:
+		return "UNZONED_EDGE_REQUIRES_CIRCULATION_MISMATCH"
+	return ""
+
+
+func _prospective_manual_tile_state(
+	floor_grid: FloorGrid, overrides: Dictionary, tile_pos: Vector2i
+) -> Dictionary:
+	if not floor_grid.is_valid_tile(tile_pos.x, tile_pos.y):
+		return {}
+	var tile := floor_grid.get_tile(tile_pos.x, tile_pos.y)
+	if tile == null:
+		return {}
+	var override: Dictionary = overrides.get(tile_pos, {})
+	return {
+		"zone_id": override.get("zone_id", tile.zone_id),
+		"typology": override.get("typology", tile.typology),
+		"element": override.get("element", tile.element),
+		"owned": tile.owned,
+		"floor_built": tile.floor_built,
+	}
+
+
+static func _manual_door_edge_key(first: Vector2i, second: Vector2i) -> String:
+	if _compare_tile_positions(second, first):
+		var swapped := first
+		first = second
+		second = swapped
+	return "%d,%d|%d,%d" % [first.x, first.y, second.x, second.y]
 
 
 # ── Grid Commit ────────────────────────────────────────────────────────

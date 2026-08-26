@@ -68,9 +68,14 @@ func _toggle_remove_mode() -> void:
 	var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
 	if tool == null:
 		return
-	tool.set_remove_mode(not tool.is_remove_mode())
+	var enable_remove := not tool.is_remove_mode()
+	if enable_remove and tool.is_transit_mode():
+		tool.set_transit_mode(false)
+		if _transit_button != null:
+			_transit_button.button_pressed = false
+	tool.set_remove_mode(enable_remove)
 	if _remove_button != null:
-		_remove_button.button_pressed = tool.is_remove_mode()
+		_remove_button.button_pressed = enable_remove
 
 
 func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> void:
@@ -80,7 +85,14 @@ func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> vo
 		_transit_button = _add_button("Transit tiles", func():
 			var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
 			if tool:
-				tool.set_transit_mode(not tool.is_transit_mode())
+				var enable_transit := not tool.is_transit_mode()
+				if enable_transit:
+					tool.set_remove_mode(false)
+					if _remove_button != null:
+						_remove_button.button_pressed = false
+				tool.set_transit_mode(enable_transit)
+				if _transit_button != null:
+					_transit_button.button_pressed = enable_transit
 		)
 		_transit_button.toggle_mode = true
 	elif not has_tiles and _transit_button != null:

@@ -437,6 +437,15 @@ func _find_wall_junctions(runs: Array, joints_by_run: Dictionary) -> Array:
 				else:
 					_add_joint(joints_by_run, i, point.x, thickness)
 				continue
+			if x_passes_through and z_passes_through and run_x["is_parcel_boundary"] != run_z["is_parcel_boundary"]:
+				# Aligned Tenant↔Transit boundaries can continue across adjacent
+				# zones and meet a continuous structural inter-zone wall. This is
+				# semantically two thin runs terminating at a structural wall, not
+				# a real crossing; a structural cube would become a Cutaway pillar.
+				var parcel_run_index := i if run_x["is_parcel_boundary"] else j
+				var parcel_coord := point.x if run_x["is_parcel_boundary"] else point.y
+				_add_joint(joints_by_run, parcel_run_index, parcel_coord, thickness)
+				continue
 
 			var outward := Vector2(run_x["normal"].x, run_x["normal"].z) \
 				+ Vector2(run_z["normal"].x, run_z["normal"].z)

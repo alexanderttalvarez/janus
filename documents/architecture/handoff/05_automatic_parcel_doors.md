@@ -30,12 +30,13 @@ Every committed parcel receives deterministic physical doors to its eligible int
 
 ## Existing-door preservation invariant
 
-- A committed zone transaction must not block any previously selected automatic parcel door belonging to an existing affected zone.
-- If a new adjacent zone occupies an existing door’s access tile, or changes that access tile so the edge is no longer physically eligible, the entire transaction rejects atomically with `EXISTING_DOOR_INVALIDATED`.
-- Replacement frontage does not compensate for a blocked existing door. The old physical edge must remain legal on the matched persistent parcel.
-- Exact legal-edge identity includes parcel tile, edge direction, access tile, and `access_kind`; derived Transit-area keys do not affect legality.
-- The invariant applies to new-zone creation, affected-zone re-splits, and zone edits. It covers blocked circulation, changed Transit typology, lost frontage, and parcel rematching.
-- Rejected transactions do not commit zones, grid markings, parcel changes, counters, or events.
+- A committed zone transaction must not invalidate any existing automatic parcel door or manual grid-door edge whose prospective state changes.
+- If zone creation, modification, an affected-zone split, or clearing tiles makes an existing door edge illegal, the entire transaction rejects atomically with `EXISTING_DOOR_INVALIDATED`.
+- Automatic parcel-door legality requires the old physical edge to remain legal on the matched persistent parcel. Replacement frontage does not compensate for a blocked automatic door.
+- Manual-door legality uses the prospective equivalent of manual placement rules: exterior zone doors require Transit; zone-to-circulation doors require Transit plus explicit CIRCULATION; different-zone doors require Transit on both sides; same-zone manual doors remain prohibited.
+- Unrelated legacy manual doors do not block a transaction unless the prospective transaction changes an endpoint’s zone, typology, or element.
+- Manual doors are identified by their canonical unordered grid edge. Automatic door identity includes parcel tile, direction, access tile, and `access_kind`; derived Transit-area keys do not affect legality.
+- Rejected transactions do not commit zones, grid markings, parcel changes, manual door flags, counters, or events.
 
 ## Ownership and rendering
 
@@ -65,9 +66,8 @@ Every committed parcel receives deterministic physical doors to its eligible int
 - Two-door allocation prefers internal Transit first, then external circulation, then a different Transit area when external is unavailable.
 - Zone-to-zone frontage never produces an automatic door candidate.
 - Manual doors reject different-zone connections unless both tiles are Transit, and allow zone Transit to explicit external circulation.
+- A zone that blocks an existing automatic or changed-endpoint manual door rejects atomically; preview and finalization report the same status and preserve committed state.
 - Selection is deterministic, survives serialization, and preserves legal selections across parcel edits.
-- A new zone that blocks an existing selected door rejects atomically even if replacement frontage exists.
-- Preview and finalization report the same existing-door invalidation status and preserve committed state.
 - Internal-Transit selections create thin-wall gaps; external-CIRCULATION selections create structural-wall gaps.
 - Zero physical eligible positions reject without committing a zone mutation.
 - Existing tests pass; runtime zones produce the expected selected-door count and gap geometry with no debugger errors.

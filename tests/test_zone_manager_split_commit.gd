@@ -12,6 +12,7 @@ func _ready() -> void:
 	_test_successful_creation_commits_parcels(context)
 	_test_inter_zone_frontage_cannot_be_a_door(context)
 	_test_manual_doors_cannot_cross_zones(context)
+	_test_adjacent_zone_cannot_block_existing_manual_door(context)
 	_test_adjacent_zone_cannot_block_existing_door(context)
 	_test_successful_edit_reassigns_debug_subtypes(context)
 	_test_preview_split_is_non_mutating(context)
@@ -189,6 +190,47 @@ func _test_manual_doors_cannot_cross_zones(context: Dictionary) -> void:
 	)
 	from_tile.typology = original_typology
 	to_tile.element = GridTile.TileElement.CIRCULATION
+
+
+func _test_adjacent_zone_cannot_block_existing_manual_door(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var grid_manager: GridManager = context.grid_manager
+	var manual_from := Vector2i(10, 9)
+	var manual_to := Vector2i(10, 10)
+	var from_tile := grid_manager.get_tile(manual_from.x, manual_from.y, "test_plot", "G")
+	var to_tile := grid_manager.get_tile(manual_to.x, manual_to.y, "test_plot", "G")
+	from_tile.zone_id = "manual_existing_zone"
+	from_tile.typology = GridTile.TileTypology.TRANSIT
+	from_tile.element = GridTile.TileElement.NONE
+	to_tile.zone_id = ""
+	to_tile.typology = GridTile.TileTypology.TENANT
+	to_tile.element = GridTile.TileElement.CIRCULATION
+	from_tile.set_door(GridTile.DoorSide.SOUTH)
+	var tiles: Array[Vector2i] = []
+	for y: int in range(10, 12):
+		for x: int in range(10, 13):
+			tiles.append(Vector2i(x, y))
+	_set_external_circulation_frame(grid_manager, Rect2i(10, 10, 3, 2))
+	var zones_before := zone_manager.zones.size()
+	var serialized_before := zone_manager.serialize()
+	var preview := zone_manager.preview_split("Retail", tiles, "G", "test_plot")
+	_assert(
+		preview.status == SplitResult.Status.EXISTING_DOOR_INVALIDATED,
+		"preview rejects a zone that blocks an existing manual door"
+	)
+	_assert(
+		preview.diagnostics[0].begins_with("EXISTING_DOOR_INVALIDATED:MANUAL_DOOR"),
+		"manual-door preview reports a stable invalidation diagnostic"
+	)
+	var rejected := zone_manager.create_zone("Retail", tiles, "G", "test_plot")
+	_assert(rejected == null, "zone blocking an existing manual door is rejected")
+	_assert(zone_manager.zones.size() == zones_before, "manual-door rejection creates no new zone")
+	_assert(zone_manager.serialize() == serialized_before, "manual-door rejection preserves zone and counter state")
+	_assert(from_tile.has_door(GridTile.DoorSide.SOUTH), "manual-door rejection preserves the manual door flag")
+	from_tile.set_door(GridTile.DoorSide.SOUTH, false)
+	from_tile.zone_id = ""
+	from_tile.typology = GridTile.TileTypology.TENANT
+	from_tile.element = GridTile.TileElement.CIRCULATION
 
 
 func _test_adjacent_zone_cannot_block_existing_door(context: Dictionary) -> void:
