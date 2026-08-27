@@ -7,7 +7,8 @@ extends RefCounted
 static func assign(
 	parcels: Array[Parcel],
 	zone_type: String,
-	catalog_snapshot: Array[Dictionary]
+	catalog_snapshot: Array[Dictionary],
+	fixed_assignments: Dictionary = {}
 ) -> BusinessAssignmentResult:
 	var result := BusinessAssignmentResult.new()
 	var ordered_parcels := _sorted_parcels(parcels)
@@ -16,6 +17,12 @@ static func assign(
 	var domains: Dictionary = {}  # Dictionary[String, Array[Dictionary]]
 	var assigned: Dictionary = {}  # Dictionary[String, String]
 	var use_counts: Dictionary = {}  # Dictionary[String, int]
+	for parcel: Parcel in ordered_parcels:
+		var fixed_subtype: String = fixed_assignments.get(parcel.id, "")
+		if not fixed_subtype.is_empty():
+			assigned[parcel.id] = fixed_subtype
+			_increment_use_count(use_counts, fixed_subtype)
+			result.assign(parcel.id, fixed_subtype)
 
 	for parcel: Parcel in ordered_parcels:
 		var domain := _eligible_entries(parcel, zone_type, ordered_catalog)

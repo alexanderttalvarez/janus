@@ -42,6 +42,7 @@ var _preview_mesh: MeshInstance3D
 var _painting: bool = false
 var _paint_start_tile: Vector2i = Vector2i.ZERO
 var _remove_mode: bool = false
+var _none_mode: bool = false
 ## Node3D container for all tool visuals. MeshInstance3D children of a plain
 ## Node never reach the RenderingServer, so every mesh lives under this root.
 var _visual_root: Node3D
@@ -90,14 +91,16 @@ func _update_preview_validation() -> void:
 				"ZONE_MANAGER_UNAVAILABLE"
 			)
 		else:
-			preview_split_result = zone_manager.preview_split(
-				_preview_zone_type(),
-				pending_tiles,
-				_preview_floor(),
-				_preview_plot_id(),
-				_combined_pending_typologies(),
-				_editing_zone_id
-			)
+			if _none_mode:
+				preview_split_result = zone_manager.preview_paint(
+					_preview_zone_type(), pending_tiles, _preview_floor(), _preview_plot_id(),
+					_combined_pending_typologies(), "none"
+				)
+			else:
+				preview_split_result = zone_manager.preview_paint(
+					_preview_zone_type(), pending_tiles, _preview_floor(), _preview_plot_id(),
+					_combined_pending_typologies(), "zone"
+				)
 		can_finish = preview_split_result != null and preview_split_result.is_success()
 		if can_finish:
 			_clear_invalid_perimeter()
@@ -145,7 +148,16 @@ func _combined_pending_typologies() -> Dictionary:
 
 func _preview_zone_type() -> String:
 	var existing := _editing_zone()
-	return existing.type if existing != null else active_zone_type
+	if existing != null:
+		return existing.type
+	if _none_mode:
+		var zone_manager := _get_zone_manager()
+		if zone_manager != null:
+			for tile_pos: Vector2i in _painted_tiles:
+				var zone := zone_manager.get_zone_at_tile(tile_pos, _preview_floor(), _preview_plot_id())
+				if zone != null:
+					return zone.type
+	return active_zone_type
 
 
 func _preview_floor() -> String:
@@ -296,6 +308,11 @@ func _paint_at_mouse() -> void:
 
 
 func _paint_rectangle(start_tile: Vector2i, end_tile: Vector2i) -> void:
+	if not _remove_mode and not _none_mode:
+		for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
+			if not _can_paint_tile_for_rectangle(tile_pos):
+				_update_preview_validation()
+				return
 	var added_tiles := false
 	var changed := false
 	for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
@@ -336,13 +353,17 @@ func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
 	if gm == null:
 		return false
 	var tile: GridTile = gm.get_tile(tile_pos.x, tile_pos.y)
-	if tile == null or not tile.owned:
+	if tile == null or not tile.owned or not tile.floor_built:
 		return false
 	var zm := _get_zone_manager()
 	if zm == null:
 		return false
+	if _none_mode:
+		return not tile.zone_id.is_empty()
 	var occupying_zone := zm.get_zone_at_tile(tile_pos)
-	return occupying_zone == null or occupying_zone.id == _editing_zone_id
+	if occupying_zone == null:
+		return true
+	return occupying_zone.type == active_zone_type
 
 
 func _erase_at_mouse() -> void:
@@ -364,10 +385,14 @@ func _can_paint(tile_pos: Vector2i) -> bool:
 		return false
 	if _remove_mode:
 		return _painted_tiles.has(tile_pos)
-	# Can't paint on occupied tiles (other zones).
+	if _none_mode:
+		var none_zone_manager := _get_zone_manager()
+		return none_zone_manager != null and none_zone_manager.is_tile_in_zone(tile_pos)
+	# Different zone types cannot be painted over; same-type zones can be merged.
 	var zm := _get_zone_manager()
 	if zm and zm.is_tile_in_zone(tile_pos):
-		return false
+		var occupying_zone := zm.get_zone_at_tile(tile_pos)
+		return occupying_zone != null and occupying_zone.type == active_zone_type
 	# Adjacency is retained for hover feedback only. Rectangle painting uses
 	# _can_paint_tile_for_rectangle() so the full drag area can be selected.
 	return _can_paint_tile_for_rectangle(tile_pos)
@@ -439,24 +464,15 @@ func finish() -> bool:
 	var zone_manager := _get_zone_manager()
 	if zone_manager == null:
 		return false
-	var committed_zone: ZoneData = null
-	var existing := _editing_zone()
-	if existing != null:
-		committed_zone = zone_manager.modify_zone(
-			existing.id,
-			_combined_pending_tiles(),
-			existing.plot_id,
-			_combined_pending_typologies()
-		)
-	else:
-		committed_zone = zone_manager.create_zone(
-			active_zone_type,
-			_painted_tiles,
-			"G",
-			GridManager.DEFAULT_PLOT,
-			_painted_typologies
-		)
-	if committed_zone == null:
+	var committed_zone: ZoneData = zone_manager.paint_zone(
+		active_zone_type,
+		_painted_tiles,
+		_preview_floor(),
+		_preview_plot_id(),
+		_painted_typologies,
+		"none" if _none_mode else "zone"
+	)
+	if committed_zone == null and not (_none_mode and zone_manager.last_split_result != null and zone_manager.last_split_result.is_success()):
 		_update_preview_validation()
 		return false
 	cancel()
@@ -472,6 +488,7 @@ func cancel() -> void:
 	_editing_zone_id = ""
 	_typo_mode = GridTile.TileTypology.TENANT
 	_remove_mode = false
+	_none_mode = false
 	preview_split_result = null
 	can_finish = false
 	_clear_invalid_perimeter()
@@ -487,6 +504,8 @@ func cancel() -> void:
 
 func set_remove_mode(enabled: bool) -> void:
 	_remove_mode = enabled
+	if enabled:
+		_none_mode = false
 	if _painting:
 		_painting = false
 		_clear_drag_preview()
@@ -497,10 +516,29 @@ func is_remove_mode() -> bool:
 	return _remove_mode
 
 
+func set_none_mode(enabled: bool) -> void:
+	_none_mode = enabled
+	if enabled:
+		_remove_mode = false
+		_typo_mode = GridTile.TileTypology.TENANT
+	if _painting:
+		_painting = false
+		_clear_drag_preview()
+	_update_hover()
+	_update_preview_validation()
+
+
+func is_none_mode() -> bool:
+	return _none_mode
+
+
 func set_transit_mode(enabled: bool) -> void:
 	# Changing the toggle only changes the typology assigned to future paint
 	# actions. Existing pending tiles change only when explicitly repainted.
 	_typo_mode = GridTile.TileTypology.TRANSIT if enabled else GridTile.TileTypology.TENANT
+	if enabled:
+		_none_mode = false
+		_remove_mode = false
 	painting_state_changed.emit(not _painted_tiles.is_empty(), enabled)
 	_update_preview_validation()
 

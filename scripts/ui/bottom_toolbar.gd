@@ -23,6 +23,7 @@ func _build_build_mode() -> void:
 	_mode_label.text = "Build"
 	for zone_type: String in ZoneData.ZONE_TYPE_NAMES:
 		_add_button(zone_type, func(): _enter_paint_mode(zone_type))
+	_add_button("Remove", func(): _enter_remove_mode())
 	_add_button("Place Door", func(): _enter_door_mode(false))
 	_add_button("Remove Door", func(): _enter_door_mode(true))
 
@@ -53,48 +54,66 @@ func _enter_paint_mode(zone_type: String) -> void:
 				(tool as ZoneTool).preview_validation_changed.connect(_on_preview_validation_changed)
 			(tool as ZoneTool).active_zone_type = zone_type
 			(tool as ZoneTool).set_remove_mode(false)
+			(tool as ZoneTool).set_none_mode(false)
 			(tool as ZoneTool).is_active = true
 	_remove_button = _add_button("Remove", func(): _toggle_remove_mode())
 	_remove_button.toggle_mode = true
+	_configure_selected_toggle_button(_remove_button)
 	_finish_button = _add_button("Finish Zone", func(): _exit_paint_mode())
 	_configure_finish_button(_finish_button)
+	_add_button("Cancel", func(): _cancel_paint_mode())
 	if root:
 		var zone_tool := root.get_node_or_null("ZoneTool") as ZoneTool
 		if zone_tool:
 			_finish_button.disabled = not zone_tool.can_finish
 
 
+func _enter_remove_mode() -> void:
+	_enter_paint_mode(ZoneData.ZONE_TYPE_NAMES[0])
+	_toggle_remove_mode()
+	_mode_label.text = "Build: Remove"
+
+
 func _toggle_remove_mode() -> void:
 	var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
 	if tool == null:
 		return
-	var enable_remove := not tool.is_remove_mode()
+	var enable_remove := not tool.is_none_mode()
 	if enable_remove and tool.is_transit_mode():
 		tool.set_transit_mode(false)
 		if _transit_button != null:
 			_transit_button.button_pressed = false
-	tool.set_remove_mode(enable_remove)
+	tool.set_none_mode(enable_remove)
 	if _remove_button != null:
 		_remove_button.button_pressed = enable_remove
+	_mode_label.text = "Build: Remove" if enable_remove else "Build: %s" % tool.active_zone_type
 
 
 func _on_zone_painting_state_changed(has_tiles: bool, _transit_mode: bool) -> void:
 	if not _painting:
 		return
+	var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
+	if tool != null and tool.is_none_mode():
+		if _transit_button != null:
+			_transit_button.queue_free()
+			_transit_button = null
+		return
 	if has_tiles and _transit_button == null:
 		_transit_button = _add_button("Transit tiles", func():
-			var tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
-			if tool:
-				var enable_transit := not tool.is_transit_mode()
+			var transit_tool := get_tree().current_scene.get_node_or_null("ZoneTool") as ZoneTool
+			if transit_tool:
+				var enable_transit := not transit_tool.is_transit_mode()
 				if enable_transit:
-					tool.set_remove_mode(false)
+					transit_tool.set_remove_mode(false)
+					transit_tool.set_none_mode(false)
 					if _remove_button != null:
 						_remove_button.button_pressed = false
-				tool.set_transit_mode(enable_transit)
+				transit_tool.set_transit_mode(enable_transit)
 				if _transit_button != null:
 					_transit_button.button_pressed = enable_transit
 		)
 		_transit_button.toggle_mode = true
+		_configure_selected_toggle_button(_transit_button)
 	elif not has_tiles and _transit_button != null:
 		_transit_button.queue_free()
 		_transit_button = null
@@ -118,6 +137,10 @@ func _preview_mode_label(can_finish: bool, status: int) -> String:
 			return "Build: %s — Add adjacent circulation or Transit" % zone_type
 		SplitResult.Status.EXISTING_DOOR_INVALIDATED:
 			return "Build: %s — Blocks an existing door" % zone_type
+		SplitResult.Status.INVALID_ZONE_GEOMETRY:
+			if tool != null and tool.is_none_mode() and tool.preview_split_result != null and tool.preview_split_result.diagnostics.has("DISCONNECTED_ZONE"):
+				return "Build: Remove — Disconnected zone"
+			return "Build: %s — Invalid zone shape" % zone_type
 		SplitResult.Status.NO_VALID_FRONTAGE:
 			return "Build: %s — No frontage" % zone_type
 		SplitResult.Status.INSUFFICIENT_RENTABLE_SPACE:
@@ -163,6 +186,17 @@ func _exit_door_mode() -> void:
 	_build_build_mode()
 
 
+func _cancel_paint_mode() -> void:
+	var root := get_tree().current_scene
+	if root:
+		var tool := root.get_node_or_null("ZoneTool") as ZoneTool
+		if tool != null:
+			tool.cancel()
+			tool.is_active = false
+	_painting = false
+	GameManager.enter_build_mode()
+
+
 func _exit_paint_mode() -> void:
 	var root := get_tree().current_scene
 	if root:
@@ -173,6 +207,22 @@ func _exit_paint_mode() -> void:
 			(tool as ZoneTool).is_active = false
 	_painting = false
 	GameManager.enter_observe_mode()
+
+
+func _configure_selected_toggle_button(button: Button) -> void:
+	var selected_style := StyleBoxFlat.new()
+	var pressed_style := button.get_theme_stylebox("pressed")
+	if pressed_style is StyleBoxFlat:
+		selected_style = (pressed_style as StyleBoxFlat).duplicate() as StyleBoxFlat
+	else:
+		selected_style.bg_color = Color(0.16, 0.19, 0.24, 1.0)
+	selected_style.border_color = Color.WHITE
+	selected_style.border_width_left = 3
+	selected_style.border_width_top = 3
+	selected_style.border_width_right = 3
+	selected_style.border_width_bottom = 3
+	button.add_theme_stylebox_override("pressed", selected_style)
+	button.add_theme_stylebox_override("hover_pressed", selected_style.duplicate())
 
 
 func _configure_finish_button(button: Button) -> void:

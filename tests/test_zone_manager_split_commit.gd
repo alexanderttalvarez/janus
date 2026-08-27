@@ -19,6 +19,9 @@ func _ready() -> void:
 	_test_create_zone_rejects_implicit_only_frontage(context)
 	_test_door_count_and_selection_preservation(context)
 	_test_rejected_edit_leaves_committed_zone_unchanged(context)
+	_test_paint_extension_preserves_existing_parcels(context)
+	_test_same_type_transit_connector_merges_zones(context)
+	_test_none_removal_restores_circulation(context)
 	print("ZoneManager split commit tests: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(0 if _failed == 0 else 1)
 
@@ -529,6 +532,100 @@ func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) ->
 	_assert(retained_ids == committed_parcel_ids, "rejected edit leaves parcel IDs unchanged")
 	var first_tile := grid_manager.get_tile(2, 2, "test_plot", "G")
 	_assert(first_tile.zone_id == zone.id, "rejected edit leaves committed grid markings unchanged")
+
+
+func _test_paint_extension_preserves_existing_parcels(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var grid_manager: GridManager = context.grid_manager
+	var zone: ZoneData = zone_manager.zones.get("zone_1", null)
+	if zone == null:
+		_assert(false, "zone exists before paint extension")
+		return
+	var original_ids: Array[String] = []
+	for parcel: Parcel in zone.parcels:
+		original_ids.append(parcel.id)
+	for x: int in range(8, 11):
+		for y: int in [1, 4]:
+			grid_manager.get_tile(x, y, "test_plot", "G").element = GridTile.TileElement.CIRCULATION
+	for y: int in range(2, 4):
+		grid_manager.get_tile(11, y, "test_plot", "G").element = GridTile.TileElement.CIRCULATION
+	var extension: Array[Vector2i] = []
+	for y: int in range(2, 4):
+		for x: int in range(8, 11):
+			extension.append(Vector2i(x, y))
+	var extended := zone_manager.paint_zone("Retail", extension, "G", "test_plot")
+	_assert(extended != null, "same-type paint extends an existing zone")
+	if extended == null:
+		return
+	_assert(extended.id == zone.id, "extension retains the existing zone ID")
+	for parcel_id: String in original_ids:
+		var retained := false
+		for parcel: Parcel in extended.parcels:
+			if parcel.id == parcel_id:
+				retained = true
+		_assert(retained, "extension preserves an existing parcel ID")
+	_assert(grid_manager.get_tile(8, 2, "test_plot", "G").zone_id == zone.id, "extension marks new tiles with the survivor zone")
+
+
+func _test_same_type_transit_connector_merges_zones(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var grid_manager: GridManager = context.grid_manager
+	var second_tiles: Array[Vector2i] = []
+	for y: int in range(2, 8):
+		for x: int in range(12, 18):
+			second_tiles.append(Vector2i(x, y))
+	_set_external_circulation_frame(grid_manager, Rect2i(12, 2, 6, 6))
+	var second := zone_manager.create_zone("Retail", second_tiles, "G", "test_plot")
+	_assert(second != null, "second same-type zone can be created before merge")
+	if second == null:
+		return
+	var first: ZoneData = zone_manager.zones.get("zone_1", null)
+	var first_id := first.id
+	var second_id := second.id
+	var connector: Array[Vector2i] = []
+	var connector_typologies: Dictionary = {}
+	for y: int in range(2, 8):
+		connector.append(Vector2i(11, y))
+		connector_typologies[Vector2i(11, y)] = GridTile.TileTypology.TRANSIT
+	var merged := zone_manager.paint_zone("Retail", connector, "G", "test_plot", connector_typologies)
+	_assert(merged != null, "same-type Transit paint merges adjacent zones")
+	if merged == null:
+		return
+	_assert(merged.id == first_id, "merge returns the lexicographically lowest survivor zone")
+	_assert(not zone_manager.zones.has(second_id) or second_id == merged.id, "merge retires the non-survivor zone")
+	_assert(grid_manager.get_tile(11, 4, "test_plot", "G").zone_id == merged.id, "merge assigns connector tiles to the survivor")
+
+
+func _test_none_removal_restores_circulation(context: Dictionary) -> void:
+	var zone_manager: ZoneManager = context.zone_manager
+	var grid_manager: GridManager = context.grid_manager
+	var zone: ZoneData = zone_manager.zones.get("zone_1", null)
+	if zone == null:
+		_assert(false, "zone exists before None removal")
+		return
+	var original_doors: Dictionary = {}
+	var original_parcel_tiles: Dictionary = {}
+	for parcel: Parcel in zone.parcels:
+		original_doors[parcel.id] = _door_edge_keys(parcel.selected_door_edges)
+		original_parcel_tiles[parcel.id] = parcel.tiles.duplicate()
+	var removed: Array[Vector2i] = []
+	for y: int in range(2, 8):
+		removed.append(Vector2i(17, y))
+	var result := zone_manager.paint_zone("Retail", removed, "G", "test_plot", {}, "none")
+	_assert(result != null, "None removes a valid committed zone area")
+	var restored := grid_manager.get_tile(17, 2, "test_plot", "G")
+	_assert(restored.zone_id.is_empty(), "None clears zone ownership")
+	_assert(restored.element == GridTile.TileElement.CIRCULATION, "None restores explicit built circulation")
+	if result != null:
+		for parcel: Parcel in result.parcels:
+			_assert(not parcel.selected_door_edges.is_empty(), "affected and unaffected parcels retain physical doors")
+			var untouched := true
+			for old_tile: Vector2i in original_parcel_tiles.get(parcel.id, []):
+				if removed.has(old_tile):
+					untouched = false
+					break
+			if untouched and original_doors.has(parcel.id):
+				_assert(_door_edge_keys(parcel.selected_door_edges) == original_doors[parcel.id], "unaffected parcel preserves its selected doors")
 
 
 func _set_external_circulation_frame(grid_manager: GridManager, bounds: Rect2i) -> void:

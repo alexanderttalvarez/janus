@@ -83,6 +83,373 @@ func create_zone(
 	return candidate
 
 
+## Apply one atomic paint-first zone mutation. Type paint creates, extends, or merges
+## same-type zones; None removes committed membership back to circulation.
+func paint_zone(
+	zone_type: String,
+	tiles: Array[Vector2i],
+	floor: String,
+	plot_id: String,
+	typologies: Dictionary = {},
+	paint_mode: String = "zone"
+) -> ZoneData:
+	var normalized_tiles := _normalized_tiles(tiles)
+	if paint_mode == "none":
+		return _remove_painted_tiles(normalized_tiles, floor, plot_id)
+	if zone_type.is_empty() or normalized_tiles.is_empty():
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "EMPTY_PAINT_STROKE")
+		return null
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+		return null
+
+	var source_zones: Array[ZoneData] = []
+	var source_ids: Dictionary = {}
+	for tile_pos: Vector2i in normalized_tiles:
+		var tile := grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
+		if tile == null or not tile.owned or not tile.floor_built:
+			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_ZONE_TILE")
+			return null
+		if not tile.zone_id.is_empty():
+			var source: ZoneData = zones.get(tile.zone_id, null)
+			if source == null or source.plot_id != plot_id or source.floor != floor or source.type != zone_type:
+				last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "ZONE_TYPE_CONFLICT")
+				return null
+			if not source_ids.has(source.id):
+				source_ids[source.id] = true
+				source_zones.append(source)
+	for tile_pos: Vector2i in normalized_tiles:
+		for direction: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+			var neighbor := grid_manager.get_tile(tile_pos.x + direction.x, tile_pos.y + direction.y, plot_id, floor)
+			if neighbor == null or neighbor.zone_id.is_empty():
+				continue
+			var adjacent_source: ZoneData = zones.get(neighbor.zone_id, null)
+			if adjacent_source != null and adjacent_source.type == zone_type and not source_ids.has(adjacent_source.id):
+				source_ids[adjacent_source.id] = true
+				source_zones.append(adjacent_source)
+	source_zones.sort_custom(func(first: ZoneData, second: ZoneData) -> bool: return first.id < second.id)
+	if source_zones.is_empty():
+		return create_zone(zone_type, normalized_tiles, floor, plot_id, typologies)
+
+	var survivor: ZoneData = source_zones[0]
+	var candidate := _copy_zone(survivor)
+	var candidate_tiles: Dictionary = {}
+	for source: ZoneData in source_zones:
+		for source_tile: Vector2i in source.tiles:
+			candidate_tiles[source_tile] = true
+	for tile_pos: Vector2i in normalized_tiles:
+		candidate_tiles[tile_pos] = true
+	candidate.tiles = _normalized_tiles(_dictionary_tiles(candidate_tiles))
+	var merged_typologies: Dictionary = {}
+	for source: ZoneData in source_zones:
+		for source_tile: Vector2i in source.tiles:
+			merged_typologies[source_tile] = source.typologies.get(source_tile, GridTile.TileTypology.TENANT)
+	for tile_pos: Vector2i in normalized_tiles:
+		merged_typologies[tile_pos] = typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+	candidate.typologies = _normalize_typologies(candidate.tiles, merged_typologies)
+	if not _is_connected_tiles(candidate.tiles):
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
+		return null
+	if not _prepare_preserving_addition(candidate, source_zones):
+		return null
+
+	var counter_snapshot := _counter_snapshot()
+	for source: ZoneData in source_zones:
+		if source.id != survivor.id:
+			_clear_merge_boundary_doors(source_zones, source)
+	for source: ZoneData in source_zones:
+		_clear_zone_tiles(source.tiles, source.plot_id, source.floor)
+	for source: ZoneData in source_zones:
+		if source.id != survivor.id:
+			zones.erase(source.id)
+	_copy_zone_state(candidate, survivor)
+	_mark_zone_tiles(survivor)
+	_rebuild_pathfinding()
+	EventBus.zone_modified.emit(survivor.id)
+	for source: ZoneData in source_zones:
+		if source.id != survivor.id:
+			EventBus.zone_deleted.emit(source.id)
+	_restore_counters(counter_snapshot)
+	return survivor
+
+
+## Remove committed zone membership atomically while preserving unaffected parcels.
+func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: String) -> ZoneData:
+	var affected: Dictionary = {}
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+		return null
+	for tile_pos: Vector2i in tiles:
+		var tile := grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
+		if tile != null and not tile.zone_id.is_empty():
+			var zone: ZoneData = zones.get(tile.zone_id, null)
+			if zone != null:
+				affected[zone.id] = zone
+	if affected.is_empty():
+		last_split_result = SplitResult.success([], [], [])
+		return null
+	var candidates: Array[ZoneData] = []
+	for zone_id: String in affected:
+		var source: ZoneData = affected[zone_id]
+		var candidate := _copy_zone(source)
+		var remaining: Array[Vector2i] = []
+		for source_tile: Vector2i in source.tiles:
+			if not tiles.has(source_tile):
+				remaining.append(source_tile)
+		if remaining.is_empty():
+			continue
+		if not _is_connected_tiles(remaining):
+			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
+			return null
+		candidate.tiles = _normalized_tiles(remaining)
+		candidate.typologies = _normalize_typologies(candidate.tiles, source.typologies)
+		if not _prepare_removal_candidate(candidate, source):
+			return null
+		candidates.append(candidate)
+
+	last_split_result = SplitResult.success([], [], [])
+	for zone_id: String in affected:
+		var source: ZoneData = affected[zone_id]
+		_clear_zone_tiles(tiles, plot_id, floor)
+		if not zones.has(zone_id):
+			continue
+		var candidate: ZoneData = null
+		for planned: ZoneData in candidates:
+			if planned.id == zone_id:
+				candidate = planned
+				break
+		if candidate == null:
+			zones.erase(zone_id)
+			EventBus.zone_deleted.emit(zone_id)
+		else:
+			_copy_zone_state(candidate, source)
+			_mark_zone_tiles(source)
+			EventBus.zone_modified.emit(zone_id)
+	_rebuild_pathfinding()
+	return candidates[0] if not candidates.is_empty() else null
+
+
+func _prepare_preserving_addition(candidate: ZoneData, sources: Array[ZoneData]) -> bool:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return false
+	var old_tiles: Dictionary = {}
+	var old_parcels: Array[Parcel] = []
+	for source: ZoneData in sources:
+		for tile_pos: Vector2i in source.tiles:
+			old_tiles[tile_pos] = true
+		for parcel: Parcel in source.parcels:
+			old_parcels.append(parcel)
+	var new_tenant_tiles: Array[Vector2i] = []
+	for tile_pos: Vector2i in candidate.tiles:
+		if not old_tiles.has(tile_pos) and candidate.typologies.get(tile_pos, GridTile.TileTypology.TENANT) == GridTile.TileTypology.TENANT:
+			new_tenant_tiles.append(tile_pos)
+	var overlay: Dictionary = {}
+	for tile_pos: Vector2i in candidate.tiles:
+		overlay[tile_pos] = candidate.id
+	var context := FloorAccessContext.new(
+		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
+		grid_manager.get_plot(candidate.plot_id),
+		overlay
+	)
+	var planned: Array[Parcel] = []
+	for parcel: Parcel in old_parcels:
+		var preserved := _copy_parcel(parcel)
+		var prospective_edges := _physical_door_candidates_for_parcel(
+			preserved, candidate, context, overlay
+		)
+		if not parcel.selected_door_edges.is_empty():
+			var preserved_edges: Array[Dictionary] = []
+			for old_edge: Dictionary in parcel.selected_door_edges:
+				var legal_edge: Dictionary = {}
+				for candidate_edge: Dictionary in prospective_edges:
+					if _same_door_geometry(old_edge, candidate_edge):
+						legal_edge = candidate_edge
+						break
+				if legal_edge.is_empty():
+					last_split_result = SplitResult.failure(SplitResult.Status.EXISTING_DOOR_INVALIDATED, "EXISTING_DOOR_INVALIDATED:%s" % parcel.id)
+					return false
+				preserved_edges.append(legal_edge.duplicate())
+			preserved.selected_door_edges = preserved_edges
+		preserved.frontage_edges = prospective_edges
+		planned.append(preserved)
+	if not new_tenant_tiles.is_empty():
+		var new_zone := ZoneData.new()
+		new_zone.id = candidate.id
+		new_zone.plot_id = candidate.plot_id
+		new_zone.floor = candidate.floor
+		new_zone.type = candidate.type
+		new_zone.parcel_layout_seed = candidate.parcel_layout_seed
+		new_zone.tiles = _normalized_tiles(new_tenant_tiles)
+		new_zone.typologies = _normalize_typologies(new_zone.tiles, candidate.typologies)
+		var new_result := ZoneSplitter.split(new_zone, context.floor_grid, context.plot, context)
+		if not new_result.is_success():
+			last_split_result = new_result
+			return false
+		_assign_persistent_ids(new_result.parcels, old_parcels)
+		if not _assign_selected_door_edges(new_result.parcels, []):
+			return false
+		_assign_debug_subtypes_for_parcels(new_result.parcels, candidate.type, planned)
+		planned.append_array(new_result.parcels)
+	else:
+		last_split_result = SplitResult.success(planned, [], [])
+	if not _all_parcels_have_physical_door_frontage_context(planned, candidate, context, overlay):
+		last_split_result = SplitResult.failure(SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE, "NO_PHYSICAL_DOOR_FRONTAGE")
+		return false
+	candidate.parcels = planned
+	last_split_result = SplitResult.success(planned, [], [])
+	return true
+
+
+func _prepare_removal_candidate(candidate: ZoneData, source: ZoneData) -> bool:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return false
+	var overlay: Dictionary = {}
+	for tile_pos: Vector2i in candidate.tiles:
+		overlay[tile_pos] = candidate.id
+	var context := FloorAccessContext.new(
+		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
+		grid_manager.get_plot(candidate.plot_id),
+		overlay
+	)
+	var result := ZoneSplitter.split(candidate, context.floor_grid, context.plot, context)
+	if not result.is_success():
+		last_split_result = result
+		return false
+	_assign_persistent_ids(result.parcels, source.parcels)
+	if not _assign_selected_door_edges(result.parcels, []):
+		return false
+	var old_parcels_by_id: Dictionary = {}
+	for old_parcel: Parcel in source.parcels:
+		old_parcels_by_id[old_parcel.id] = old_parcel
+	var removed_tiles: Dictionary = {}
+	for source_tile: Vector2i in source.tiles:
+		if not candidate.tiles.has(source_tile):
+			removed_tiles[source_tile] = true
+	for parcel: Parcel in result.parcels:
+		var old_parcel: Parcel = old_parcels_by_id.get(parcel.id, null)
+		var parcel_is_locked := old_parcel != null
+		if parcel_is_locked:
+			for parcel_tile: Vector2i in old_parcel.tiles:
+				if removed_tiles.has(parcel_tile):
+					parcel_is_locked = false
+					break
+		if parcel_is_locked:
+			parcel.selected_door_edges = old_parcel.selected_door_edges.duplicate(true)
+			parcel.assigned_subtype_id = old_parcel.assigned_subtype_id
+			parcel.has_tenant = old_parcel.has_tenant
+			parcel.tenant_id = old_parcel.tenant_id
+	_assign_debug_subtypes_for_parcels(result.parcels, candidate.type, [])
+	candidate.parcels = result.parcels
+	last_split_result = result
+	return true
+
+
+func _assign_debug_subtypes_for_parcels(parcels: Array[Parcel], zone_type: String, locked: Array[Parcel]) -> void:
+	if assignment_mode != AssignmentMode.DEBUG_IMMEDIATE:
+		return
+	var all_parcels: Array[Parcel] = locked.duplicate()
+	all_parcels.append_array(parcels)
+	var fixed_assignments: Dictionary = {}
+	for parcel: Parcel in locked:
+		if not parcel.assigned_subtype_id.is_empty():
+			fixed_assignments[parcel.id] = parcel.assigned_subtype_id
+	var snapshot := DebugBusinessSubtypeCatalog.snapshot_for_zone_type(zone_type)
+	var result := ZoneBusinessAssigner.assign(all_parcels, zone_type, snapshot, fixed_assignments)
+	for parcel: Parcel in parcels:
+		if not parcel.assigned_subtype_id.is_empty():
+			continue
+		parcel.assigned_subtype_id = result.subtype_for(parcel.id)
+	last_assignment_result = result
+
+
+func _copy_parcel(source: Parcel) -> Parcel:
+	var copy := Parcel.new()
+	copy.id = source.id
+	copy.display_number = source.display_number
+	copy.set_core_geometry(source.core_tiles)
+	copy.set_geometry(source.tiles, source.frontage_edges)
+	copy.selected_door_edges = source.selected_door_edges.duplicate(true)
+	copy.assigned_subtype_id = source.assigned_subtype_id
+	copy.has_tenant = source.has_tenant
+	copy.tenant_id = source.tenant_id
+	return copy
+
+
+func _physical_door_candidates_for_parcel(
+	parcel: Parcel, zone: ZoneData, context: FloorAccessContext, overlay: Dictionary
+) -> Array[Dictionary]:
+	var floor_grid := context.floor_grid
+	var plot := context.plot
+	var zone_tiles: Dictionary = {}
+	for tile_pos: Vector2i in zone.tiles:
+		zone_tiles[tile_pos] = true
+	var edges := ZoneSplitter._frontage_edges(parcel.tiles, zone_tiles, zone, floor_grid, plot, context)
+	var physical: Array[Dictionary] = []
+	for edge: Dictionary in edges:
+		if PHYSICAL_DOOR_ACCESS_KINDS.has(edge.get("access_kind", "")):
+			physical.append(edge)
+	physical.sort_custom(_compare_door_edges)
+	return physical
+
+
+func _all_parcels_have_physical_door_frontage_context(
+	parcels: Array[Parcel], zone: ZoneData, context: FloorAccessContext, overlay: Dictionary
+) -> bool:
+	for parcel: Parcel in parcels:
+		if _physical_door_candidates_for_parcel(parcel, zone, context, overlay).is_empty():
+			return false
+	return true
+
+
+func _clear_merge_boundary_doors(sources: Array[ZoneData], source: ZoneData) -> void:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return
+	for other: ZoneData in sources:
+		if other.id >= source.id:
+			continue
+		for first: Vector2i in source.tiles:
+			for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
+				var second := first + direction
+				if not other.tiles.has(second):
+					continue
+				var first_tile := grid_manager.get_tile(first.x, first.y, source.plot_id, source.floor)
+				var second_tile := grid_manager.get_tile(second.x, second.y, source.plot_id, source.floor)
+				if first_tile.typology == GridTile.TileTypology.TRANSIT and second_tile.typology == GridTile.TileTypology.TRANSIT and grid_manager.has_door_between(first, second, source.plot_id, source.floor):
+					grid_manager.set_door_between(first, second, false, source.plot_id, source.floor)
+
+
+func _dictionary_tiles(tile_set: Dictionary) -> Array[Vector2i]:
+	var tiles: Array[Vector2i] = []
+	for tile_pos: Vector2i in tile_set:
+		tiles.append(tile_pos)
+	return tiles
+
+
+static func _is_connected_tiles(tiles: Array[Vector2i]) -> bool:
+	if tiles.is_empty():
+		return false
+	var remaining: Dictionary = {}
+	for tile_pos: Vector2i in tiles:
+		remaining[tile_pos] = true
+	var visited: Dictionary = {}
+	var queue: Array[Vector2i] = [tiles[0]]
+	while not queue.is_empty():
+		var current: Vector2i = queue.pop_front()
+		if visited.has(current):
+			continue
+		visited[current] = true
+		for direction: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+			var neighbor := current + direction
+			if remaining.has(neighbor) and not visited.has(neighbor):
+				queue.append(neighbor)
+	return visited.size() == remaining.size()
+
+
 ## Modify, fully re-split, and atomically commit a zone. Returns null on rejection.
 func modify_zone(
 	zone_id: String,
@@ -170,6 +537,115 @@ func preview_split(
 	preview_zone.tiles = _normalized_tiles(tiles)
 	preview_zone.typologies = _normalize_typologies(preview_zone.tiles, typologies)
 	return _preview_access_transaction(preview_zone, replaced_zone)
+
+
+## Preview one paint-first mutation without changing committed state or counters.
+func preview_paint(
+	zone_type: String,
+	tiles: Array[Vector2i],
+	floor: String,
+	plot_id: String,
+	typologies: Dictionary = {},
+	paint_mode: String = "zone"
+) -> SplitResult:
+	var normalized_tiles := _normalized_tiles(tiles)
+	if paint_mode == "none":
+		return _preview_remove_painted_tiles(normalized_tiles, floor, plot_id)
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	var source_zones: Array[ZoneData] = []
+	var source_ids: Dictionary = {}
+	for tile_pos: Vector2i in normalized_tiles:
+		var tile := grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
+		if tile == null or not tile.owned or not tile.floor_built:
+			return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_ZONE_TILE")
+		if not tile.zone_id.is_empty():
+			var source: ZoneData = zones.get(tile.zone_id, null)
+			if source == null or source.plot_id != plot_id or source.floor != floor or source.type != zone_type:
+				return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "ZONE_TYPE_CONFLICT")
+			if not source_ids.has(source.id):
+				source_ids[source.id] = true
+				source_zones.append(source)
+	for tile_pos: Vector2i in normalized_tiles:
+		for direction: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
+			var neighbor := grid_manager.get_tile(tile_pos.x + direction.x, tile_pos.y + direction.y, plot_id, floor)
+			if neighbor == null or neighbor.zone_id.is_empty():
+				continue
+			var adjacent_source: ZoneData = zones.get(neighbor.zone_id, null)
+			if adjacent_source != null and adjacent_source.type == zone_type and not source_ids.has(adjacent_source.id):
+				source_ids[adjacent_source.id] = true
+				source_zones.append(adjacent_source)
+	source_zones.sort_custom(func(first: ZoneData, second: ZoneData) -> bool: return first.id < second.id)
+	if source_zones.is_empty():
+		var preview_zone := ZoneData.new()
+		preview_zone.id = "zone_%d" % (_zone_counter + 1)
+		preview_zone.parcel_layout_seed = _generate_parcel_layout_seed(preview_zone.id)
+		preview_zone.plot_id = plot_id
+		preview_zone.floor = floor
+		preview_zone.type = zone_type
+		preview_zone.tiles = normalized_tiles
+		preview_zone.typologies = _normalize_typologies(normalized_tiles, typologies)
+		return _preview_access_transaction(preview_zone, null)
+	source_zones.sort_custom(func(first: ZoneData, second: ZoneData) -> bool: return first.id < second.id)
+	var candidate := _copy_zone(source_zones[0])
+	var all_tiles: Dictionary = {}
+	var merged_typologies: Dictionary = {}
+	for source: ZoneData in source_zones:
+		for source_tile: Vector2i in source.tiles:
+			all_tiles[source_tile] = true
+			merged_typologies[source_tile] = source.typologies.get(source_tile, GridTile.TileTypology.TENANT)
+	for tile_pos: Vector2i in normalized_tiles:
+		all_tiles[tile_pos] = true
+		merged_typologies[tile_pos] = typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+	candidate.tiles = _normalized_tiles(_dictionary_tiles(all_tiles))
+	candidate.typologies = _normalize_typologies(candidate.tiles, merged_typologies)
+	if not _is_connected_tiles(candidate.tiles):
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
+	var counter_snapshot := _counter_snapshot()
+	var valid := _prepare_preserving_addition(candidate, source_zones)
+	var preview_result := last_split_result
+	_restore_counters(counter_snapshot)
+	if not valid:
+		return preview_result
+	return preview_result
+
+
+func _preview_remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: String) -> SplitResult:
+	var grid_manager := _get_grid_manager()
+	if grid_manager == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	var affected: Dictionary = {}
+	for tile_pos: Vector2i in tiles:
+		var tile := grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
+		if tile != null and not tile.zone_id.is_empty() and zones.has(tile.zone_id):
+			affected[tile.zone_id] = zones[tile.zone_id]
+	if affected.is_empty():
+		return SplitResult.success([], [], [])
+	var counter_snapshot := _counter_snapshot()
+	var combined_parcels: Array[Parcel] = []
+	for zone_id: String in affected:
+		var source: ZoneData = affected[zone_id]
+		var remaining: Array[Vector2i] = []
+		for source_tile: Vector2i in source.tiles:
+			if not tiles.has(source_tile):
+				remaining.append(source_tile)
+		if remaining.is_empty():
+			continue
+		if not _is_connected_tiles(remaining):
+			_restore_counters(counter_snapshot)
+			return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
+		var candidate := _copy_zone(source)
+		candidate.tiles = _normalized_tiles(remaining)
+		candidate.typologies = _normalize_typologies(candidate.tiles, source.typologies)
+		if not _prepare_removal_candidate(candidate, source):
+			var failed_result := last_split_result
+			_restore_counters(counter_snapshot)
+			return failed_result
+		combined_parcels.append_array(candidate.parcels)
+	var result := SplitResult.success(combined_parcels, [], [])
+	_restore_counters(counter_snapshot)
+	return result
 
 
 ## Plan the same pure split and physical-door validation transaction as commit
@@ -606,6 +1082,10 @@ func _physical_door_candidates(parcel: Parcel) -> Array[Dictionary]:
 		candidates.append(edge.duplicate())
 	candidates.sort_custom(_compare_door_edges)
 	return candidates
+
+
+static func _same_door_geometry(first: Dictionary, second: Dictionary) -> bool:
+	return first.get("tile", Vector2i.ZERO) == second.get("tile", Vector2i.ZERO) and first.get("direction", Vector2i.ZERO) == second.get("direction", Vector2i.ZERO) and first.get("access", Vector2i.ZERO) == second.get("access", Vector2i.ZERO)
 
 
 static func _door_edge_key(edge: Dictionary) -> String:

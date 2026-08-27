@@ -1,6 +1,8 @@
 ## Decision 11: Zone Splitting Algorithm — Full Recalculation with Tenant Preservation
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Superseded in part — 2026-08-26 by [Decision 24](24_paint_first_zone_mutation.md)
+
+> **Amendment:** Full-zone recalculation and overlap matching no longer govern additive paint, same-type zone merges, or partial None removal. Follow Handoff 06 / Decision 24 for preservation-first zone mutation. This decision remains historical context and continues to describe the baseline pure splitter for new zones and mutable-space solving.
 
 ### Context
 When a zone is edited (tiles added/removed, typologies changed), the frontage-based splitting algorithm must re-run. We needed to decide between incremental updates vs. full recalculation, and how to handle tenant preservation.
