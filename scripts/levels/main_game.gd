@@ -18,6 +18,7 @@ extends Node3D
 @onready var _zone_tool: ZoneTool = $ZoneTool
 @onready var _wall_manager: WallManager = $World/WallManager
 var _parcel_label_renderer: ParcelLabelRenderer
+var _zone_label_renderer: ZoneLabelRenderer
 
 
 ## Human tile 13 in a zero-based 25×25 grid (index 12).
@@ -27,6 +28,7 @@ const FIXED_DOOR_TILE_INDEX: int = 12
 func _ready() -> void:
 	_initialize_grid()
 	_initialize_parcel_label_renderer()
+	_initialize_zone_label_renderer()
 	_initialize_camera()
 	_initialize_time()
 	_initialize_visitors()
@@ -93,6 +95,17 @@ func _initialize_parcel_label_renderer() -> void:
 	_parcel_label_renderer.zone_manager = _zone_manager
 	_parcel_label_renderer.camera_manager = _camera_manager
 	_world.add_child(_parcel_label_renderer)
+
+
+func _initialize_zone_label_renderer() -> void:
+	if _zone_manager == null:
+		push_error("MainGame: ZoneManager not found for ZoneLabelRenderer.")
+		return
+	_zone_label_renderer = ZoneLabelRenderer.new()
+	_zone_label_renderer.name = "ZoneLabelRenderer"
+	_zone_label_renderer.zone_manager = _zone_manager
+	_zone_label_renderer.camera_manager = _camera_manager
+	_world.add_child(_zone_label_renderer)
 
 
 func _create_floor_instance(plot_id: String, floor_level: String, _floor_grid: FloorGrid) -> void:
@@ -332,3 +345,5 @@ func load_game(slot: int) -> void:
 	if gm: gm.rebuild_pathfinding()
 	if _parcel_label_renderer:
 		_parcel_label_renderer.hydrate_active_floor()
+	if _zone_label_renderer:
+		_zone_label_renderer.hydrate_active_floor()

@@ -12,6 +12,7 @@ This index is the implementation order and approval record for architecture hand
 | 04 | [Parcel Boundary Walls](04_parcel_boundary_walls.md) | Approved — 2026-08-24 | Thin interior walls between committed parcels, rendered through the global wall visualization modes. |
 | 05 | [Automatic Parcel Doors](05_automatic_parcel_doors.md) | Approved — 2026-08-24 | Deterministic physical parcel-door allocation and matching wall gaps. |
 | 06 | [Paint-First Zone Mutation and Preservation](06_paint_first_zone_mutation.md) | Approved — 2026-08-26 | Paint-to-create/extend/merge, None removal, and preservation-first parcel transactions. |
+| 07 | [Zone Debug Visualization](07_zone_debug_visualization.md) | Approved — 2026-08-27 | Larger debug-only zone-center labels using committed names/types and mathematical centroids. |
 
 ## Rules
 
@@ -20,5 +21,6 @@ This index is the implementation order and approval record for architecture hand
 - Handoff 04 may begin only after Handoff 03 is verified complete.
 - Handoff 05 may begin only after Handoff 04 is verified complete.
 - Handoff 06 may begin only after Handoff 05 is verified complete. It amends the specified mutation rules in Handoffs 01 and 02 without reopening their other approved contracts.
+- Handoff 07 may begin only after Handoff 06 is verified complete. It adds a separate read-only debug projection and does not reopen Handoff 03 parcel-label ownership.
 - Do not implement tenant lifecycle, door visuals, notification wiring, or save-file integration until their own handoffs are approved.
 - Any change to an approved handoff requires an architecture review and user approval before implementation.
