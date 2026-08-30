@@ -1,6 +1,10 @@
 ## Decision 7: Grid Data Structure — Per-Floor 2D Arrays Managed by GridManager
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Accepted for legacy runtime; authority amended by Decision 27
+
+### Amendment (2026-08-30)
+
+[Decision 27](27_district_layout_templates.md) supersedes `GridManager` and per-floor `TileData` arrays as the complete authority for district, ownership, acquisition, occupancy, and construction state. Runtime state must separately represent ownership, availability, fixed occupancy, buildability, acquired space, and constructed state without mutating shared definitions. Floor-local arrays may remain derived spatial indexes/projections. The existing 25x25 grid is a non-conforming legacy implementation requiring a later migration.
 
 ### Context
 Tile data must be stored, queried, and updated efficiently. The grid supports pathfinding, zone placement, wall generation, heatmaps, and synergy calculation. We needed to decide between 3D array, dictionary, flat array, or per-floor grids.

@@ -144,9 +144,11 @@ Else:
 
 ---
 
-## Visitor Generation
+## Visitor Demand and Generation
 
-### Spawn Rate Formula
+### Demand Policy and Arrival Realization
+
+Visitor demand is calculated first from district performance and context:
 
 ```
 Spawn Rate = Base Rate × Prestige Multiplier × Transportation Bonus × Seasonal Modifier × Time-of-Day Modifier
@@ -155,10 +157,17 @@ Spawn Rate = Base Rate × Prestige Multiplier × Transportation Bonus × Seasona
 | Component | Description |
 |-----------|-------------|
 | **Base Rate** | Game constant (e.g., 5 visitors/sim minute at 1x) |
-| **Prestige Multiplier** | From prestige tier table (0.5x to 3.0x) |
+| **Prestige Multiplier** | From the prestige tier table and its underlying district metrics (0.5x to 3.0x) |
 | **Transportation Bonus** | From transportation facilities (+5% to +40%) |
 | **Seasonal Modifier** | Season-dependent (e.g., summer = 1.2x, winter = 0.8x) |
 | **Time-of-Day Modifier** | From visual clock (morning = 0.6x, lunch = 1.5x, evening = 1.3x, night = 0.3x) |
+
+After this policy computes demand, a Visitor Arrival Coordinator allocates and realizes it through available arrival sources:
+
+- MVP arrivals are immediate and use pedestrian gateways.
+- Future arrival sources are buses, parking cars, taxis, and metro, in that priority order. Transport is not MVP.
+- Pending public-transport arrivals remain lightweight data. Real visitor agents are created only when a presentation arrival releases them.
+- Exact arrival-allocation rules remain an open design question; they do not replace or recalculate the approved demand formula.
 
 ### Goal Distribution
 
@@ -173,13 +182,26 @@ The visitor generator assigns goals weighted by zone type availability:
 
 ### Entry Points
 
-Visitors enter the mall through plot-owned spawn points:
-- Each building plot has four spawn points, one at each pedestrian-ring corner.
-- Spawn points are derived from the plot boundary and have stable IDs.
-- Visitors do not traverse arbitrary distant pedestrian areas to simulate arrival.
-- Main entrances, transportation facilities, and player-placed entry points can
-  be added as additional spawn-point sources later.
-- Skybridges or building connections remain post-MVP.
+Visitors enter through arrival sources coordinated under [District Layout & Land Expansion](19_district_layout_land_expansion.md):
+- MVP uses pedestrian gateways and realizes arrivals immediately.
+- Future transport sources may release visitors after their presentation arrival.
+- Skybridges and building connections remain post-MVP.
+
+The target architecture replaces plot-corner spawn points with district pedestrian gateways. **Legacy MVP behavior:** the current implementation may continue deriving four stable spawn points from each plot's pedestrian-ring corners until it migrates to the coordinator and gateway model. Those corner points are an implementation bridge, not the target district architecture.
+
+### FACTS: Future Curbside Transport
+
+- Public Pedestrian Bands remain city-owned, but the player may fund curbside transport facilities adjacent to owned frontage.
+- A bus stop requires an active road and route.
+- Maximum bus stops are `ceil(Active Plot count / 3)`; any owned Plot Section makes that Plot Active.
+- There are no bus-only lanes.
+- Street conversion removes affected curbside facilities after warning the player.
+
+### OPEN QUESTIONS
+
+- Exact arrival-allocation formulas.
+- Economy and progression requirements for future transport facilities.
+- Presentation details for future bus, parking-car, taxi, and metro arrivals.
 
 ### MVP Visitor Spawning
 

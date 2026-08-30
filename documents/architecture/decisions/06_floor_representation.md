@@ -1,6 +1,10 @@
 ## Decision 6: Floor Representation — Instanced Sub-scene (floor.tscn)
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Accepted; amended by Decision 27
+
+### Amendment (2026-08-30)
+
+[Decision 27](27_district_layout_templates.md) makes `FloorState` and district runtime state authoritative. `floor.tscn` may remain a reusable scene projection/container, but it does not own acquisition rights, floor availability, fixed occupancy, or constructed state. Floors use signed integer elevations (`0`, `+1..+9`, `-1..-5`) and may have template/slot/progression limits stricter than the district defaults.
 
 ### Context
 Each floor needs structural nodes (floor plane, wall mesh, grid origin) and runtime containers (tiles, circulation, visitors). We needed to decide between instanced sub-scene vs. fully procedural creation.

@@ -1,6 +1,10 @@
 ## Decision 8: Plot Scalability — Multi-Plot Ready from Day One
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Superseded as target architecture by Decisions 27 and 28
+
+### Supersession (2026-08-30)
+
+[Decision 27](27_district_layout_templates.md) replaces the default-plot model with a versioned rectilinear district, stable rectangular block slots, immutable plot templates, section-level ownership, vertical rights, and generated street topology. [Decision 28](28_visitor_arrival_architecture.md) replaces plot-owned corner spawn points with stable arrival sources derived from resolved topology. Explicit stable plot IDs and multi-plot-aware consumers remain valid principles. The existing `plot_0` 25x25 runtime remains acknowledged legacy behavior, not the conforming target.
 
 ### Context
 MVP has a single 25×25 plot. Post-MVP adds multiple plots with roads, skybridges, and underground passages. We needed to decide whether to hardcode single-plot or design for multi-plot from the start.

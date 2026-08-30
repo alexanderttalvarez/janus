@@ -1,6 +1,10 @@
 ## Decision 15: Save/Load Architecture — JSON with Manager Serialization
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Accepted; district persistence amended by Decisions 27 and 28
+
+### Amendment (2026-08-30)
+
+[Decision 27](27_district_layout_templates.md) requires saves to include district layout ID, definition version or fingerprint, stable runtime IDs, and mutable district/plot/section/floor/street/source state. Generated geometry, intersections, road graphs, and resolved topology are derived and must not be saved. Loading requires migration before commit and safe rejection of incompatible layouts without partial runtime mutation. [Decision 28](28_visitor_arrival_architecture.md) leaves the pending-arrival/cohort persistence policy open; it must be resolved before pending arrivals ship. These requirements amend the illustrative `grid` payload below without changing JSON, slot, or SaveManager orchestration decisions.
 
 ### Context
 The game needs to persist economy, grid, zones, tenants, visitors, time, tech tree, prestige, and staff state. Settings (volume, keybindings) also need persistence. We needed to decide on serialization format, save structure, and responsibility.

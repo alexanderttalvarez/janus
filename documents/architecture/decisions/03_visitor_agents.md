@@ -1,6 +1,10 @@
 ## Decision 3: Visitor Agents — Node3D with Centralized Tick + Floor-based Culling
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Accepted; spawning architecture amended by Decision 28
+
+### Amendment (2026-08-30)
+
+[Decision 28](28_visitor_arrival_architecture.md) supersedes the plot-owned four-corner spawn model in the implementation details below. Visitor demand is separate from arrival allocation and realization; pedestrian MVP sources are derived from resolved district topology and identified by stable source IDs. The Node3D/data representation, centralized behavior tick, leaving lifecycle, and visibility/culling rules in this decision remain accepted after a visitor is realized.
 
 ### Context
 Visitors are individual agents with goals, budgets, needs, and pathfinding. We needed to decide between Node3D per visitor vs. pure data with pooled visuals.

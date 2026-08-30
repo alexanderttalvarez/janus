@@ -2,9 +2,9 @@
 
 ## Overview
 
-This system defines the physical structure of the district: building plots, floors, tile composition, and the spatial rules that govern construction. Building plots are the available land; the building is what the player constructs on them.
+This system defines building tiles, floors, and construction state. District geometry, Plot Sections, ownership expansion, vertical rights, road dimensions, and street conversion are authoritative in [District Layout & Land Expansion](19_district_layout_land_expansion.md).
 
-**MVP scope:** Single building plot with multiple floors. Multiple plots and inter-plot connections are post-MVP.
+**MVP scope:** One initially owned 25 x 25 Plot with one full-plot section. Multiple Plots, section purchases, and inter-plot connections are post-MVP.
 
 ---
 
@@ -15,20 +15,12 @@ This system defines the physical structure of the district: building plots, floo
 | Property | Value |
 |----------|-------|
 | **Size** | 25 × 25 tiles (625 tiles per plot) |
-| **Ownership** | First plot is fully pre-bought at game start. Additional plots must be purchased (post-MVP). |
+| **Ownership** | The MVP Plot's single full-plot section is initially owned. Plot ownership and activation follow element 19. |
 | **Boundaries** | Defined by the plot edges, not by the building footprint |
 
-### Pedestrian Areas & Roads (Relative to Plots)
+### District Context
 
-Pedestrian areas and roads exist **around building plots**, not around buildings themselves.
-
-| Feature | Width | Ownership Rule | Use |
-|---------|-------|----------------|-----|
-| **Pedestrian Area** | 2 tiles wide, surrounding the entire plot | Must buy the entire segment at once. No individual tile purchases. | Decoration, amenities, seating, planters. No zones allowed. |
-| **Road** | 6 tiles wide between plots | Must buy the entire segment at once. No individual tile purchases. | Decoration only (fountains, art, landscaping). **No zones allowed.** |
-| **Road Tile Price** | 2× normal tile cost | Scales with floor level | Premium for public space conversion |
-
-**Design rationale:** Requiring bulk purchases for pedestrian areas and roads prevents piecemeal decoration and encourages thoughtful urban planning.
+Plots are bounded by the district layout rather than by their building footprints. Pedestrian Bands, carriageways, Street Corridors, Street Segments, and Intersections use the dimensions and ownership rules in element 19; they are not per-Plot rings.
 
 ---
 
@@ -38,7 +30,7 @@ Each tile in the game has 4 characteristics. A tile can only hold **1 element** 
 
 | Characteristic | Options | Description |
 |----------------|---------|-------------|
-| **Ownership** | Bought / Not Bought | Whether the player owns this tile |
+| **Ownership** | Ground section right / floor-space tile right | Ground land is acquired by Plot Section; upper and underground floor space is acquired tile-by-tile. |
 | **Construction** | Floor built / Not built, Walls built / Not built | Structural presence on this tile |
 | **Zone** | Assigned to zone X / None | Which zone this tile belongs to (if any) |
 | **Element** | Shop / Decoration / Column / Circulation / Amenity / None | The functional element on this tile. **Only 1 element per tile allowed.** |
@@ -52,21 +44,21 @@ Each tile in the game has 4 characteristics. A tile can only hold **1 element** 
 
 ## Floor Acquisition
 
-Each floor's tiles are purchased individually. The player builds upward floor by floor, tile by tile.
+Upper and underground floor-space tiles are purchased individually and sequentially by signed elevation. Ground land is acquired by Plot Section, not by individual tile.
 
 **Rules:**
-- Upper floors can be **smaller** than the floor below
-- Upper floors **cannot exceed** the overall plot boundary
-- **Overhang rule:** A floor may extend up to **2 tiles per edge** beyond the floor directly below it, but never beyond the plot boundary
-- Each tile purchase requires Kreds (price scales with floor level)
+- Upper and underground floors may be smaller than the adjacent floor.
+- A floor may overhang up to 2 tiles beyond the immediately lower floor.
+- No floor may extend beyond the combined vertical-rights mask of owned Plot Sections.
+- Exact acquisition prices and progression requirements are open in element 19.
 
 ### Floors
 
 | Property | Value |
 |----------|-------|
-| **Above ground** | Up to 10 floors (F1–F10) |
-| **Underground** | Up to 3 floors (U1–U3) |
-| **Total levels** | Maximum 14 (10 above + 3 below + ground) |
+| **Canonical elevations** | `0 = G`, `+1..+9 = F1..F9`, `-1..-5 = U1..U5` |
+| **Default maximum** | 10 above-ground levels including G, plus 5 underground |
+| **Stricter limits** | Plot Template, Block Slot override, and current progression may each reduce access |
 
 ---
 
@@ -75,8 +67,7 @@ Each floor's tiles are purchased individually. The player builds upward floor by
 ### Multiple Plots
 
 - Player can construct additional buildings on adjacent plots
-- Each plot has its own pedestrian area and road boundaries
-- Plots are separated by roads (6 tiles wide)
+- Plot relationships and intervening infrastructure are determined by the District track grid.
 
 ### Plot Connections
 
@@ -84,7 +75,7 @@ Each floor's tiles are purchased individually. The player builds upward floor by
 |------|-------------|--------------|
 | **Skybridge** | Above-ground enclosed walkway between plots | Both plots must have matching floor levels |
 | **Underground Passage** | Subterranean connection between plots | Both plots must have underground floors |
-| **Shared Plaza** | Ground-level open space connecting plots | Pedestrian areas must be purchased and connected |
+| **Shared Plaza** | Ground-level open space connecting plots | Rules remain to be defined |
 
 ---
 
@@ -92,12 +83,12 @@ Each floor's tiles are purchased individually. The player builds upward floor by
 
 | System | Connection |
 |--------|------------|
-| **Economy** | Tile purchase costs, road tile premiums, construction costs |
+| **Economy** | Authoritative purchase constraints; exact district-expansion prices remain open in element 19 |
 | **Zone Design** | Plots and floors define where zones can be placed. Tile composition affects zone layout. |
 | **Transit & Circulation** | Vertical movement (stairs, elevators, escalators) connects floors. Connections link plots. |
 | **Wall System** | Floor perimeter walls, terrace gaps, skybridge connection points |
 | **Prestige** | Building scale, architectural features, connection design contribute to prestige |
-| **Visitor Simulation** | Plot layout affects visitor pathfinding, flow, and satisfaction |
+| **Visitor Simulation** | Active Plots, pedestrian gateways, and future arrival sources affect visitor realization and flow |
 
 ---
 
@@ -105,15 +96,19 @@ Each floor's tiles are purchased individually. The player builds upward floor by
 
 ### Player Mental Model
 
-The player should understand: "I'm given a plot of land. I build on it, tile by tile, floor by floor. The plot defines my boundaries. Everything I build sits inside those boundaries."
+The player should understand: "I own sections of a Plot and build within the vertical rights they grant, acquiring upper and underground space floor by floor."
 
 ### MVP Scope
 
-MVP focuses on a single plot with multiple floors. The player learns the core loop: build floors → place zones → add circulation → observe visitors → optimize. Post-MVP adds the complexity of multiple plots, connections, and exterior customization.
+MVP focuses on one initially owned Plot and its building loop: build floors -> place zones -> add circulation -> observe visitors -> optimize. Post-MVP may add section purchases, multiple Plots, connections, and exterior customization.
 
 ### Tuning Targets
 
 - 25×25 plot (625 tiles) provides ample space for early experimentation without overwhelming the player
 - Tile composition rules should be clear and enforceable without confusing the player
-- The overhang rule (2 tiles per edge) should allow creative floor shapes without breaking structural logic
-- Road and pedestrian area bulk purchase rules should encourage planning, not frustration
+- The 2-tile overhang allowance should support creative floor shapes while respecting owned vertical rights.
+
+### OPEN QUESTIONS
+
+- Demolition rules and prices for buildings that remain after a Plot Section purchase.
+- Exact floor-space acquisition prices and progression gates.

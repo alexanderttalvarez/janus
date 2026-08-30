@@ -26,5 +26,6 @@
 | 16 | Maintenance system | agreed | `16_maintenance_system.md` |
 | 17 | UI / HUD system | agreed | `17_ui_hud_system.md` |
 | 18 | Notifications system | agreed | `18_notifications_system.md` |
+| 19 | District layout & land expansion | agreed | `19_district_layout_land_expansion.md` |
 
 ## Phase: 4

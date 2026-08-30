@@ -150,6 +150,7 @@ All MVP nodes are accessible. The surplus points (40 - 23 = 17) are reserved for
 | **Zone Design** | Construction branch unlocks new zone types and building capabilities |
 | **Transit & Circulation** | Circulation branch unlocks elevators, escalators, and vertical movement |
 | **Metrics & Visualization** | All metrics and panels are available from start (no tech gate) |
+| **District Expansion** | Physical ownership, geometry, and elevation limits are defined in [District Layout & Land Expansion](19_district_layout_land_expansion.md); progression gates access within those limits. |
 
 ---
 
@@ -168,3 +169,10 @@ The tech tree is not a checklist — it's a menu of possibilities. The player's 
 - Late game should provide surplus points for post-MVP content
 - Dependencies should feel logical, not arbitrary
 - No tech node should be mandatory; all should be optional enhancements
+
+### District Architecture Amendment
+
+- Physical plot caps are separate from tech-tree progression. The canonical physical elevation range is `0 = G`, `+1..+9 = F1..F9`, and `-1..-5 = U1..U5`: 10 above-ground levels including G plus 5 underground. Plot Templates and Block Slot overrides may impose stricter physical limits.
+- The approved **Multi-Floor** node still unlocks the 2nd and 3rd floors, and **Underground** still unlocks U1–U3 at their existing costs and prerequisites.
+- Progression access for F4–F9 and U4–U5 is an open extension. No costs or prerequisites are approved for that extension.
+- Progression gates for new Plot Section acquisition and Street Segment conversion, plus future transport unlocks, remain open; these additions do not alter the approved 23-point MVP tree.

@@ -37,11 +37,11 @@ Recommended Rent = Rent Ceiling × Floor Factor × Accessibility Factor × Adjac
 | Component | Formula / Values |
 |-----------|-----------------|
 | **Rent Ceiling** | From prestige tier table ($5–$60/tile/day) |
-| **Floor Factor** | Ground (F1) = 1.00. Each floor above ground: +0.05 (max 1.25 at F5+). Each floor below ground: -0.10 (min 0.50 at U5). |
+| **Floor Factor** | Ground (G) = 1.00. Each floor above ground: +0.05 (max 1.25 at the fifth upper floor and above). Each floor below ground: -0.10 (min 0.50 at U5). |
 | **Accessibility Factor** | Based on zone circulation score: Poor = 0.70, Average = 0.85, Good = 1.00, Excellent = 1.15 |
 | **Adjacency Factor** | Based on synergy with neighboring zones: Negative = 0.80, Neutral = 1.00, Positive = 1.15 |
 
-**Example:** A zone on F2 (1.05) with Good accessibility (1.00) and Positive synergy (1.15) in a Neighborhood Center (ceiling $18):
+**Example:** A zone on F1, the second above-ground level (1.05), with Good accessibility (1.00) and Positive synergy (1.15) in a Neighborhood Center (ceiling $18):
 ```
 Recommended Rent = 18 × 1.05 × 1.00 × 1.15 = 21.74 Kreds/tile/day
 ```
@@ -52,23 +52,32 @@ The player sees this as the **recommended rate**. They can set any value. Settin
 
 ## Expense Streams
 
-### Tile Purchase
+### Land and Floor-Space Acquisition
 
-One-time cost per tile. Price scales with floor level (above or below ground). Base cost: **1,000 Kreds/tile**.
+Ground land is purchased as atomic Plot Sections. Purchasing a Plot Section grants vertical rights over its mask but does not demolish an existing building. Upper and underground floor space is purchased tile-by-tile and sequentially. Street Segments are purchased and converted as whole units when their layout, frontage, economy, and progression requirements are satisfied. Geometry and eligibility rules are authoritative in [District Layout & Land Expansion](19_district_layout_land_expansion.md).
+
+The approved tile-cost calibrations remain in force. Labels below are reconciled to the canonical elevation scheme: `G`, `F1`–`F9`, and `U1`–`U5`, with a physical maximum of 10 above-ground levels including G plus 5 underground.
 
 | Floor | Multiplier | Tile Cost |
 |-------|-----------|-----------|
-| **Ground (F1)** | 1.0x | 1,000 Kreds |
-| **Floor 2 (F2)** | 1.2x | 1,200 Kreds |
-| **Floor 3 (F3)** | 1.4x | 1,400 Kreds |
-| **Floor 4 (F4)** | 1.6x | 1,600 Kreds |
-| **Floor 5 (F5)** | 1.8x | 1,800 Kreds |
-| **Floor 10 (F10)** | 2.8x | 2,800 Kreds |
+| **Ground (G)** | 1.0x | 1,000 Kreds |
+| **Floor 1 (F1)** | 1.2x | 1,200 Kreds |
+| **Floor 2 (F2)** | 1.4x | 1,400 Kreds |
+| **Floor 3 (F3)** | 1.6x | 1,600 Kreds |
+| **Floor 4 (F4)** | 1.8x | 1,800 Kreds |
+| **Floor 9 (F9)** | 2.8x | 2,800 Kreds |
 | **Underground 1 (U1)** | 1.2x | 1,200 Kreds |
 | **Underground 2 (U2)** | 1.4x | 1,400 Kreds |
 | **Underground 3 (U3)** | 1.6x | 1,600 Kreds |
 
-**Maximum floors:** 10 above ground + 3 underground = 14 total levels.
+The legacy calibration supplied values through U3 only; it has no approved U4 or U5 values.
+
+### OPEN QUESTIONS: New District-Expansion Prices
+
+- Plot Section prices and scaling, including how the approved G tile calibration contributes to a section price.
+- Street Segment purchase/conversion prices.
+- Demolition prices.
+- U4 and U5 floor-space tile prices.
 
 ### Construction
 
@@ -98,6 +107,7 @@ Transportation facilities are physical structures the player builds. They charge
 - Transportation is a **physical facility** the player builds and maintains (Pillar 1).
 - The visitor attraction bonus is a **flat multiplier** on the base visitor spawn rate. It compounds with prestige attraction.
 - These are **post-MVP**. The design space is reserved to avoid conflicts with other systems.
+- Elements 05 and 19 newly prioritize pedestrian arrivals followed by buses, parking cars, taxis, and metro. How legacy tram, monorail, and train facilities relate to those arrival modes requires later reconciliation; their approved calibration is retained until then.
 
 ### Loan Repayment
 
@@ -150,5 +160,5 @@ All numerical values are starting calibrations for playtesting. Key targets:
 
 ### Progressive Complexity
 
-MVP economy: Rent, tile purchase, construction, staff wages, maintenance, loans.
-Post-MVP additions: Parking fees, event income, prestige-scaled wages, transportation.
+MVP economy: Rent, tile purchase, construction, staff wages, maintenance, loans. The MVP Plot's single ground section is initially owned.
+Post-MVP additions: additional Plot Section acquisition, Street Segment conversion, parking fees, event income, prestige-scaled wages, transportation.

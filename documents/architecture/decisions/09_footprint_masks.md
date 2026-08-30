@@ -1,6 +1,10 @@
 ## Decision 9: Footprint Masks — Text Files for Plot/Floor Shapes
 **Date:** 2026-07-28
-**Status:** Accepted
+**Status:** Complete format superseded by Decision 27
+
+### Supersession (2026-08-30)
+
+[Decision 27](27_district_layout_templates.md) supersedes the character legend below as a complete plot/floor definition because `.` and `o` conflate ownership, availability, occupancy, and buildability. A simple character-mask parser may remain for one boolean token-grid cell layer. The provisional candidate authoring format combines `.tres` metadata with layered token grids, while mutable ownership, construction, and occupancy remain in separate runtime state. The final authoring format remains subject to proof-layout validation.
 
 ### Context
 Post-MVP scenarios need irregular plot shapes, pre-occupied tiles, and varying floor footprints. We needed a data-driven way to define which tiles exist on each floor.
