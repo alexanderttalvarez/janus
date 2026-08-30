@@ -1,0 +1,135 @@
+# Handoff 06: Camera Envelope and Pedestrian Gateways
+
+## Status
+
+**Draft - implementation blocked by predecessors and two design-policy decisions.** Requires H3 Active Plot state, [H5](05_street_and_pedestrian_generation.md) public topology/pedestrian graph, and recorded Design selections with Architecture validation for camera infrastructure margin and the legacy 20-purchased-tile rule.
+
+## Purpose
+
+Consume H2 source attachments/poses and H5's final pedestrian graph to own only camera bounds/viewing and `GatewayEligibilitySnapshot`. H8 owns allocation.
+
+## Dependencies
+
+- H2 exclusively resolved the authored selector to a static topology attachment ID and baseline `DistrictGridPose` from immutable definition/topology.
+- [H3](03_variable_floor_grid_migration.md) Active Plots and view capabilities.
+- [H5](05_street_and_pedestrian_generation.md) final pedestrian topology/graph.
+
+## Source-of-truth documents
+
+- [Decision 16](../../decisions/16_camera_system_architecture.md)
+- [Decision 28](../../decisions/28_visitor_arrival_architecture.md)
+
+## Current-state findings
+
+Camera uses radial origin bounds and floor strings; `PlotData` stores corner spawn geometry; `PedestrianArea` assumes one 25x25 ring.
+
+## Target state
+
+The pan/focus region is the geometric union of each Active Plot rectangle expanded by margin, not an enclosing AABB. Focus outside the union clamps to the nearest point in that union with deterministic tie-breaks. Gateway eligibility is derived only from H2 attachment/pose, H5's final graph, current source state, and matching revisions. Viewing and eligibility never mutate district state or create `FloorState`.
+
+## Scope
+
+Union-region camera clamp, signed-elevation viewing, pass-through H2 attachment/pose values, and structural gateway eligibility against H5's final graph and current source state.
+
+## Explicit non-goals
+
+Demand, source allocation/capacity/weight, visitor realization, road graph, state writes, or persisted identity migration.
+
+## System ownership
+
+| Owner | Responsibility |
+| --- | --- |
+| H2 | Exclusive selector resolution, static topology attachment ID, and baseline `DistrictGridPose`. |
+| Design | Decision owner for camera infrastructure margin and the legacy 20-purchased-tile rule. |
+| Architecture | Validates each selected policy against architecture invariants and acceptance evidence. |
+| H6 | Camera region/viewing and `GatewayEligibilitySnapshot` only. |
+| H8 | Source allocation/orchestration. |
+| District Runtime | Source-state writes. |
+
+## Data contracts
+
+`CameraBoundsSnapshot` contains revisions, sorted Active Plot IDs, expanded rectangle union, margin, and empty status. `GatewayProjection` may package `arrival_source_id`, authored selector, H2 topology attachment ID, and H2 baseline `DistrictGridPose`, but labels attachment and pose owner as H2 and cannot alter or re-resolve either. `GatewayEligibilitySnapshot` reports current source state, structural eligibility, reason codes, and committed district/topology revisions only.
+
+## Communication and event flow
+
+`Active Plot rectangles -> expanded union -> CameraManager`; `H2 attachment/pose + H5 final graph + current source state -> eligibility snapshot -> H8`.
+
+## Persistence impact
+
+Bounds, H2 poses/attachments, eligibility, and camera viewing are unsaved unless a separate presentation setting is approved. Viewing never writes floor state.
+
+## Editor/runtime behavior
+
+Identical projections in editor/runtime. Empty union disables spatial pan/focus safely.
+
+## Migration and compatibility requirements
+
+- `LegacyCameraBoundsAdapter` bridges legacy bootstrap only.
+- `LegacyCornerSpawnAdapter` is restricted to legacy gateway/layout compatibility. It never performs persisted corner-ID migration; H9 detached migration owns that mapping.
+- Old floor-label listeners reuse `LegacyFloorIdAdapter`; no unnamed adapter is allowed.
+- Preserve a temporary policy seam for the legacy 20-purchased-tile camera rule until the decision below is recorded. The seam may never mutate state.
+
+### Camera infrastructure margin
+
+**DESIGN POLICY BLOCKER:** Design owns the selection and Architecture validates it. No numeric margin is specified or may be invented by implementation agents.
+
+| Alternative | Contract |
+| --- | --- |
+| A fixed authored tile margin | One authored tile margin applies according to the approved camera policy. |
+| B road-profile-relative margin | The margin derives deterministically from the selected road profile. |
+| C per-layout authored margin | Each layout authors its own validated margin. |
+
+A, B, and C are neutral alternatives. Selection must assess design intent for the camera union, player legibility, editor/runtime parity, variable road widths, and migration. The selected contract becomes an input to Projection/Camera policy and must be recorded in acceptance evidence before H6 acceptance.
+
+### Legacy 20-purchased-tile rule
+
+**DESIGN POLICY BLOCKER:** Design owns the selection and Architecture validates it.
+
+| Alternative | Contract |
+| --- | --- |
+| A remove at migration | The legacy rule ends as part of migration. |
+| B compatibility-only | The rule applies only to recognized V1 sessions until an explicitly defined session transition. |
+| C explicit target policy | The rule remains as an explicit target camera policy. |
+
+A, B, and C are neutral alternatives. Selection must assess conflict with the Active Plot union fact, save compatibility, state-mutation risk, and player expectation. The selected contract and, for B, the exact session transition must be recorded in acceptance evidence before `LegacyCameraBoundsAdapter` removal or H10 acceptance. Implementation agents do not choose.
+
+## Expected affected files/systems
+
+Camera manager, composition wiring, gateway projections, old listener boundaries, tests.
+
+## Acceptance criteria
+
+Exact expanded-rectangle union and nearest-point clamp; viewing/activity independence; no FloorState allocation; H2 attachment/pose pass-through without resolution or mutation; revision-matched structural eligibility; H8 exclusively allocates. Acceptance evidence records one camera-margin alternative and one legacy-rule alternative, Design approval, Architecture validation, and evidence against every listed criterion; the margin contract is recorded before H6 acceptance, and the legacy-rule contract is recorded before `LegacyCameraBoundsAdapter` removal or H10.
+
+## Required tests
+
+Empty/overlap/disjoint union, holes and nearest-point ties, pan/focus, signed elevations, H2 pass-through invariance, current-state structural eligibility, stale district/topology revisions, missing static attachment, adapter isolation, and viewing-no-mutation. Test the selected camera-margin contract across variable road widths and editor/runtime contexts and reject the unselected contracts. Test the selected legacy-rule migration/session behavior, including its no-state-mutation invariant, and reject the unselected contracts. A missing attachment or attachment absent from the committed graph is ineligible and never falls back to nearest topology.
+
+## Performance/scalability checks
+
+Region updates scale with Active Plots and eligibility uses graph indexes, not world-distance scans.
+
+## Failure and rollback behavior
+
+Invalid revisions retain last valid camera projection; blocked view changes nothing. Stale or missing static attachments are ineligible with reason codes and never trigger selector re-resolution or nearest-topology fallback.
+
+## Technical risks
+
+Accidentally replacing the union with an AABB, H6 re-resolving H2 identity/pose, corner migration leaking into runtime, and observation creating sparse state.
+
+## FACTS
+
+- H2 owns attachment/pose resolution; H6 owns structural eligibility and camera only; H8 owns allocation.
+
+## ASSUMPTIONS
+
+- Plot rectangles are axis-aligned in district space.
+
+## OPEN QUESTIONS
+
+- **DESIGN POLICY BLOCKER:** Design selects camera infrastructure margin A, B, or C and Architecture validates it before H6 acceptance; no numeric value is supplied by this handoff.
+- **DESIGN POLICY BLOCKER:** Design separately selects legacy 20-purchased-tile rule A, B, or C and Architecture validates it before `LegacyCameraBoundsAdapter` removal or H10.
+
+## GodotPrompter skills required by implementation agents
+
+- `camera-system`, `math-essentials`, `ai-navigation`, `godot-testing`.
