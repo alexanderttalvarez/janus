@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors and two design approvals.** Requires H3 transactions and H4 projection lifecycle. Corner-frontage attribution and public-band physical parcel-door access are separate DESIGN BLOCKERS.
+**Draft - implementation blocked by predecessors.** Requires H3 transactions and H4 projection lifecycle. The former corner-frontage and public-band access design blockers are approved by the 2026-08-31 Road & Intersection Addendum.
 
 ## Purpose
 
@@ -33,24 +33,27 @@ Public-realm descriptors/geometry; independent-side frontage; street conversion 
 
 ## Explicit non-goals
 
-No road graph, traffic reservations, prices/formulas, ownership transfer of public bands, or speculative physical-door rule.
+No road graph, traffic reservations, prices/formulas, ownership transfer of public bands, or tenant-door allocation algorithm beyond the approved physical access-edge contract.
 
 ## System ownership
 
 | Owner | Responsibility |
 | --- | --- |
-| Design | Decision owner for corner-frontage attribution and public-band physical parcel-door access. |
 | Architecture | Validates each selected design contract against architecture invariants and acceptance evidence. |
-| H5 public-realm projection | Descriptors, geometry, frontage, conversion rules/impacts, pedestrian graph. |
+| H5 public-realm projection | Descriptors, geometry, frontage, conversion rules/impacts, pedestrian graph, and public-band access edges. |
 | District Runtime | Sole `StreetSegmentState` writer and atomic commit. |
-| H4 | Generated Nodes only. |
+| H4 | Generated Nodes and projection lifecycle only; no public-realm or traffic semantics. |
 | H7 | Exclusive road graph authority. |
 
 ## Data contracts
 
-Each corridor has two 5-10-tile public bands and a carriageway of 3-tile lanes. Outer ring is immutable. Internal conversion requires at least 50% owned frontage independently on both sides, includes both bands plus carriageway spatially, discloses connectivity without veto, and derives intersection transfer from all incident internal segments.
+Each corridor has two 5-10-tile public bands and a carriageway with 2-6 total 3-tile lanes, at least one lane per direction, and contiguous same-direction groups. Outer ring is immutable. Internal conversion requires at least 50% owned frontage independently on both sides, includes both bands plus carriageway spatially, discloses connectivity without veto, and derives intersection transfer from all incident internal segments.
 
-Positive-length collinear frontage is measured deterministically and remains decided. Corner-only frontage is unresolved and cannot contribute to conversion eligibility until the blocker below is approved.
+Only positive-length collinear Plot/Street contact contributes frontage; corner-only contact contributes zero. An adjacent active public Pedestrian Band may provide a topology-backed physical door/access edge for a Plot Section or tenant parcel without ownership transfer. That edge must be an active pedestrian-graph edge with stable topology/edge identity. H5 does not define tenant-door allocation beyond this access contract.
+
+Generated public-realm geometry is descriptor-driven: carriageways use dark-gray asphalt sized from Street Segment length and lane count. Flat marking overlays sit epsilon above asphalt and batch per segment/chunk; they are not hand-authored decal Nodes or raised geometry. Ordinary markings are 0.25 tile thick and stop lines are 0.50 tile thick. Use solid edge lines against both Pedestrian Bands, a solid divider between opposing direction groups, and 1-tile white/1-tile gap dashed dividers within a direction group. Each active Street Segment has exactly one centered crosswalk, 5 tiles along-road wide, with alternating 0.5-tile white stripes and 0.5-tile exposed asphalt, spanning the full carriageway. Apply stop lines only to approaching lanes, 2 full tiles before the approached midpoint crosswalk or intersection boundary. Curbs are continuous on both carriageway edges, 0.10 tile high and 0.15 tile wide, except flush interruptions at midpoint crosswalks; intersections use simple square 90-degree corners.
+
+Intersections are plain dark-gray `C x C` surfaces with no internal lane-direction markings and only approach stop lines. Pedestrian Bands connect around intersection exteriors but do not create pedestrian intersection crossings. Midpoint crosswalks are the only pedestrian crossings; outer-ring midpoint crosswalks remain traffic-functional but create neither pedestrian graph links nor visitor crossings. A converted Street Segment removes its carriageway, markings, curbs, midpoint crosswalk, traffic lights, and stop lines; its whole space becomes unrestricted pedestrian topology using ordinary Pedestrian Band paving.
 
 `PedestrianGraphSnapshot` combines public-band edges with H3 floor/circulation/door/vertical-link values at explicit revisions. It is immutable, derived, unsaved, and rebuilt/delta-published after commit.
 
@@ -68,31 +71,7 @@ Same descriptors/graphs in editor and runtime. H4 owns all materialized Nodes.
 
 ## Migration and compatibility requirements
 
-`LegacyExteriorAccessAdapter` remains compatibility-only until both blockers below are approved, then is removed by H10. Authored road/crosswalk assets may be reusable visuals only after dimension-independence proof.
-
-### Corner-frontage attribution
-
-**DESIGN BLOCKER:** the blueprint leaves corner-only frontage open. Design is the decision owner and Architecture is the validator. H5 conversion implementation and H10 removal are blocked until the selected alternative is recorded under acceptance evidence with both approvals.
-
-| Alternative | Effect |
-| --- | --- |
-| A zero-length contact | A zero-length point contact contributes zero frontage. |
-| B deterministic attribution | An approved deterministic corner-attribution rule assigns contribution. |
-| C fixed-structure edge | An approved fixed-structure-edge-specific rule determines contribution. |
-
-A, B, and C are neutral alternatives. Selection must assess mathematical determinism for both positive-length and point contacts, prevention of corner double counting, player-preview legibility at the exact 50% threshold, behavior for unusual fixed-structure edges, and compatibility evidence. The selected rule becomes the sole valid rule; unselected alternatives must reject. This handoff makes no recommendation.
-
-### Public-band physical parcel-door access conflict
-
-**DESIGN BLOCKER:** existing parcel splitting accepts public frontage while automatic doors require physical internal/explicit circulation.
-
-| Alternative | Effect |
-| --- | --- |
-| A geometry-only | Public frontage cannot itself supply a physical door. |
-| B topology-backed access | A stable adjacent band/edge can be a physical access candidate without band ownership transfer. |
-| C internal-only | Public bands never satisfy parcel access. |
-
-A, B, and C remain neutral alternatives. Design must choose among them based on physical-door semantics, ownership/capability separation, player legibility, and migration cost. No alternative is approved. H10 acceptance requires both H5 design approvals, implemented migration/tests, and removal of `LegacyExteriorAccessAdapter`.
+`LegacyExteriorAccessAdapter` remains compatibility-only until implementation and migration evidence covers the approved rules, then is removed by H10. Authored road/crosswalk assets may be reusable visuals only after dimension-independence proof.
 
 ## Expected affected files/systems
 
@@ -100,11 +79,11 @@ Public-realm resolver values, conversion integration, graph builder, H4 builders
 
 ## Acceptance criteria
 
-Complete deterministic outer/internal topology; approved corner rule; conversion invariants; final pedestrian graph includes all inputs; H7 remains sole road graph owner; neither blocked alternative ships without approval. Before H5 conversion implementation or H10 acceptance, acceptance evidence records the selected corner-frontage alternative `A`, `B`, or `C`, Design approval, Architecture validation, and evidence against every listed selection criterion.
+Complete deterministic outer/internal topology; zero corner-only frontage; conversion invariants; final pedestrian graph includes all inputs and approved stable public-band access edges; H7 remains sole road graph owner; and generated geometry follows the approved road/crosswalk/curb contract. H4 remains projection lifecycle only, so these descriptors require no retroactive semantic change to completed H4 work.
 
 ## Required tests
 
-Profile/outer ring, topology incidence, positive-length collinear frontage, and the selected approved corner rule at below/exact/above threshold; unselected corner alternatives reject. Separately test conversion atomicity, pedestrian graph input/delta, save exclusion, the selected physical-door rule, and rejection of its unselected alternatives.
+Profile/outer ring, topology incidence, positive-length collinear frontage, zero corner-only frontage at below/exact/above threshold, conversion atomicity, pedestrian graph input/delta, save exclusion, and stable active public-band access-edge validation. Test the full generated road contract: lane markings, curbs, midpoint-crosswalk dimensions and stripes, approach-only stop lines, plain intersections, outer-crosswalk pedestrian exclusion, and complete conversion removal.
 
 ## Performance/scalability checks
 
@@ -122,6 +101,7 @@ Double-counted corners, ownership/capability conflation, stale path references, 
 
 - H5 owns final pedestrian graph; H7 alone owns road graph.
 - Positive-length collinear frontage measurement is decided.
+- **2026-08-31 Road & Intersection Addendum:** Corner-only contact is zero frontage. Active adjacent public-band graph edges may provide physical parcel access without ownership transfer. H5 owns public-realm descriptors; H4 remains projection lifecycle only.
 
 ## ASSUMPTIONS
 
@@ -129,8 +109,6 @@ Double-counted corners, ownership/capability conflation, stale path references, 
 
 ## OPEN QUESTIONS
 
-- **DESIGN BLOCKER:** Design selects corner-frontage alternative A, B, or C and Architecture validates it; record the selection and criterion evidence before H5 conversion implementation or H10.
-- **DESIGN BLOCKER:** separately approve A, B, or C for public-band physical doors.
 - Curbside facility authority, persistence, catalog, and active-agent response are later policies and cannot ship without that future contract.
 
 ## GodotPrompter skills required by implementation agents

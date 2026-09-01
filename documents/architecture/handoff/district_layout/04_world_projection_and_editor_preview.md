@@ -6,7 +6,7 @@
 
 ## Purpose
 
-Own all generated Node/projection lifecycle in runtime and editor, including floor, wall, door, overlay, label, debug, and later public-realm visuals, plus `main_game` composition.
+Own all generated Node/projection lifecycle in runtime and editor, including floor, wall, door, overlay, label, debug, and later public-realm visuals, plus `main_game` composition. Editor preview is delivered only through the opt-in tooling contract in the 2026-08-31 addendum below.
 
 ## Dependencies
 
@@ -38,8 +38,9 @@ No district/state writes, road semantics, street conversion, traffic graph, arri
 
 | Owner | Responsibility |
 | --- | --- |
-| Projection Coordinator | Every generated Node/root and lifecycle operation. |
+| Projection Coordinator | Every generated runtime Node/root and lifecycle operation. |
 | Descriptor builders | Pure geometry/presentation values. |
+| Opt-in editor plugin and its `@tool` preview controller | Editor-only selection, validation, diagnostics, and disposable preview-root lifecycle; never domain or runtime authority. |
 | H5 | Public-realm semantics/descriptors. |
 | H7 | Road graph; H4 never owns it. |
 
@@ -61,7 +62,7 @@ Generated Nodes, meshes, walls, doors, overlays, labels, bounds, and manifests a
 
 ## Editor/runtime behavior
 
-Editor and runtime use the same resolver, H2 grid poses/bounds, injected `ProjectionMetrics` identity/revision/value, projection function, descriptors, and lifecycle. Preview roots are marked generated and removed on close/disable. Opening a scene with different current Node transforms cannot silently redefine metrics.
+Editor and runtime use the same H1 validation, H2 resolver/grid poses/bounds, injected `ProjectionMetrics` identity/revision/value, projection function, and descriptors. Opening a scene with different current Node transforms cannot silently redefine metrics. The editor-preview implementation is non-authoritative and is constrained by the 2026-08-31 addendum below.
 
 ## Migration and compatibility requirements
 
@@ -77,7 +78,7 @@ Parity across fixtures with byte/equality-checked metrics identity/revision/valu
 
 ## Required tests
 
-Descriptor goldens; H2 grid-pose/bounds to Godot projection and inverse-picking round trips across positive/negative quarter coordinates and elevations; editor/runtime metrics parity; missing/invalid/mismatched metrics rejection; projection-origin translation; facing; wall/door/overlay alignment; swap fault injection; editor cleanup; no per-cell Node regression; rebuild-without-authority-change or district-fingerprint change when presentation metrics change.
+Descriptor goldens; H2 grid-pose/bounds to Godot projection and inverse-picking round trips across positive/negative quarter coordinates and elevations; editor/runtime metrics parity; missing/invalid/mismatched metrics rejection; projection-origin translation; facing; wall/door/overlay alignment; swap fault injection; editor cleanup; no per-cell Node regression; rebuild-without-authority-change or district-fingerprint change when presentation metrics change. The editor-plugin-specific coverage is defined in the 2026-08-31 addendum below.
 
 ## Performance/scalability checks
 
@@ -103,6 +104,31 @@ Shared material mutation, stale async results, temporary double memory, and Node
 ## OPEN QUESTIONS
 
 - Renderer/profile budgets, safe worker-thread stages, and degraded-presentation input policy.
+
+## 2026-08-31 Editor Preview Addendum
+
+**Status: new H4 completion requirement.** H4 runtime projection work may be complete independently, but H4 editor-preview acceptance remains pending until the optional editor-plugin capability and its tests exist. This addendum does not change H5 or H7 ownership.
+
+### Editor tooling boundary
+
+- District layout must be visible and inspectable in the Godot editor, not only while the game runs.
+- Provide this only through a dedicated opt-in `EditorPlugin` plus an `@tool` preview controller. Do not put `@tool` behavior in District Runtime, the resolver, or any production game-authority class.
+- The plugin provides layout selection and validation controls, manual explicit preview rebuild and cleanup actions, and optional diagnostic display. Implementation paths, dock placement, custom types, controller names, and UI design remain open.
+- The preview controller materializes a disposable generated preview root from the existing H1, H2, and H4 contracts. H1 validation, H2 resolution, and H4 descriptor/projection behavior are shared with runtime; the plugin must not introduce alternate semantics, identity, geometry, or transforms.
+
+### Authority and lifecycle
+
+- Preview is non-authoritative: it never mutates immutable Resources/definitions, `DistrictState`, `SaveManager` data, economy/progression, scenes, or gameplay/runtime authority, and it never writes authoritative content into the live `main_game` scene.
+- Preview roots are plugin-owned, marked generated, isolated from authored nodes, and removed on explicit cleanup, plugin disable, scene close/change, and failed or stale rebuild. `_exit_tree` unregisters/frees plugin UI and preview roots.
+- The safe lifecycle is `validate -> build detached candidate -> stale/revision check -> swap -> dispose old preview`. Invalid definitions expose validation diagnostics instead of a partial preview. A failed or stale rebuild keeps the prior valid preview.
+- All editor-only scripts use `@tool` and guard editor-only behavior. Runtime does not rely on `Engine.is_editor_hint()` for domain semantics.
+- Editor and runtime receive the same immutable `ProjectionMetrics` identity, revision, and value. Metrics are injected, never inferred from current Nodes or transforms; parity is required.
+
+### Acceptance and tests
+
+- Acceptance requires editor visibility/inspection, explicit rebuild and cleanup, generated-root isolation, invalid-definition diagnostics without partial preview, detached-candidate stale-safe swapping, prior-preview retention on failure, and cleanup on every listed lifecycle exit.
+- Tests must prove H1/H2/H4 parity, metrics identity/revision/value parity, no authority or authored-scene mutation, generated-root ownership/isolation, all cleanup paths, invalid/stale/failure behavior, and `_exit_tree` teardown.
+- The implementation agent requires `addon-development` and `godot-testing` skills in addition to the existing H4 skills.
 
 ## GodotPrompter skills required by implementation agents
 

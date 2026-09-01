@@ -27,7 +27,7 @@ This document is the central architecture handoff for data-driven district layou
 
 | Type | Identity | Content |
 |---|---|---|
-| `DistrictLayoutDefinition` | Stable layout ID + version | Shared row depths/column widths, pedestrian width 5-10, uniform road profile, complete outer ring, block slots. |
+| `DistrictLayoutDefinition` | Stable layout ID + version | Shared row depths/column widths of at least 18 tiles, pedestrian width 5-10, uniform road profile, complete outer ring, block slots. |
 | `BlockSlotDefinition` | Stable slot ID within layout | Role, plot-template reference, constrained overrides. |
 | `PlotTemplateDefinition` | Stable template ID + version | Dimensions, sections, designated first sections for orthogonally adjacent Plot activation, physical floor limits/overrides, fixed structures, future role capabilities. |
 
@@ -70,7 +70,7 @@ No single character or boolean may stand for several of these concepts.
 - Rows share authored depths; columns share authored widths.
 - Every layout has a complete permanent outer road ring.
 - One road profile applies throughout the district.
-- Each lane is 3 tiles wide, with at least 2 total lanes and at least 1 lane per direction.
+- Each lane is 3 tiles wide, with 2-6 total lanes inclusive and at least 1 lane per direction.
 - Same-direction lanes are contiguous.
 - Public Pedestrian Bands are 5-10 tiles wide as defined by the layout.
 - A Street Corridor is the generated road band between blocks.
@@ -99,6 +99,10 @@ No single character or boolean may stand for several of these concepts.
 - An intersection is owned only after every incident internal segment is converted.
 - Outer-ring segments and intersections remain immutable.
 - Pedestrian Bands remain city-owned. Adjacent owned frontage grants player-funded facility-placement rights, not ownership.
+- Only positive-length collinear Plot/Street contact contributes frontage; corner-only contact contributes zero.
+- An adjacent active public Pedestrian Band may supply a stable topology-backed physical door/access edge without ownership transfer.
+- Generated carriageways are dark-gray asphalt with flat batched marking overlays, curbs, centered midpoint crosswalks, and approach-only stop lines. Intersections are plain dark-gray surfaces without internal lane-direction markings.
+- Conversion removes the carriageway, markings, curbs, crosswalk, traffic lights, and stop lines, making the whole segment unrestricted pedestrian topology with ordinary Pedestrian Band paving.
 
 ### Camera envelope
 
@@ -166,6 +170,9 @@ A source is addressed by stable ID and exposes mode, topology anchors, enabled/e
 ### Traffic and presentation
 
 - Traffic road graphs are generated from district topology.
+- Initial road routes are straight-through only; existing reservation behavior governs straight intersection crossings. There are no intersection traffic lights or pedestrian crossings.
+- The controlled area is the connected union of Active Plot rectangles. TrafficTopology places paired directional spawn/despawn anchors outside each boundary intersection and moves them outward with expansion; converted/inactive roads have no active anchors.
+- Midpoint crosswalk traffic lights use a shared simulation-time 10T clock: north-south offset 0, east-west offset 5T, vehicle green/yellow/red 5T/1T/4T, and pedestrian red/green 6T/4T. Pedestrians use one canonical crossing speed. Outer-ring midpoint crossings remain traffic-functional but are not pedestrian graph links or visitor crossings.
 - Ambient cars are presentation-focused and do not establish authoritative off-district simulation.
 - Buses are arrival events with pending cohorts, not continuously simulated distant agents.
 - Bus events reserve a source, present arrival, and realize cohort members.
@@ -227,7 +234,7 @@ A source is addressed by stable ID and exposes mode, topology anchors, enabled/e
 
 **Testing:** Exactly-below/at/above 50% per side, immutable outer ring, both bands plus carriageway conversion, no connectivity veto, all-incident intersection rule, facility cleanup.
 
-**Risks:** Frontage measurement ambiguity at corners; topology regeneration can leave stale route references; users may not understand non-vetoed disconnection without clear preview.
+**Risks:** Topology regeneration can leave stale route references; users may not understand non-vetoed disconnection without clear preview.
 
 ### Visitor arrivals
 
@@ -304,5 +311,16 @@ Architecture acceptance should be demonstrated with deterministic domain tests a
 - Pending arrival/cohort save policy: persist, cancel/refund, replay, or re-allocate.
 - Arrival weighting, source capacities, schedules, retries, and non-pedestrian operating costs.
 - Exact public Pedestrian Band facility catalog, costs, conflicts, and removal/refund rules.
-- Frontage measurement treatment at corner-only contact and unusual fixed-structure edges.
 - Whether initial combined services need separation after the proof layout and transaction model are validated.
+
+## 2026-08-31 Road & Intersection Addendum
+
+Road-profile limits, generated road geometry, conversion behavior, frontage/access semantics, controlled-area anchors, and crossing responsibility are approved as stated above. H5 owns public-realm descriptors and pedestrian topology, H7 owns traffic topology and controls, and H4 remains projection lifecycle only; no retroactive semantic changes are required to completed H4 work.
+
+## 2026-08-31 Editor Preview Addendum
+
+Editor-visible district-layout inspection is a new H4 completion requirement. A dedicated opt-in `EditorPlugin` and `@tool` preview controller must provide manual preview rebuild/cleanup, validation diagnostics, and a disposable generated preview root. It shares H1 validation, H2 resolution, H4 descriptors/projection, and injected immutable `ProjectionMetrics` identity/revision/value with runtime; it must not create alternate semantics, identity, geometry, or transforms.
+
+Preview is non-authoritative: it never mutates definitions/Resources, `DistrictState`, `SaveManager` data, economy/progression, scenes, or gameplay authority, and never writes authoritative content to live `main_game`. It builds detached candidates, validates stale revisions before swapping, retains the prior valid preview on failure, and removes plugin-owned generated roots on explicit cleanup, plugin disable, scene close/change, failed/stale rebuild, and `_exit_tree`. All editor-only behavior remains in guarded `@tool` scripts; runtime domain semantics do not depend on `Engine.is_editor_hint()`.
+
+H4 runtime projection work may remain complete, but H4 editor-preview acceptance is pending until this plugin capability and tests prove parity, isolation/no authority mutation, invalid-definition diagnostics without partial preview, stale-safe swapping, and lifecycle teardown. This addendum does not alter H5 or H7 ownership.

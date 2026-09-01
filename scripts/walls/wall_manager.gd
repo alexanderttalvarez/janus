@@ -654,7 +654,11 @@ func _get_floor() -> Node3D:
 	var world := root.get_node_or_null("World") as Node3D
 	if world == null:
 		return null
-	return world.get_node_or_null("floor_plot_0_G") as Node3D
+	for candidate: Node in world.find_children("*", "Floor", true, false):
+		var floor: Floor = candidate as Floor
+		if floor != null and floor.floor_level == "G":
+			return floor
+	return null
 
 
 func _get_grid_manager() -> GridManager:

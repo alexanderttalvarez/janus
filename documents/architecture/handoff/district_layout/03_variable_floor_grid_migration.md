@@ -98,7 +98,7 @@ Runtime and editor inspect the same immutable values. Active plot/elevation sele
 
 ## Migration and compatibility requirements
 
-Exactly five H3 adapters: `LegacyLayoutBootstrapAdapter`, `LegacyFloorIdAdapter`, `LegacyGridProjectionAdapter`, `LegacyDefaultPlotSelectionAdapter`, and `LegacyExteriorAccessAdapter`. The exterior adapter continues through H5 pending approval of both the corner-frontage and public-band physical-door decisions. All are removed by H10. Reuse `LegacyFloorIdAdapter` for old listeners; no unnamed floor adapter is allowed.
+Exactly five H3 adapters: `LegacyLayoutBootstrapAdapter`, `LegacyFloorIdAdapter`, `LegacyGridProjectionAdapter`, `LegacyDefaultPlotSelectionAdapter`, and `LegacyExteriorAccessAdapter`. The exterior adapter continues through H5 until the approved zero-corner-frontage and topology-backed public-band access rules are implemented and migrated. All are removed by H10. Reuse `LegacyFloorIdAdapter` for old listeners; no unnamed floor adapter is allowed.
 
 ## Expected affected files/systems
 

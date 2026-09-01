@@ -19,6 +19,9 @@ const LEVEL_THRESHOLDS: Array[int] = [0, 500, 2000, 5000, 15000]
 ## Current prestige score.
 var prestige: int = 0
 
+## Monotonic authority revision used by coordinated district transactions.
+var authority_revision: int = 0
+
 ## Scale score (0-100) — based on zone count, floor count, tile count.
 var scale: int = 0
 
@@ -50,8 +53,12 @@ func initialize(zm: ZoneManager, tm: TenantManager, vm: VisitorManager) -> void:
 
 
 ## Recalculate prestige on sim_month_passed.
+func get_district_revision() -> int:
+	return authority_revision
+
+
 func recalculate() -> void:
-	var old_prestige := prestige
+	var old_prestige: int = prestige
 	scale = _calculate_scale()
 	quality = int(float(_calculate_quality()) * loan_default_multiplier)
 	prestige = scale * quality
@@ -62,6 +69,7 @@ func recalculate() -> void:
 	current_level = new_level
 
 	trend = prestige - old_prestige
+	authority_revision += 1
 
 	# Award tech points on level up.
 	if new_level > previous_level:
@@ -170,6 +178,7 @@ func serialize() -> Dictionary:
 
 func deserialize(data: Dictionary) -> void:
 	prestige = data.get("prestige", 0); scale = data.get("scale", 0)
+	authority_revision += 1
 	quality = data.get("quality", 0); tech_points = data.get("tech_points", 0)
 	loan_default_multiplier = data.get("loan_multiplier", 1.0)
 	current_level = _determine_level(prestige)

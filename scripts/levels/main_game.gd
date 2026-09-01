@@ -17,12 +17,15 @@ extends Node3D
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
 @onready var _wall_manager: WallManager = $World/WallManager
+@onready var _traffic_manager: TrafficManager = $World/TrafficManager
+var _district_runtime: DistrictRuntime
+var _projection_coordinator: ProjectionCoordinator
+var _public_realm_projection: PublicRealmProjection
+var _camera_gateway_projection: CameraGatewayProjection
+var _traffic_topology: TrafficTopology
+var _legacy_grid_projection: RefCounted
 var _parcel_label_renderer: ParcelLabelRenderer
 var _zone_label_renderer: ZoneLabelRenderer
-
-
-## Human tile 13 in a zero-based 25×25 grid (index 12).
-const FIXED_DOOR_TILE_INDEX: int = 12
 
 
 func _ready() -> void:
@@ -37,6 +40,8 @@ func _ready() -> void:
 	_initialize_prestige()
 	_initialize_staff()
 	_initialize_synergy()
+	_initialize_district_runtime()
+	_initialize_projection()
 	_initialize_zone_tool()
 	_initialize_walls()
 
@@ -75,15 +80,103 @@ func _initialize_grid() -> void:
 				# commits carve Tenant/Transit space out of this field explicitly.
 				tile.element = GridTile.TileElement.CIRCULATION
 
-	# MVP fixed exterior doors: tile 13 (index 12) at the middle of every side.
-	gm.set_tile_door(FIXED_DOOR_TILE_INDEX, 0, GridTile.DoorSide.NORTH)
-	gm.set_tile_door(FIXED_DOOR_TILE_INDEX, 24, GridTile.DoorSide.SOUTH)
-	gm.set_tile_door(0, FIXED_DOOR_TILE_INDEX, GridTile.DoorSide.WEST)
-	gm.set_tile_door(24, FIXED_DOOR_TILE_INDEX, GridTile.DoorSide.EAST)
+	var adapters_script: Script = load("res://scripts/district/district_legacy_adapters.gd")
+	var exterior_access: RefCounted = adapters_script.LegacyExteriorAccessAdapter.new()
+	exterior_access.initialize(gm)
+	exterior_access.preserve_frontage(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR)
 
-	_create_floor_instance(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR, fg)
 	gm.rebuild_pathfinding()
 	print("MainGame: Grid initialized — plot_0, 25×25, all tiles owned.")
+
+
+func _initialize_district_runtime() -> void:
+	var bootstrap_script: Script = load("res://scripts/district/district_legacy_adapters.gd")
+	var bootstrap: RefCounted = bootstrap_script.LegacyLayoutBootstrapAdapter.new()
+	var bootstrap_result: Dictionary = bootstrap.create_legacy_snapshot()
+	if not bool(bootstrap_result.get("valid", false)):
+		push_error("MainGame: District layout bootstrap failed.")
+		return
+	var snapshot: ResolvedDistrictSnapshot = bootstrap_result.get("snapshot") as ResolvedDistrictSnapshot
+	_district_runtime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	_district_runtime.name = "DistrictRuntime"
+	add_child(_district_runtime)
+
+	var ports_script: Script = load("res://scripts/district/district_runtime_ports.gd")
+	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = ports_script.DistrictRuntimePortsBundle.new()
+	var economy_port: DistrictRuntimePorts.EconomyManagerPort = ports_script.EconomyManagerPort.new()
+	var zone_port: DistrictRuntimePorts.ZoneManagerPort = ports_script.ZoneManagerPort.new()
+	var progression_port: DistrictRuntimePorts.ProgressionManagerPort = ports_script.ProgressionManagerPort.new()
+	economy_port.initialize(_economy_manager)
+	zone_port.initialize(_zone_manager)
+	progression_port.initialize(_prestige_manager, _tech_tree_manager)
+	ports.initialize(economy_port, zone_port, progression_port)
+	_district_runtime.configure_ports(ports)
+	var session_result: Dictionary = _district_runtime.create_session(snapshot)
+	if not bool(session_result.get("valid", false)):
+		push_error("MainGame: District Runtime session creation failed.")
+		return
+
+	var projection: RefCounted = bootstrap_script.LegacyGridProjectionAdapter.new()
+	projection.initialize(_world.get_node("GridManager") as GridManager, snapshot)
+	_legacy_grid_projection = projection
+	_district_runtime.subscribe_committed(Callable(projection, "on_district_committed"))
+	projection.project_state(_district_runtime.get_state(), snapshot)
+
+
+func _initialize_projection() -> void:
+	if _district_runtime == null or not _district_runtime.has_session():
+		push_error("MainGame: District Runtime is required for projection.")
+		return
+	var metrics: ProjectionMetrics = load("res://scripts/projection/projection_metrics.gd").new() as ProjectionMetrics
+	metrics.identity = "main_game_projection_metrics"
+	metrics.revision = 1
+	metrics.grid_unit_size = GridManager.TILE_SIZE
+	metrics.floor_height = GridManager.FLOOR_HEIGHT
+	metrics.origin = Vector3.ZERO
+	_projection_coordinator = load("res://scripts/projection/projection_coordinator.gd").new() as ProjectionCoordinator
+	_projection_coordinator.name = "ProjectionCoordinator"
+	_world.add_child(_projection_coordinator)
+	var configuration: Dictionary = _projection_coordinator.configure(_district_runtime, metrics)
+	if not bool(configuration.get("valid", false)):
+		push_error("MainGame: Projection Coordinator configuration failed.")
+		return
+	var projection_result: Dictionary = _projection_coordinator.rebuild()
+	if not bool(projection_result.get("valid", false)):
+		push_error("MainGame: Initial projection build failed.")
+	_public_realm_projection = load("res://scripts/public_realm/public_realm_projection.gd").new() as PublicRealmProjection
+	var public_configuration: Dictionary = _public_realm_projection.initialize(_district_runtime, _projection_coordinator, metrics)
+	if not bool(public_configuration.get("valid", false)):
+		push_error("MainGame: Public-realm projection configuration failed.")
+		return
+	var public_result: Dictionary = _public_realm_projection.rebuild()
+	if not bool(public_result.get("valid", false)):
+		push_error("MainGame: Initial public-realm projection build failed.")
+		return
+	_camera_gateway_projection = load("res://scripts/camera/camera_gateway_projection.gd").new() as CameraGatewayProjection
+	var camera_gateway_setup: Dictionary = _camera_gateway_projection.initialize(_district_runtime, _public_realm_projection, _camera_manager, metrics)
+	if not bool(camera_gateway_setup.get("valid", false)):
+		push_error("MainGame: Camera/gateway projection configuration failed.")
+		return
+	var camera_gateway_result: Dictionary = _camera_gateway_projection.rebuild()
+	if not bool(camera_gateway_result.get("valid", false)):
+		push_error("MainGame: Initial camera/gateway projection build failed: %s" % camera_gateway_result.get("diagnostics", []))
+		return
+	_traffic_topology = load("res://scripts/traffic/traffic_topology.gd").new() as TrafficTopology
+	_traffic_topology.name = "TrafficTopology"
+	_world.add_child(_traffic_topology)
+	var traffic_setup: Dictionary = _traffic_topology.initialize(_district_runtime, _public_realm_projection, metrics)
+	if not bool(traffic_setup.get("valid", false)):
+		push_error("MainGame: Traffic topology configuration failed.")
+		return
+	_traffic_topology.road_graph_published.connect(_on_road_graph_published)
+	if _traffic_manager != null and not GameManager.speed_changed.is_connected(_traffic_manager.set_control_time_scale):
+		GameManager.speed_changed.connect(_traffic_manager.set_control_time_scale)
+		_traffic_manager.set_control_time_scale(float(GameManager.speed))
+	var traffic_result: Dictionary = _traffic_topology.rebuild()
+	if not bool(traffic_result.get("valid", false)):
+		push_error("MainGame: Initial traffic topology build failed: %s" % traffic_result.get("diagnostics", []))
+		return
+	_on_road_graph_published(traffic_result.get("snapshot") as RoadGraphSnapshot)
 
 
 func _initialize_parcel_label_renderer() -> void:
@@ -106,23 +199,6 @@ func _initialize_zone_label_renderer() -> void:
 	_zone_label_renderer.zone_manager = _zone_manager
 	_zone_label_renderer.camera_manager = _camera_manager
 	_world.add_child(_zone_label_renderer)
-
-
-func _create_floor_instance(plot_id: String, floor_level: String, _floor_grid: FloorGrid) -> void:
-	var floor_scene := load("res://scenes/world/floor.tscn") as PackedScene
-	if floor_scene == null:
-		push_error("MainGame: Cannot load floor.tscn.")
-		return
-
-	var floor_instance := floor_scene.instantiate() as Floor
-	floor_instance.name = "floor_%s_%s" % [plot_id, floor_level]
-	floor_instance.plot_id = plot_id
-	floor_instance.floor_level = floor_level
-
-	var y := _get_floor_height(floor_level)
-	floor_instance.position = Vector3(0, y, 0)
-
-	_world.add_child(floor_instance)
 
 
 func _get_floor_height(level: String) -> float:
@@ -290,6 +366,13 @@ func _initialize_zone_tool() -> void:
 
 # ── Walls ──────────────────────────────────────────────────────────────
 
+func _on_road_graph_published(snapshot: RoadGraphSnapshot) -> void:
+	if _traffic_manager == null or snapshot == null:
+		return
+	_traffic_manager.set_road_graph(snapshot)
+	print("MainGame: Traffic topology bound — graph revision %d, %d lanes." % [snapshot.graph_revision, snapshot.lanes.size()])
+
+
 func _initialize_walls() -> void:
 	if _wall_manager == null:
 		push_error("MainGame: WallManager not found.")
@@ -323,6 +406,7 @@ func save_game(slot: int) -> void:
 		"prestige": _prestige_manager.serialize() if _prestige_manager else {},
 		"staff": _staff_manager.serialize() if _staff_manager else {},
 		"synergy": _synergy_manager.serialize() if _synergy_manager else {},
+		"district_state": _district_runtime.get_state() if _district_runtime and _district_runtime.has_session() else {},
 	}
 	SaveManager.save_game(slot, data)
 
@@ -342,6 +426,18 @@ func load_game(slot: int) -> void:
 	if _prestige_manager: _prestige_manager.deserialize(data.get("prestige", {}))
 	if _staff_manager: _staff_manager.deserialize(data.get("staff", {}))
 	if _synergy_manager: _synergy_manager.deserialize(data.get("synergy", {}))
+	if _district_runtime and _district_runtime.has_session() and data.has("district_state"):
+		var district_load: Dictionary = _district_runtime.replace_session(_district_runtime.get_snapshot(), data["district_state"])
+		if bool(district_load.get("valid", false)) and _legacy_grid_projection:
+			_legacy_grid_projection.project_state(_district_runtime.get_state(), _district_runtime.get_snapshot())
+		if bool(district_load.get("valid", false)) and _projection_coordinator:
+			_projection_coordinator.rebuild()
+		if bool(district_load.get("valid", false)) and _public_realm_projection:
+			_public_realm_projection.rebuild()
+		if bool(district_load.get("valid", false)) and _camera_gateway_projection:
+			_camera_gateway_projection.rebuild()
+		if bool(district_load.get("valid", false)) and _traffic_topology:
+			_traffic_topology.rebuild()
 	if gm: gm.rebuild_pathfinding()
 	if _parcel_label_renderer:
 		_parcel_label_renderer.hydrate_active_floor()

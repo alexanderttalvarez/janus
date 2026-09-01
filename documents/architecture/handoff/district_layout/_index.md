@@ -9,8 +9,8 @@ This is the implementation order, authority ledger, and cutover gate for the dis
 | 01 | [Definition Schema and Validation](01_definition_schema_and_validation.md) | Draft - ready for architecture approval | Proof tooling may be implemented with H2. Production format remains provisional through proofs A-C. |
 | 02 | [Resolved District Model](02_resolved_district_model.md) | Draft - ready for architecture approval | Provisional resolver work may be implemented with H1. Production contract remains provisional through proofs A-C. |
 | 03 | [Variable Floor Grid Migration](03_variable_floor_grid_migration.md) | Draft - ready for architecture approval | Production implementation requires H1 KEEP and frozen H1/H2 goldens. |
-| 04 | [World Projection and Editor Preview](04_world_projection_and_editor_preview.md) | Draft - implementation blocked by predecessors | Requires implemented H3 state/address/publication contracts. |
-| 05 | [Street and Pedestrian Generation](05_street_and_pedestrian_generation.md) | Draft - implementation blocked by predecessors | Requires H3 transactions, H4 projection lifecycle, a recorded corner-frontage decision, and a recorded public-band physical-door decision. |
+| 04 | [World Projection and Editor Preview](04_world_projection_and_editor_preview.md) | Runtime projection work complete; editor-preview acceptance pending | Runtime projection remains available to successor gates. Full H4 acceptance requires the opt-in editor-plugin capability and tests in the 2026-08-31 addendum. |
+| 05 | [Street and Pedestrian Generation](05_street_and_pedestrian_generation.md) | Draft - implementation blocked by predecessors | The corner-frontage and public-band physical-door decisions are approved; requires H3 transactions and H4 projection lifecycle. |
 | 06 | [Camera Envelope and Pedestrian Gateways](06_camera_and_pedestrian_gateways.md) | Draft - implementation blocked by predecessors | Requires H3 Active Plot state and H5 public topology. |
 | 07 | [Traffic Topology Migration](07_traffic_topology_migration.md) | Draft - implementation blocked by predecessors | Requires H5 public-realm/conversion inputs. |
 | 08 | [Visitor Arrival MVP Migration](08_visitor_arrival_mvp_migration.md) | Draft - implementation blocked by predecessors | Requires H6 structural eligibility; MVP does not require durable pending policy. |
@@ -82,7 +82,7 @@ Exactly ten executable adapters exist in the migration plan; every one is remove
 | `LegacyFloorIdAdapter` | H3 | Translate old floor labels for old persistence/listeners. |
 | `LegacyGridProjectionAdapter` | H3 | Present legacy grid-shaped read views. |
 | `LegacyDefaultPlotSelectionAdapter` | H3 | Localize old implicit plot selection. |
-| `LegacyExteriorAccessAdapter` | H3, continued H5 | Preserve old frontage until both the corner-frontage and public-band physical-door decisions are approved. |
+| `LegacyExteriorAccessAdapter` | H3, continued H5 | Preserve old frontage until the approved zero-corner-frontage and topology-backed public-band access rules are implemented and migrated. |
 | `LegacyCameraBoundsAdapter` | H6 | Bridge legacy camera bootstrap bounds. |
 | `LegacyCornerSpawnAdapter` | H6 | Bridge legacy gateway/layout behavior only. |
 | `LegacyAuthoredTrafficLayoutAdapter` | H7 | Adapt authored lanes/controls to graph values. |
@@ -96,6 +96,14 @@ The H9 V1-to-V2 converter is offline migration code, not an adapter. Stale alias
 - H2 is approval-ready when resolution, canonical ordering, byte framing, and hashing are deterministic.
 - H3 is approval-ready when lifecycle, sole-writer, transaction, revision, economy/progression, and ZoneManager coordination contracts are atomic.
 - Remaining implementation choices must not change authority, identity, persistence, determinism, or atomicity. Named later design blockers may remain.
+
+## 2026-08-31 Road & Intersection Addendum
+
+The H5 corner-frontage and public-band physical-door design blockers are resolved. H5 and H7 remain implementation-blocked solely by their predecessor implementation gates; H4 remains projection lifecycle only. The approved road profile, public-realm, conversion, traffic-light, controlled-area, and crossing contracts are recorded in H1, H2, H5, H7, the central design/architecture documents, and the civic-perimeter visual kit.
+
+## 2026-08-31 Editor Preview Addendum
+
+H4 runtime projection work can remain complete for successor runtime gates. H4 editor-preview acceptance is pending until the dedicated opt-in `EditorPlugin` and `@tool` preview controller capability, including its lifecycle and parity tests, is implemented under the H4 addendum. This is a new H4 completion requirement only; H5 and H7 ownership and gates are unchanged.
 
 ## Related authorities
 

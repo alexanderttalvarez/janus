@@ -29,6 +29,7 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 - A District is a rectangular row/column track grid of rectangular Block Slots.
 - All Block Slots in a row share the same depth.
 - All Block Slots in a column share the same width.
+- Every row depth and column width is at least 18 tiles.
 - A Block Slot has one role: player-capable Plot, fixed decorative/non-player block, public plaza, park, or unavailable.
 - Slot-role transitions may be supported later, but are disabled for MVP.
 - The District has a complete, permanent outer road ring.
@@ -39,11 +40,13 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 - A layout uses one uniform road profile.
 - Each Pedestrian Band is 5-10 tiles wide.
 - Each vehicle lane is 3 tiles wide.
-- A road has at least two lanes, including at least one lane in each direction.
+- A road has 2-6 total lanes inclusive, including at least one lane in each direction.
 - Lanes traveling in the same direction are contiguous.
 - Carriageway width is derived from lane count.
 - Street Corridor width equals two Pedestrian Bands plus the carriageway.
 - There are no bus-only lanes.
+- Carriageways are generated dark-gray asphalt from Street Segment length and lane count. Flat batched marking overlays, rather than authored decal Nodes or raised geometry, provide 0.25-tile ordinary markings and 0.50-tile stop lines.
+- Each Street Segment has one centered midpoint crosswalk: 5 tiles along-road wide, alternating 0.5-tile white and exposed-asphalt stripes, and spanning the carriageway. Curbs are 0.10 tile high and 0.15 tile wide with flush crosswalk interruptions; intersections are plain dark-gray surfaces with square corners and no internal lane-direction markings.
 
 ### Plot Templates, Sections, and Activation
 
@@ -79,15 +82,27 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 - Traffic connectivity does not veto a conversion. The player accepts the resulting consequences.
 - An internal Intersection transfers only after all incident internal Street Segments have been converted.
 - Outer-ring Street Segments and Intersections never transfer.
+- Only positive-length collinear Plot/Street contact contributes frontage; corner-only contact contributes zero.
+- Conversion removes the carriageway, markings, curbs, crosswalk, traffic lights, and stop lines, replacing the full segment with unrestricted pedestrian topology using ordinary Pedestrian Band paving.
 
 ### Public Pedestrian Bands and Transport Facilities
 
 - Pedestrian Bands remain city-owned.
+- An adjacent active Pedestrian Band may supply a topology-backed physical door/access edge for a Plot Section or tenant parcel without ownership transfer. The edge must be an active pedestrian graph edge with stable identity.
 - The player may fund curbside transport facilities on a Pedestrian Band adjacent to owned frontage without owning that land.
 - Converting a Street Segment removes affected curbside facilities after warning the player.
 - A bus stop requires an active road and an active route.
 - Maximum bus stops are `ceil(Active Plot count / 3)`. Because any owned section makes a Plot Active, any owned section counts toward this limit.
 - Transport facilities are future systems, not MVP features.
+
+### Traffic and Crossings
+
+- Traffic routes are initially straight-through only. Intersection reservation behavior remains authoritative for straight crossings; there are no intersection traffic lights or pedestrian crossings.
+- The controlled area is the connected union of Active Plot rectangles. Every outward-facing lane at its road perimeter has paired spawn/despawn anchors just outside the boundary intersection; expansion moves active anchors outward. Converted or inactive roads have no active anchors.
+- Midpoint crosswalks have two opposing traffic-light poles in the Pedestrian Bands. The shared simulation-time clock pauses with simulation: north-south crossings use offset 0, east-west use offset 5T, and at zero north-south vehicle lights are green while east-west are red.
+- The 10T cycle is vehicle green 5T, yellow 1T, red 4T; pedestrian red 6T, green 4T. Pedestrians enter only on green. During yellow, cars past their stop line clear and other cars stop.
+- `T` is the full carriageway crossing distance divided by canonical crosswalk speed. Every visitor uses this canonical speed regardless of status.
+- Midpoint crosswalks are the only pedestrian crossings. Outer-ring midpoint crosswalks and their lights remain traffic-functional but are not pedestrian graph links or visitor crossings.
 
 ### Visitor Demand and Arrival Realization
 
@@ -107,6 +122,10 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 ## ASSUMPTIONS
 
 - A hybrid content pipeline using typed Godot `Resource` metadata plus token-grid files is a provisional implementation approach to test. It is not an approved gameplay fact or a final content format.
+
+### 2026-08-31 Road & Intersection Addendum
+
+The road profile, generated public-realm, conversion, frontage/access, and traffic/crossing rules above are approved. TrafficTopology owns road topology, anchors, and control semantics; TrafficManager owns transient traffic presentation; public-realm generation owns pedestrian topology. No costs or formulas are approved by this addendum.
 
 ---
 

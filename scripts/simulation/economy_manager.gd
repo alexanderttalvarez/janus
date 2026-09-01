@@ -14,6 +14,15 @@ const STARTING_BALANCE: int = 500_000
 ## Current money balance.
 var balance: int = STARTING_BALANCE
 
+## Monotonic authority revision used by coordinated district transactions.
+var authority_revision: int = 0
+
+## Pending balance change held until a district commit reaches its commit point.
+var _pending_district_balance_delta: int = 0
+
+## District reservation counter.
+var _district_reservation_counter: int = 0
+
 ## Active loans.
 var loans: Dictionary = {}  # Dictionary[String, LoanData]
 
@@ -43,8 +52,9 @@ func initialize(zone_manager: ZoneManager, tenant_manager: TenantManager) -> voi
 func add(amount: int, _reason: String = "") -> void:
 	if _infinite_money:
 		return
-	var old := balance
+	var old: int = balance
 	balance += amount
+	authority_revision += 1
 	balance_changed.emit(balance, balance - old)
 	EventBus.money_changed.emit(balance, balance - old)
 
@@ -54,11 +64,72 @@ func subtract(amount: int, _reason: String = "") -> bool:
 		return true
 	if balance < amount:
 		return false
-	var old := balance
+	var old: int = balance
 	balance -= amount
+	authority_revision += 1
 	balance_changed.emit(balance, balance - old)
 	EventBus.money_changed.emit(balance, balance - old)
 	return true
+
+
+# ── District Transaction Authority ────────────────────────────────────
+
+## Return the monotonic revision observed by District Runtime.
+func get_district_revision() -> int:
+	return authority_revision
+
+
+## Reserve an explicit value without mutating the balance.
+func district_reserve(value: int) -> Dictionary:
+	if value < 0:
+		return {"accepted": false, "diagnostics": [{"code": "ECONOMY_VALUE_INVALID", "message": "district transaction value cannot be negative"}]}
+	if not _infinite_money and balance < value:
+		return {"accepted": false, "diagnostics": [{"code": "INSUFFICIENT_FUNDS", "message": "economy balance cannot cover the requested reservation"}]}
+	_district_reservation_counter += 1
+	return {"accepted": true, "reservation_token": {"id": _district_reservation_counter, "value": value, "economy_revision": authority_revision}, "diagnostics": []}
+
+
+## Convert a reservation into a non-failing capture contract while its revision is held.
+func district_guarantee_capture(reservation: Dictionary) -> Dictionary:
+	var token: Dictionary = reservation.get("reservation_token", {})
+	if not bool(reservation.get("accepted", false)) or token.is_empty():
+		return {"accepted": false, "diagnostics": [{"code": "RESERVATION_REQUIRED", "message": "a valid economy reservation is required"}]}
+	if int(token.get("economy_revision", -1)) != authority_revision:
+		return {"accepted": false, "diagnostics": [{"code": "STALE_ECONOMY_REVISION", "message": "economy changed after reservation"}]}
+	if not _infinite_money and balance < int(token.get("value", 0)):
+		return {"accepted": false, "diagnostics": [{"code": "INSUFFICIENT_FUNDS", "message": "economy balance cannot guarantee capture"}]}
+	return {"accepted": true, "guaranteed_capture_token": token.duplicate(true), "diagnostics": []}
+
+
+## Apply a guaranteed capture silently; notifications flush after the commit point.
+func district_capture(guaranteed: Dictionary) -> Dictionary:
+	var token: Dictionary = guaranteed.get("guaranteed_capture_token", {})
+	if not bool(guaranteed.get("accepted", false)) or token.is_empty():
+		return {"accepted": false, "diagnostics": [{"code": "GUARANTEED_CAPTURE_REQUIRED", "message": "a guaranteed capture token is required"}]}
+	var value: int = int(token.get("value", 0))
+	if not _infinite_money and balance < value:
+		return {"accepted": false, "diagnostics": [{"code": "CAPTURE_NOT_GUARANTEED", "message": "economy balance changed before capture"}]}
+	if not _infinite_money:
+		balance -= value
+		authority_revision += 1
+		_pending_district_balance_delta -= value
+	return {"accepted": true, "diagnostics": []}
+
+
+## Cancel a reservation without changing the financial authority.
+func district_cancel(_reservation: Dictionary) -> Dictionary:
+	return {"accepted": true, "diagnostics": []}
+
+
+## Publish buffered balance notifications after District Runtime commits.
+func flush_district_notifications() -> Array[Dictionary]:
+	if _pending_district_balance_delta == 0:
+		return []
+	var delta: int = _pending_district_balance_delta
+	_pending_district_balance_delta = 0
+	balance_changed.emit(balance, delta)
+	EventBus.money_changed.emit(balance, delta)
+	return []
 
 
 # ── Rent Collection (Weekly) ───────────────────────────────────────────
@@ -170,6 +241,7 @@ func serialize() -> Dictionary:
 
 func deserialize(data: Dictionary) -> void:
 	balance = data.get("balance", STARTING_BALANCE)
+	authority_revision += 1
 	_loan_counter = data.get("loan_counter", 0)
 	loans.clear()
 	for lid: String in data.get("loans", {}):

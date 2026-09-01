@@ -100,7 +100,7 @@ Multiply tile-coordinate rectangle edges by four when storing `DistrictGridRect`
 
 ### Exact topology geometry
 
-Define boundary starts from prefix sums: horizontal boundary `hi` starts at `z = sum(row_depth[k] for k < i) + i*C`, and vertical boundary `vi` starts at `x = sum(column_width[k] for k < i) + i*C`. At the crossing of `hi` and `vi`, the intersection is exactly the `C x C` half-open rectangle `[vertical_start, vertical_start+C) x [horizontal_start, horizontal_start+C)`. Horizontal segment `(hi,col_j)` is the column-width-by-`C` rectangle between its adjacent intersections; vertical segment `(vi,row_i)` is the `C`-by-row-depth rectangle between its adjacent intersections. These formulas include the outer boundary intervals and generate all and only the H1 golden topology counts.
+Define boundary starts from prefix sums: horizontal boundary `hi` starts at `z = sum(row_depth[k] for k < i) + i*C`, and vertical boundary `vj` starts at `x = sum(column_width[k] for k < j) + j*C`. At the crossing of `hi` and `vj`, the intersection is exactly the `C x C` half-open rectangle `[vertical_start, vertical_start+C) x [horizontal_start, horizontal_start+C)`. Horizontal segment `(hi,col_j)` is the column-width-by-`C` rectangle between its adjacent intersections; vertical segment `(vj,row_i)` is the `C`-by-row-depth rectangle between its adjacent intersections. These formulas include the outer boundary intervals and generate all and only the H1 golden topology counts.
 
 Within a horizontal corridor, the first `P` tiles across `Z` form pedestrian band `NEGATIVE` (north), the last `P` form `POSITIVE` (south), and the middle is carriageway. Within a vertical corridor, the first `P` tiles across `X` form `NEGATIVE` (west), the last `P` form `POSITIVE` (east), and the middle is carriageway. Ordered lanes pack contiguously through that middle from the `NEGATIVE` band toward the `POSITIVE` band: first by carriageway order, then lane order. `FORWARD` means east on horizontal segments and south on vertical segments; `REVERSE` means west on horizontal segments and north on vertical segments. The H1 fixture order therefore places ordinal-0 `FORWARD` adjacent to the `NEGATIVE` band and ordinal-1 `REVERSE` adjacent to the `POSITIVE` band, with no geometric tie-break or traversal dependency.
 
@@ -198,6 +198,7 @@ Mutable collection aliases, incorrect RFC 8785 implementation, and unstable topo
 - H2 encoding/hash is fully decided.
 - H2's derived transform contract is the dimensionless integer-quarter `DistrictGridPose`; H4 owns physical projection.
 - Literal SHA values are proof outputs, not pre-proof architecture guesses.
+- **2026-08-31 Road & Intersection Addendum:** Corrected the vertical-boundary prefix notation to use column index `j`. H2 continues to resolve topology descriptors only; H4 remains projection lifecycle only, with no retroactive H4 semantic change.
 
 ## ASSUMPTIONS
 

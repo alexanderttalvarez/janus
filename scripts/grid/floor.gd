@@ -1,5 +1,6 @@
 ## Floor — Script for floor.tscn scene instances.
-## Spawns 25×25 individual tile meshes at runtime.
+## Uses bounded shared floor geometry; per-cell authority remains outside the scene.
+@tool
 class_name Floor
 extends Node3D
 
@@ -12,29 +13,30 @@ extends Node3D
 
 
 func _ready() -> void:
-	_spawn_tile_grid()
+	_update_grid_overlay()
 
 
-func _spawn_tile_grid() -> void:
-	var container := $TileContainer
-	if container == null:
+## Apply an H4 projection descriptor without creating per-cell Nodes.
+func apply_projection(descriptor: Dictionary, metrics: ProjectionMetrics) -> void:
+	if metrics == null:
 		return
+	var bounds: AABB = descriptor.get("bounds", AABB())
+	grid_width = maxi(1, int(round(bounds.size.x / metrics.grid_unit_size)))
+	grid_height = maxi(1, int(round(bounds.size.z / metrics.grid_unit_size)))
+	tile_size = metrics.grid_unit_size
+	_update_grid_overlay()
 
-	# Shared mesh and material for all tiles (single draw call).
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(tile_size, 0.1, tile_size)
 
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.5, 0.5, 0.5, 1.0)
-
-	for x in range(grid_width):
-		for y in range(grid_height):
-			var tile_mesh := MeshInstance3D.new()
-			tile_mesh.name = "Tile_%d_%d" % [x, y]
-			tile_mesh.mesh = mesh
-			tile_mesh.material_override = mat
-			tile_mesh.position = Vector3(x + 0.5, 0, y + 0.5)
-			container.add_child(tile_mesh)
+func _update_grid_overlay() -> void:
+	var overlay: MeshInstance3D = get_node_or_null("GridOverlay") as MeshInstance3D
+	if overlay == null or overlay.mesh == null:
+		return
+	var plane: PlaneMesh = overlay.mesh.duplicate() as PlaneMesh
+	if plane == null:
+		return
+	plane.size = Vector2(float(grid_width) * tile_size, float(grid_height) * tile_size)
+	overlay.mesh = plane
+	overlay.position = Vector3(float(grid_width) * tile_size / 2.0, overlay.position.y, float(grid_height) * tile_size / 2.0)
 
 
 ## Get the GridOrigin Marker3D for world-position reference.

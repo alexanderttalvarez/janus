@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors and required approvals.** H10 implementation starts after H1-H9 implementation and required design/migration approvals. H10 removes all ten executable adapters and gathers audit evidence; H10 acceptance, not implementation start, requires zero adapters and evidence for every coverage row.
+**Draft - implementation blocked by predecessors and required migration evidence.** H10 implementation starts after H1-H9 implementation and required migration evidence. H10 removes all ten executable adapters and gathers audit evidence; H10 acceptance, not implementation start, requires zero adapters and evidence for every coverage row.
 
 ## Purpose
 
@@ -10,8 +10,8 @@ Remove runtime compatibility scaffolding and prove the complete target authority
 
 ## Dependencies
 
-- Implemented [H1](01_definition_schema_and_validation.md), [H2](02_resolved_district_model.md), [H3](03_variable_floor_grid_migration.md), [H4](04_world_projection_and_editor_preview.md), [H5](05_street_and_pedestrian_generation.md), [H6](06_camera_and_pedestrian_gateways.md), [H7](07_traffic_topology_migration.md), [H8](08_visitor_arrival_mvp_migration.md), and [H9](09_save_load_v2.md), with their required design and migration approvals recorded.
-- Recorded approval and implementation of both H5 design decisions: one selected corner-frontage alternative and one selected public-band physical parcel-door alternative.
+- Implemented [H1](01_definition_schema_and_validation.md), [H2](02_resolved_district_model.md), [H3](03_variable_floor_grid_migration.md), [H4](04_world_projection_and_editor_preview.md), [H5](05_street_and_pedestrian_generation.md), [H6](06_camera_and_pedestrian_gateways.md), [H7](07_traffic_topology_migration.md), [H8](08_visitor_arrival_mvp_migration.md), and [H9](09_save_load_v2.md), with their required migration evidence recorded.
+- Implemented and tested the approved H5 zero-corner-frontage and topology-backed public-band physical access contracts.
 
 ## Source-of-truth documents
 
@@ -97,8 +97,8 @@ Every row requires classified static/dependency evidence plus named behavioral e
 | `World/TrafficLayout/Lanes` and all eight `Lane_*` names | H7 | No authored graph lookup; generated graph goldens. |
 | Marker families `Spawn`, `StopLine`, `Exit`, `SourceClear`, `IntersectionHold`, `IntersectionClear` | H7 | Stable control-anchor kinds; no Node-name contract. |
 | `NW`, `NE`, `SW`, `SE` traffic/source authority | H6/H7/H9 | Stable topology IDs and detached source migration only. |
-| Fixed exterior door coordinates/public-band physical-door access | H5 | Recorded approved H5 physical-door alternative (A, B, or C), selected-rule evidence, and rejection of unselected alternatives. |
-| Corner-only frontage attribution | H5 | Recorded approved H5 corner-frontage alternative (A, B, or C), selected-rule below/exact/above-threshold evidence, and rejection of unselected alternatives. |
+| Fixed exterior door coordinates/public-band physical-door access | H5 | Stable active pedestrian-graph edge identity without ownership transfer; implementation and migration evidence. |
+| Corner-only frontage attribution | H5 | Zero contribution; below/exact/above-threshold evidence and implementation/migration evidence. |
 | `PedestrianArea` size 25 and margin/ring | H5 | Final generated pedestrian graph and bands. |
 | Garbage coordinates `2..22`, if present | H3 | Explicit-address/shape-aware placement or classified unrelated. |
 | Zero-origin and world-Y=0 pick math | H3/H4 | Snapshot transform round trips at translated plots/elevations. |
@@ -116,7 +116,7 @@ The final matrix records file/line or tool artifact, test/fixture name, and pass
 
 - Exactly ten adapters are removed; all stale aliases and unnamed equivalents are absent.
 - Every coverage row has objective evidence and all three fixtures pass end to end.
-- Both H5 DESIGN BLOCKERS have recorded approvals and implemented tests: corner-frontage attribution and public-band physical doors; `LegacyExteriorAccessAdapter` is gone.
+- Approved H5 frontage and public-band access contracts have implementation and migration tests; `LegacyExteriorAccessAdapter` is gone.
 - Save V2 round-trip, recognized V1 conversion, malformed/unknown/fingerprint rejection, and post-commit-only event pass.
 - Projection destruction/rebuild preserves authority; editor/runtime parity and clean console pass.
 - Concrete H1-H9 performance budgets pass with no repeated-cycle leak.

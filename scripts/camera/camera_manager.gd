@@ -62,7 +62,10 @@ var _zoom_tween: Tween
 
 ## Position limit center and radius (set from GridManager on init).
 var _limit_center: Vector3 = Vector3.ZERO
-var _limit_radius: float = 50.0  # 20 tiles × TILE_SIZE(2.0) + buffer
+var _limit_radius: float = 50.0  # Legacy fallback only; H6 supplies the active union.
+
+## H6 immutable camera envelope. Null preserves legacy fallback behavior.
+var _camera_bounds_snapshot: CameraBoundsSnapshot
 
 # ── OnReady References ─────────────────────────────────────────────────
 
@@ -201,26 +204,28 @@ func pan_camera(offset: Vector2) -> void:
 	var speed := _current_zoom * 2.0
 	var pan_dir := Vector3(offset.x * speed, 0, offset.y * speed)
 	pan_dir = pan_dir.rotated(Vector3.UP, _pivot.rotation.y)
-	_pivot.position += pan_dir
-	# Clamp — zoomed IN (small size) = bigger radius, zoomed OUT (big size) = smaller radius.
-	var max_radius := clampf(1000.0 / _current_zoom, 15.0, 200.0)
-	var rig_offset := Vector3(_pivot.position.x, 0.0, _pivot.position.z)
-	if rig_offset.length() > max_radius:
-		rig_offset = rig_offset.normalized() * max_radius
-		_pivot.position.x = rig_offset.x
-		_pivot.position.z = rig_offset.z
+	if _camera_bounds_snapshot == null or _camera_bounds_snapshot.empty:
+		return
+	var candidate: Vector3 = _pivot.global_position + pan_dir
+	_pivot.global_position = _camera_bounds_snapshot.clamp_world_position(candidate)
 
 
 # ── Focus ──────────────────────────────────────────────────────────────
 
 ## Smoothly focus the camera on a world position.
 func focus_on(target_position: Vector3) -> void:
+	if _camera_bounds_snapshot != null:
+		if _camera_bounds_snapshot.empty:
+			return
+		target_position = _camera_bounds_snapshot.clamp_world_position(target_position)
 	_focus_target.global_position = target_position
+	var pivot_target := Vector3(target_position.x, _pivot.global_position.y, target_position.z)
 
 	var tween := create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_CUBIC)
-	tween.tween_property(self, "global_position", target_position, 0.3)
+	tween.tween_property(_pivot, "global_position", pivot_target, 0.3)
+	tween.parallel().tween_property(self, "global_position:y", target_position.y, 0.3)
 
 
 # ── Floor Navigation ───────────────────────────────────────────────────
@@ -298,6 +303,15 @@ func _apply_floor_visibility(_current_level: String) -> void:
 func set_position_limit(center: Vector3, radius: float) -> void:
 	_limit_center = center
 	_limit_radius = radius
+
+
+## Replace the legacy radial clamp with an immutable H6 camera envelope.
+func set_camera_bounds_snapshot(snapshot: CameraBoundsSnapshot) -> void:
+	_camera_bounds_snapshot = null if snapshot == null else snapshot.duplicate_value()
+
+
+func get_camera_bounds_snapshot() -> CameraBoundsSnapshot:
+	return null if _camera_bounds_snapshot == null else _camera_bounds_snapshot.duplicate_value()
 
 
 ## Clamp camera position to stay within the allowed area.

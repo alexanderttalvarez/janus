@@ -13,6 +13,9 @@ var assignment_mode: AssignmentMode = AssignmentMode.DEBUG_IMMEDIATE
 ## All zones, keyed by zone ID.
 var zones: Dictionary = {}  # Dictionary[String, ZoneData]
 
+## Monotonic authority revision used by coordinated district transactions.
+var authority_revision: int = 0
+
 ## Zone ID counter for generating unique IDs.
 var _zone_counter: int = 0
 
@@ -27,6 +30,48 @@ var last_split_result: SplitResult
 
 ## Most recent committed debug subtype assignment result.
 var last_assignment_result: BusinessAssignmentResult
+
+
+# ── District Transaction Authority ────────────────────────────────────
+
+
+## Return the monotonic revision observed by District Runtime.
+func get_district_revision() -> int:
+	return authority_revision
+
+
+## Prepare a detached coordination token without writing zone authority.
+func prepare_district_candidate(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	return {
+		"accepted": true,
+		"prepare_token": {
+			"intent": intent.duplicate(true),
+			"candidate_state": candidate_state.duplicate(true),
+			"prior_zone_state": serialize(),
+			"zone_revision": authority_revision,
+			"mutated": false,
+		},
+		"diagnostics": [],
+	}
+
+
+## Commit a prepared district coordination token. H3 district operations do not write zones.
+func commit_district_candidate(prepare_result: Dictionary) -> Dictionary:
+	var prepare_token: Dictionary = prepare_result.get("prepare_token", prepare_result)
+	if prepare_token.is_empty() or int(prepare_token.get("zone_revision", -1)) != authority_revision:
+		return {"accepted": false, "diagnostics": [{"code": "STALE_ZONE_REVISION", "message": "zone authority changed before coordinated commit"}]}
+	return {"accepted": true, "diagnostics": []}
+
+
+## Restore a prior zone reference if a pre-append failure occurs.
+func undo_district_candidate(prepare_result: Dictionary) -> Dictionary:
+	var prepare_token: Dictionary = prepare_result.get("prepare_token", prepare_result)
+	if prepare_token.is_empty() or not bool(prepare_token.get("mutated", false)):
+		return {"accepted": true, "diagnostics": []}
+	var prior: Variant = prepare_token.get("prior_zone_state", {})
+	if prior is Dictionary:
+		deserialize(prior)
+	return {"accepted": true, "diagnostics": []}
 
 
 # ── Assignment Mode ───────────────────────────────────────────────────
@@ -76,6 +121,7 @@ func create_zone(
 				committed_zone = existing
 		_mark_zone_tiles(committed_zone)
 	_rebuild_pathfinding()
+	authority_revision += 1
 	EventBus.zone_created.emit(candidate.id, candidate.type, candidate.tiles.size())
 	for committed_zone: ZoneData in transaction:
 		if committed_zone != candidate:
@@ -166,6 +212,7 @@ func paint_zone(
 	_copy_zone_state(candidate, survivor)
 	_mark_zone_tiles(survivor)
 	_rebuild_pathfinding()
+	authority_revision += 1
 	EventBus.zone_modified.emit(survivor.id)
 	for source: ZoneData in source_zones:
 		if source.id != survivor.id:
@@ -228,6 +275,7 @@ func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: Strin
 			_mark_zone_tiles(source)
 			EventBus.zone_modified.emit(zone_id)
 	_rebuild_pathfinding()
+	authority_revision += 1
 	return candidates[0] if not candidates.is_empty() else null
 
 
@@ -490,6 +538,7 @@ func modify_zone(
 				_mark_zone_tiles(existing)
 	_mark_zone_tiles(zone)
 	_rebuild_pathfinding()
+	authority_revision += 1
 	EventBus.zone_modified.emit(zone_id)
 	for committed_zone: ZoneData in transaction:
 		if committed_zone != candidate:
@@ -730,6 +779,7 @@ func delete_zone(zone_id: String, plot_id: String = "") -> void:
 			grid_manager.sell_tile(tile_pos.x, tile_pos.y, zone.plot_id, zone.floor)
 	zones.erase(zone_id)
 	_rebuild_pathfinding()
+	authority_revision += 1
 	EventBus.zone_deleted.emit(zone_id)
 
 
@@ -821,6 +871,7 @@ func deserialize(data: Dictionary) -> void:
 			zone.parcels.append(parcel)
 			_parcel_display_number_counter = maxi(_parcel_display_number_counter, parcel.display_number)
 		zones[zone.id] = zone
+	authority_revision += 1
 
 
 # ── Atomic Split Preparation ───────────────────────────────────────────

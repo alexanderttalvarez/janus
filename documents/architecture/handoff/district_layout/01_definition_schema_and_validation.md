@@ -54,7 +54,7 @@ Validated normalized integer/string/bool/null/array/object values are immutable.
 
 ### Token layers and validation
 
-Each UTF-8/LF whitespace-token grid represents one concept. Section, fixed occupancy, and buildability are separate. `.` is layer absence. Ownership/availability are metadata sets. Acquired and constructed state are forbidden. Every normalized cell set or mask is duplicate-free and ordered row-major ascending by `(y,x)`, comparing `y` first and then `x`. Sections are non-empty, in-bounds, non-overlapping, and 4-connected. For every `PLOT` slot, `buildability_mask` is exactly the set union of all section masks; no additional or missing cell is valid. Every non-`PLOT` slot has exactly empty `sections` and an empty `buildability_mask`. Fixed occupancy remains a separate layer and never changes either invariant; each occupant's elevation-mask records are duplicate-free by elevation and ordered by signed elevation ascending, and every nested mask uses the same row-major order. Physical elevations are `0,+1..+9,-1..-5`; stricter template/slot caps are allowed. Pedestrian bands are 5-10 tiles; lanes are exactly 3 tiles, at least one each direction, with same-direction lanes contiguous. The outer ring is complete and permanent.
+Each UTF-8/LF whitespace-token grid represents one concept. Section, fixed occupancy, and buildability are separate. `.` is layer absence. Ownership/availability are metadata sets. Acquired and constructed state are forbidden. Every normalized cell set or mask is duplicate-free and ordered row-major ascending by `(y,x)`, comparing `y` first and then `x`. Sections are non-empty, in-bounds, non-overlapping, and 4-connected. Every row depth and column width is at least 18 tiles. For every `PLOT` slot, `buildability_mask` is exactly the set union of all section masks; no additional or missing cell is valid. Every non-`PLOT` slot has exactly empty `sections` and an empty `buildability_mask`. Fixed occupancy remains a separate layer and never changes either invariant; each occupant's elevation-mask records are duplicate-free by elevation and ordered by signed elevation ascending, and every nested mask uses the same row-major order. Physical elevations are `0,+1..+9,-1..-5`; stricter template/slot caps are allowed. Pedestrian bands are 5-10 tiles; each road profile has 2-6 total 3-tile lanes, at least one lane per direction, and contiguous same-direction groups. The outer ring is complete and permanent.
 
 ### Canonical semantic input
 
@@ -249,6 +249,7 @@ Resource aliasing, noisy grids, over-flexible overrides, and selector vocabulary
 
 - Exact fixture geometry and section mappings above are normative.
 - H1 owns semantic inclusion; H2 owns encoding/hash.
+- **2026-08-31 Road & Intersection Addendum:** Row depths and column widths have a minimum of 18 tiles. Road profiles have 2-6 total 3-tile lanes, with at least one lane per direction and contiguous same-direction groups.
 
 ## ASSUMPTIONS
 

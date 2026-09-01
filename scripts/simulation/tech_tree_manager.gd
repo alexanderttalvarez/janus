@@ -23,6 +23,9 @@ var nodes: Dictionary = {}  # Dictionary[String, TechNode]
 ## Unlocked node IDs.
 var unlocked: Array[String] = []
 
+## Monotonic authority revision used by coordinated district transactions.
+var authority_revision: int = 0
+
 ## Available tech points to spend.
 var available_points: int = 0:
 	set(value):
@@ -57,8 +60,14 @@ func _add_node(id: String, name_key: String, desc: String, pos: Vector2i, pre: A
 	nodes[id] = node
 
 
+## Return the monotonic progression revision.
+func get_district_revision() -> int:
+	return authority_revision
+
+
 ## Earn tech points (from PrestigeManager level-ups).
 func earn_points(amount: int) -> void:
+	authority_revision += 1
 	available_points += amount
 	total_earned += amount
 	points_changed.emit(available_points, total_earned)
@@ -86,6 +95,7 @@ func unlock_node(node_id: String) -> bool:
 	var node: TechNode = nodes[node_id]
 	available_points -= node.cost
 	unlocked.append(node_id)
+	authority_revision += 1
 	point_spent.emit(node_id)
 	EventBus.tech_point_spent.emit(node_id)
 	EventBus.tech_points_changed.emit(available_points, total_earned)
@@ -98,5 +108,6 @@ func serialize() -> Dictionary:
 
 func deserialize(data: Dictionary) -> void:
 	unlocked = data.get("unlocked", [])
+	authority_revision += 1
 	available_points = data.get("available_points", 0)
 	total_earned = data.get("total_earned", 0)

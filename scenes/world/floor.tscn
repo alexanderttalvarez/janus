@@ -14,6 +14,12 @@ shader_parameter/fill_color = Color(0.3, 0.3, 0.3, 0)
 [sub_resource type="PlaneMesh" id="PlaneMesh_grid"]
 size = Vector2(25, 25)
 
+[sub_resource type="BoxMesh" id="BoxMesh_sxe5j"]
+size = Vector3(25, 0.1, 25)
+
+[sub_resource type="BoxMesh" id="BoxMesh_h1bvl"]
+size = Vector3(25, 0.1, 25)
+
 [node name="root" type="Node3D" unique_id=1702305805]
 script = ExtResource("1_floor")
 
@@ -33,3 +39,27 @@ mesh = SubResource("PlaneMesh_grid")
 [node name="VisitorContainer" type="Node3D" parent="." unique_id=511421404]
 
 [node name="IndicatorContainer" type="Node3D" parent="." unique_id=1953963790]
+
+[node name="FloorPlane" type="MeshInstance3D" parent="." unique_id=1848205209]
+visible = false
+mesh = SubResource("BoxMesh_sxe5j")
+
+[node name="WallMesh" type="MeshInstance3D" parent="." unique_id=870520680]
+visible = false
+mesh = SubResource("BoxMesh_h1bvl")
+
+[node name="WallContainer" type="Node3D" parent="." unique_id=68720075]
+
+[node name="DoorContainer" type="Node3D" parent="." unique_id=272862298]
+
+[node name="OverlayContainer" type="Node3D" parent="." unique_id=549667071]
+
+[node name="HeatmapContainer" type="Node3D" parent="." unique_id=1634146360]
+
+[node name="LabelContainer" type="Node3D" parent="." unique_id=825179609]
+
+[node name="DebugContainer" type="Node3D" parent="." unique_id=34789360]
+
+[node name="PickingContainer" type="Node3D" parent="." unique_id=2130054131]
+
+[node name="BoundsContainer" type="Node3D" parent="." unique_id=2090556746]

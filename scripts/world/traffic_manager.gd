@@ -163,6 +163,10 @@ var _next_car_id: int = 1
 var _crosswalk_stop_requests: Dictionary = {}
 var _intersection_coordinator: IntersectionCoordinator = IntersectionCoordinator.new()
 var _next_reservation_request_order: int = 1
+var _road_graph: RoadGraphSnapshot
+var _topology_mode: bool = false
+var _control_clock: TrafficControlClock = load("res://scripts/traffic/traffic_control_clock.gd").new() as TrafficControlClock
+var _control_offsets: Dictionary = {}
 
 
 func _ready() -> void:
@@ -180,12 +184,46 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	_control_clock.advance(delta)
 	if not traffic_enabled:
 		return
 	_simulation_time += delta
 	for lane: LaneState in _lanes:
 		_update_lane(lane, delta)
 	_spawn_due_cars()
+
+
+## Bind transient traffic behavior to the latest immutable H7 graph.
+## TrafficManager owns no topology and never vetoes a graph replacement.
+func set_road_graph(snapshot: RoadGraphSnapshot) -> void:
+	_road_graph = null if snapshot == null else snapshot.duplicate_value()
+	_topology_mode = _road_graph != null
+	clear_active_cars()
+	_lanes.clear()
+	_control_offsets.clear()
+	if _topology_mode:
+		if not _initialize_graph_lanes():
+			push_error("TrafficManager could not bind the H7 road graph")
+			_topology_mode = false
+			set_physics_process(false)
+		else:
+			set_physics_process(true)
+
+
+func get_road_graph_revision() -> int:
+	return -1 if _road_graph == null else _road_graph.graph_revision
+
+
+func set_control_clock_paused(value: bool) -> void:
+	_control_clock.set_paused(value)
+
+
+func set_control_time_scale(value: float) -> void:
+	_control_clock.set_time_scale(value)
+
+
+func get_control_clock() -> TrafficControlClock:
+	return _control_clock
 
 
 ## Enable or disable the traffic simulation. Disabling removes active cars.
@@ -224,6 +262,38 @@ func get_active_car_count() -> int:
 	for lane: LaneState in _lanes:
 		total += lane.cars.size()
 	return total
+
+
+func _initialize_graph_lanes() -> bool:
+	if _road_graph == null or _road_graph.lanes.is_empty():
+		return false
+	for record: Dictionary in _road_graph.lanes:
+		var lane := LaneState.new()
+		lane.id = StringName(record.get("id", ""))
+		lane.crosswalk_id = StringName(_crosswalk_id_for_segment(String(record.get("segment_id", ""))))
+		lane.start_position = record.get("start_position", Vector3.ZERO)
+		lane.direction = record.get("direction_vector", Vector3.FORWARD)
+		lane.length = float(record.get("length", 0.0))
+		lane.source_zone_id = StringName(record.get("source_zone_id", ""))
+		lane.later_zone_id = StringName(record.get("destination_zone_id", ""))
+		if lane.length <= 0.01 or lane.direction.length_squared() <= 0.01:
+			return false
+		lane.stop_distance = lane.length * 0.45
+		lane.source_clear_distance = lane.length * 0.30
+		lane.intersection_hold_distance = lane.length * 0.65
+		lane.intersection_clear_distance = lane.length * 0.85
+		lane.next_spawn_time = _simulation_time + _rng.randf_range(0.75, 3.0)
+		_lanes.append(lane)
+	for control: Dictionary in _road_graph.traffic_controls:
+		_control_offsets[String(control.get("crosswalk_id", ""))] = float(control.get("offset_t", 0.0))
+	return true
+
+
+func _crosswalk_id_for_segment(segment_id: String) -> String:
+	for crosswalk: Dictionary in _road_graph.crosswalks:
+		if String(crosswalk.get("segment_id", "")) == segment_id:
+			return String(crosswalk.get("id", ""))
+	return ""
 
 
 func _initialize_lanes() -> bool:
@@ -298,12 +368,18 @@ func _update_lane(lane: LaneState, delta: float) -> void:
 func _update_car(lane: LaneState, car: CarState, leader: CarState, delta: float) -> void:
 	if car.crosswalk_phase == CROSSWALK_HOLDING:
 		car.speed = 0.0
-		car.hold_remaining -= delta
-		if car.hold_remaining <= 0.0:
-			car.crosswalk_phase = CROSSWALK_CLEARED
-			crosswalk_hold_finished.emit(lane.crosswalk_id, car.id)
+		if _topology_mode:
+			if not _should_stop_at_crosswalk(lane.crosswalk_id):
+				car.crosswalk_phase = CROSSWALK_CLEARED
+				crosswalk_hold_finished.emit(lane.crosswalk_id, car.id)
+		else:
+			car.hold_remaining -= delta
+			if car.hold_remaining <= 0.0:
+				car.crosswalk_phase = CROSSWALK_CLEARED
+				crosswalk_hold_finished.emit(lane.crosswalk_id, car.id)
 		_apply_car_transform(lane, car)
-		return
+		if car.crosswalk_phase == CROSSWALK_HOLDING:
+			return
 
 	var target_speed := car.desired_speed
 	target_speed = minf(target_speed, _get_intersection_speed_limit(lane, car, leader))
@@ -533,7 +609,13 @@ func _collect_geometry_nodes(node: Node, result: Array[GeometryInstance3D]) -> v
 
 
 func _should_stop_at_crosswalk(crosswalk_id: StringName) -> bool:
-	return mandatory_crosswalk_stops or _crosswalk_stop_requests.get(crosswalk_id, false)
+	if _crosswalk_stop_requests.get(crosswalk_id, false):
+		return true
+	if _topology_mode:
+		if not _control_offsets.has(String(crosswalk_id)):
+			return false
+		return _control_clock.vehicle_state(float(_control_offsets[String(crosswalk_id)])) != &"GREEN"
+	return mandatory_crosswalk_stops
 
 
 func _speed_to_stop(distance: float) -> float:

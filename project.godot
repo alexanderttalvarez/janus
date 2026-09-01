@@ -33,7 +33,7 @@ window/stretch/aspect="expand"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/godotiq/plugin.cfg")
+enabled=PackedStringArray("res://addons/district_projection_preview/plugin.cfg", "res://addons/godotiq/plugin.cfg")
 
 [input]
 
