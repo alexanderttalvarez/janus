@@ -26,6 +26,8 @@ var _traffic_topology: TrafficTopology
 var _legacy_grid_projection: RefCounted
 var _parcel_label_renderer: ParcelLabelRenderer
 var _zone_label_renderer: ZoneLabelRenderer
+var _arrival_coordinator: ArrivalCoordinator
+var _visitor_demand_authority: VisitorDemandAuthority
 
 
 func _ready() -> void:
@@ -42,6 +44,7 @@ func _ready() -> void:
 	_initialize_synergy()
 	_initialize_district_runtime()
 	_initialize_projection()
+	_initialize_arrivals()
 	_initialize_zone_tool()
 	_initialize_walls()
 
@@ -351,6 +354,36 @@ func _initialize_synergy() -> void:
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
 
+func _initialize_arrivals() -> void:
+	if _district_runtime == null or _public_realm_projection == null or _camera_gateway_projection == null or _visitor_manager == null:
+		push_error("MainGame: Arrival MVP dependencies are required.")
+		return
+	var graph: PedestrianGraphSnapshot = _public_realm_projection.get_graph_snapshot()
+	var gateways: GatewayEligibilitySnapshot = _camera_gateway_projection.get_gateway_eligibility_snapshot()
+	if graph == null or gateways == null:
+		push_error("MainGame: Arrival MVP requires committed H5/H6 snapshots.")
+		return
+	_arrival_coordinator = load("res://scripts/simulation/arrival_coordinator.gd").new() as ArrivalCoordinator
+	var setup: Dictionary = _arrival_coordinator.initialize(_district_runtime, graph, gateways, _visitor_manager)
+	if not bool(setup.get("valid", false)):
+		push_error("MainGame: Arrival coordinator setup failed: %s" % setup.get("diagnostics", []))
+		return
+	_visitor_demand_authority = load("res://scripts/simulation/visitor_demand_authority.gd").new() as VisitorDemandAuthority
+	_visitor_demand_authority.set_desired_count(VisitorManager.MAX_VISITORS)
+	_arrival_coordinator.set_demand_authority(_visitor_demand_authority)
+	_visitor_manager.configure_arrival_coordinator(_arrival_coordinator)
+	_camera_gateway_projection.rebuilt.connect(_on_arrival_gateway_rebuilt)
+	print("MainGame: Arrival MVP initialized — demand, source allocation, and realization separated.")
+
+
+func _on_arrival_gateway_rebuilt(_bounds: CameraBoundsSnapshot, gateways: GatewayEligibilitySnapshot) -> void:
+	if _arrival_coordinator == null or _public_realm_projection == null:
+		return
+	var graph: PedestrianGraphSnapshot = _public_realm_projection.get_graph_snapshot()
+	if graph != null and gateways != null:
+		_arrival_coordinator.set_snapshots(graph, gateways)
+
+
 func _initialize_zone_tool() -> void:
 	if _zone_tool == null:
 		push_error("MainGame: ZoneTool not found.")
@@ -394,6 +427,8 @@ func _unhandled_input(event: InputEvent) -> void:
 # ── Save / Load ────────────────────────────────────────────────────────
 
 func save_game(slot: int) -> void:
+	if _arrival_coordinator != null and _arrival_coordinator.get_gate().is_held():
+		return
 	var gm: GridManager = _world.get_node("GridManager") as GridManager
 	var zm: ZoneManager = _world.get_node("ZoneManager") as ZoneManager
 	var data := {
@@ -412,6 +447,8 @@ func save_game(slot: int) -> void:
 
 
 func load_game(slot: int) -> void:
+	if _arrival_coordinator != null and _arrival_coordinator.get_gate().is_held():
+		return
 	var data: Variant = SaveManager.load_game(slot)
 	if data == null or not data is Dictionary:
 		return

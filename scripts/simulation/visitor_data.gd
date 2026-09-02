@@ -15,6 +15,12 @@ enum NeedType { HUNGER, BOREDOM, SHOPPING_URGE, REST, SOCIAL }
 ## Unique identifier.
 var id: String = ""
 
+## Stable arrival source selected by the H8 coordinator.
+var arrival_source_id: String = ""
+
+## Demand snapshot identity used for the immediate arrival transaction.
+var demand_snapshot_id: String = ""
+
 ## Current state machine state name (e.g., "entering", "moving", "leaving").
 var current_state: String = "entering"
 
@@ -70,6 +76,8 @@ var spawn_time: float = 0.0
 ## Initialize a new visitor with randomized attributes.
 func initialize(p_id: String, p_floor: String, p_position: Vector3) -> void:
 	id = p_id
+	arrival_source_id = ""
+	demand_snapshot_id = ""
 	floor_level = p_floor
 	location_type = "pedestrian_area"
 	entry_door_side = 0

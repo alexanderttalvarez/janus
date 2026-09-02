@@ -41,6 +41,26 @@ var _grid_manager: GridManager
 var _pathfinding_graph: PathfindingGraph
 var _visitor_scene: PackedScene
 var _visitor_mode_opacity: float = 1.0
+var _arrival_coordinator: ArrivalCoordinator
+var _arrival_commit_gate: ArrivalCommitGate
+var prepare_arrival_enabled: bool = true
+var commit_arrival_enabled: bool = true
+
+
+func configure_arrival_coordinator(coordinator: ArrivalCoordinator) -> void:
+	_arrival_coordinator = coordinator
+
+
+func set_arrival_commit_gate(gate: ArrivalCommitGate) -> void:
+	_arrival_commit_gate = gate
+
+
+func get_arrival_commit_gate() -> ArrivalCommitGate:
+	return _arrival_commit_gate
+
+
+func get_active_visitor_count() -> int:
+	return all_visitors.size()
 
 
 func _ready() -> void:
@@ -54,17 +74,24 @@ func _ready() -> void:
 		push_error("VisitorManager: World/Visitors visual container not found.")
 		return
 
-	GameManager.ui_mode_changed.connect(_on_ui_mode_changed)
-	EventBus.zone_created.connect(_on_zone_created)
-	EventBus.zone_modified.connect(_on_zone_modified)
-	EventBus.door_changed.connect(_on_door_changed)
+	var game_manager: Node = get_node_or_null("/root/GameManager")
+	if game_manager != null:
+		game_manager.connect("ui_mode_changed", _on_ui_mode_changed)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.connect("zone_created", _on_zone_created)
+		event_bus.connect("zone_modified", _on_zone_modified)
+		event_bus.connect("door_changed", _on_door_changed)
 	_visitor_mode_opacity = _get_mode_visitor_opacity()
 	_apply_culling()
 
 
 ## Called by TimeManager on each visitor_tick.
 func on_visitor_tick() -> void:
-	_spawn_visitors_if_needed()
+	if _arrival_coordinator != null:
+		_arrival_coordinator.on_visitor_tick()
+	else:
+		_spawn_visitors_if_needed()
 	_decay_visitor_needs()
 	_sync_data_positions()
 	_apply_culling()
@@ -95,7 +122,9 @@ func _spawn_visitor_at_plot_spawn_point() -> void:
 	visitor.target_position = _pedestrian_area.get_waypoint(visitor.waypoint_index)
 	visitor.current_state = "moving"
 	all_visitors.append(visitor)
-	EventBus.visitor_entered.emit(visitor.id)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("visitor_entered", visitor.id)
 
 
 
@@ -377,7 +406,8 @@ func _get_door_interior_position(side: int) -> Vector2i:
 # ── Culling ────────────────────────────────────────────────────────────
 
 func _get_mode_visitor_opacity() -> float:
-	return BUILDING_MODE_VISITOR_OPACITY if GameManager.ui_mode == GameManager.UIMode.BUILD else 1.0
+	var game_manager: Node = get_node_or_null("/root/GameManager")
+	return BUILDING_MODE_VISITOR_OPACITY if game_manager != null and int(game_manager.get("ui_mode")) == 0 else 1.0
 
 
 func _on_ui_mode_changed(_mode: String) -> void:
@@ -460,9 +490,26 @@ func on_zoom_changed(zoom: float) -> void:
 
 # ── Lifecycle ──────────────────────────────────────────────────────────
 
-## Request a voluntary exit through a selected plot spawn point.
+## Request a voluntary exit through a canonically selected eligible arrival source.
 func request_visitor_leave(visitor_id: String, spawn_point_id: String = "") -> void:
-	var spawn_points := _grid_manager.get_spawn_points(GridManager.DEFAULT_PLOT) if _grid_manager else []
+	if _arrival_coordinator != null:
+		var selected: Dictionary = _arrival_coordinator.select_exit_source()
+		if not bool(selected.get("valid", false)):
+			return
+		var source: Dictionary = selected.get("source", {})
+		for visitor: VisitorData in all_visitors:
+			if visitor.id != visitor_id or visitor.current_state == "leaving":
+				continue
+			visitor.arrival_source_id = String(source.get("arrival_source_id", ""))
+			visitor.current_state = "leaving"
+			visitor.target_position = _source_position(source)
+			if visitor.is_visible and is_instance_valid(visitor.visual_node):
+				var visual := visitor.visual_node as Visitor
+				if visual:
+					visual.set_target(visitor.target_position)
+			return
+		return
+	var spawn_points: Array = _grid_manager.get_spawn_points(GridManager.DEFAULT_PLOT) if _grid_manager else []
 	for visitor: VisitorData in all_visitors:
 		if visitor.id != visitor_id or visitor.current_state == "leaving":
 			continue
@@ -486,13 +533,77 @@ func request_visitor_leave(visitor_id: String, spawn_point_id: String = "") -> v
 		return
 
 
+## Prepare a detached visitor record without exposing it to lifecycle, save, or observers.
+func prepare_detached_visitor(arrival_source_id: String, source_record: Dictionary, demand_snapshot: ArrivalDemandSnapshot) -> Dictionary:
+	if not prepare_arrival_enabled:
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_PREPARE_FAILED", "message": "visitor preparation was rejected"}]}
+	if arrival_source_id.is_empty() or demand_snapshot == null:
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_PREPARE_INPUT_INVALID", "message": "arrival source and demand snapshot are required"}]}
+	var position: Vector3 = _source_position(source_record)
+	var counter_before: int = _visitor_counter
+	var visitor := VisitorData.new()
+	visitor.initialize(_next_id(), "G", position)
+	visitor.arrival_source_id = arrival_source_id
+	visitor.demand_snapshot_id = demand_snapshot.snapshot_id
+	visitor.location_type = "pedestrian_area"
+	visitor.position = position
+	visitor.target_position = position
+	visitor.current_state = "moving"
+	visitor.spawn_point_id = ""
+	return {
+		"valid": true,
+		"visitor": visitor,
+		"visitor_id": visitor.id,
+		"arrival_source_id": arrival_source_id,
+		"demand_snapshot_id": demand_snapshot.snapshot_id,
+		"counter_before": counter_before,
+		"source": source_record.duplicate(true),
+		"diagnostics": [],
+	}
+
+
+## Commit a prepared record into VisitorManager-owned immutable visitor state.
+func commit_prepared_visitor(prepared: Dictionary) -> Dictionary:
+	if not commit_arrival_enabled:
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_COMMIT_FAILED", "message": "visitor commit was rejected"}]}
+	if _arrival_commit_gate != null and not _arrival_commit_gate.is_held():
+		return {"valid": false, "diagnostics": [{"code": "ARRIVAL_GATE_REQUIRED", "message": "visitor state may only commit while the arrival gate is held"}]}
+	var visitor: VisitorData = prepared.get("visitor", null) as VisitorData
+	if visitor == null or String(prepared.get("visitor_id", "")) != visitor.id:
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_RECORD_INVALID", "message": "prepared visitor record is invalid"}]}
+	all_visitors.append(visitor)
+	return {"valid": true, "visitor": visitor, "diagnostics": []}
+
+
+## Restore VisitorManager state after a pre-append failure.
+func rollback_prepared_visitor(prepared: Dictionary) -> void:
+	var visitor_id: String = String(prepared.get("visitor_id", ""))
+	for index: int in range(all_visitors.size() - 1, -1, -1):
+		if all_visitors[index].id == visitor_id:
+			_hide_visitor(all_visitors[index])
+			all_visitors.remove_at(index)
+			break
+	_visitor_counter = int(prepared.get("counter_before", _visitor_counter))
+
+
+func _source_position(source_record: Dictionary) -> Vector3:
+	if source_record.get("position", null) is Vector3:
+		return source_record["position"]
+	var pose: Dictionary = source_record.get("pose", {})
+	if pose.is_empty():
+		pose = source_record.get("gateway_projection", {}).get("baseline_pose", {})
+	return Vector3(float(pose.get("x4", 0)) / 4.0, float(pose.get("elevation", 0)) * 3.0, float(pose.get("z4", 0)) / 4.0)
+
+
 ## Remove a visitor and their visual node.
 func remove_visitor(visitor_id: String) -> void:
 	for index in range(all_visitors.size() - 1, -1, -1):
 		if all_visitors[index].id == visitor_id:
 			var visitor := all_visitors[index]
 			_hide_visitor(visitor)
-			EventBus.visitor_left.emit(visitor_id, visitor.satisfaction)
+			var event_bus: Node = get_node_or_null("/root/EventBus")
+			if event_bus != null:
+				event_bus.emit_signal("visitor_left", visitor_id, visitor.satisfaction)
 			all_visitors.remove_at(index)
 			break
 
@@ -516,7 +627,7 @@ func serialize() -> Dictionary:
 			"floor_level": visitor.floor_level,
 			"location_type": visitor.location_type,
 			"entry_door_side": visitor.entry_door_side,
-			"spawn_point_id": visitor.spawn_point_id,
+			"arrival_source_id": visitor.arrival_source_id,
 			"waypoint_index": visitor.waypoint_index,
 			"current_state": visitor.current_state,
 			"budget": visitor.budget,
@@ -533,7 +644,10 @@ func deserialize(data: Dictionary) -> void:
 
 	for visitor_data: Dictionary in data.get("visitors", []):
 		var visitor := VisitorData.new()
-		visitor.id = visitor_data.get("id", _next_id())
+		if visitor_data.has("id"):
+			visitor.id = String(visitor_data["id"])
+		else:
+			visitor.id = _next_id()
 		var position_data: Dictionary = visitor_data.get("position", {})
 		visitor.position = Vector3(
 			position_data.get("x", 0.0),
@@ -543,7 +657,8 @@ func deserialize(data: Dictionary) -> void:
 		visitor.floor_level = visitor_data.get("floor_level", "G")
 		visitor.location_type = visitor_data.get("location_type", "pedestrian_area")
 		visitor.entry_door_side = visitor_data.get("entry_door_side", 0)
-		visitor.spawn_point_id = visitor_data.get("spawn_point_id", "")
+		visitor.arrival_source_id = visitor_data.get("arrival_source_id", "")
+		visitor.spawn_point_id = ""
 		visitor.waypoint_index = visitor_data.get("waypoint_index", 0)
 		visitor.current_state = visitor_data.get("current_state", "moving")
 		visitor.budget = visitor_data.get("budget", 0)

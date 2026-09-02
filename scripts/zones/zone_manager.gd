@@ -122,10 +122,14 @@ func create_zone(
 		_mark_zone_tiles(committed_zone)
 	_rebuild_pathfinding()
 	authority_revision += 1
-	EventBus.zone_created.emit(candidate.id, candidate.type, candidate.tiles.size())
+	var created_event_bus: Node = get_node_or_null("/root/EventBus")
+	if created_event_bus != null:
+		created_event_bus.emit_signal("zone_created", candidate.id, candidate.type, candidate.tiles.size())
 	for committed_zone: ZoneData in transaction:
 		if committed_zone != candidate:
-			EventBus.zone_modified.emit(committed_zone.id)
+			var modified_event_bus: Node = get_node_or_null("/root/EventBus")
+			if modified_event_bus != null:
+				modified_event_bus.emit_signal("zone_modified", committed_zone.id)
 	return candidate
 
 
@@ -213,10 +217,14 @@ func paint_zone(
 	_mark_zone_tiles(survivor)
 	_rebuild_pathfinding()
 	authority_revision += 1
-	EventBus.zone_modified.emit(survivor.id)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("zone_modified", survivor.id)
 	for source: ZoneData in source_zones:
 		if source.id != survivor.id:
-			EventBus.zone_deleted.emit(source.id)
+			var deleted_event_bus: Node = get_node_or_null("/root/EventBus")
+			if deleted_event_bus != null:
+				deleted_event_bus.emit_signal("zone_deleted", source.id)
 	_restore_counters(counter_snapshot)
 	return survivor
 
@@ -269,11 +277,15 @@ func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: Strin
 				break
 		if candidate == null:
 			zones.erase(zone_id)
-			EventBus.zone_deleted.emit(zone_id)
+			var deleted_event_bus: Node = get_node_or_null("/root/EventBus")
+			if deleted_event_bus != null:
+				deleted_event_bus.emit_signal("zone_deleted", zone_id)
 		else:
 			_copy_zone_state(candidate, source)
 			_mark_zone_tiles(source)
-			EventBus.zone_modified.emit(zone_id)
+			var event_bus: Node = get_node_or_null("/root/EventBus")
+			if event_bus != null:
+				event_bus.emit_signal("zone_modified", zone_id)
 	_rebuild_pathfinding()
 	authority_revision += 1
 	return candidates[0] if not candidates.is_empty() else null
@@ -539,10 +551,14 @@ func modify_zone(
 	_mark_zone_tiles(zone)
 	_rebuild_pathfinding()
 	authority_revision += 1
-	EventBus.zone_modified.emit(zone_id)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("zone_modified", zone_id)
 	for committed_zone: ZoneData in transaction:
 		if committed_zone != candidate:
-			EventBus.zone_modified.emit(committed_zone.id)
+			var modified_event_bus: Node = get_node_or_null("/root/EventBus")
+			if modified_event_bus != null:
+				modified_event_bus.emit_signal("zone_modified", committed_zone.id)
 	return zone
 
 
@@ -780,7 +796,9 @@ func delete_zone(zone_id: String, plot_id: String = "") -> void:
 	zones.erase(zone_id)
 	_rebuild_pathfinding()
 	authority_revision += 1
-	EventBus.zone_deleted.emit(zone_id)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("zone_deleted", zone_id)
 
 
 # ── Zone Queries ───────────────────────────────────────────────────────

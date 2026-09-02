@@ -30,6 +30,10 @@ var _transaction_counter: int = 0
 var _state_records: DistrictStateRecords = DistrictStateRecords.new()
 var _traversal_view: DistrictTraversalReadView
 var _street_conversion_validator: Callable
+var _arrival_commit_gate: ArrivalCommitGate = ArrivalCommitGate.new()
+var _arrival_token_counter: int = 0
+var _arrival_topology_revision: int = -1
+var _arrival_eligibility_revision: int = -1
 
 
 func configure_ports(ports: DistrictRuntimePorts.DistrictRuntimePortsBundle) -> void:
@@ -154,6 +158,115 @@ func get_gate() -> DistrictTransactionGate:
 	return _gate
 
 
+## H8 injects the shared arrival gate without changing H3 transaction ownership.
+func set_arrival_commit_gate(gate: ArrivalCommitGate) -> void:
+	if gate != null:
+		_arrival_commit_gate = gate
+
+
+func get_arrival_commit_gate() -> ArrivalCommitGate:
+	return _arrival_commit_gate
+
+
+## H8 supplies the latest committed H5/H6 revision context as a read-only guard.
+func set_arrival_revision_context(topology_revision: int, eligibility_revision: int) -> void:
+	_arrival_topology_revision = topology_revision
+	_arrival_eligibility_revision = eligibility_revision
+
+
+## Read the current enabled state of an H2 arrival source without mutation.
+func is_arrival_source_enabled(arrival_source_id: String) -> bool:
+	if _snapshot == null:
+		return false
+	var source: Dictionary = _record_by_authored_id(_snapshot.get_data().get("arrival_source_attachments", []), arrival_source_id)
+	if source.is_empty():
+		return false
+	for source_state: Dictionary in _state.get("arrival_source_states", []):
+		if String(source_state.get("arrival_source_id", "")) == arrival_source_id:
+			return bool(source_state.get("enabled", false))
+	return bool(source.get("initially_enabled", false))
+
+
+func get_arrival_source(arrival_source_id: String) -> Dictionary:
+	if _snapshot == null:
+		return {}
+	return _record_by_authored_id(_snapshot.get_data().get("arrival_source_attachments", []), arrival_source_id).duplicate(true)
+
+
+## Issue an ephemeral source-validation token while the shared arrival gate is held.
+func validate_arrival_source(
+	arrival_source_id: String,
+	demand_snapshot_id: String,
+	district_revision: int,
+	topology_revision: int,
+	eligibility_revision: int
+) -> Dictionary:
+	var diagnostics: Array[Dictionary] = _arrival_source_diagnostics(arrival_source_id, demand_snapshot_id, district_revision, topology_revision, eligibility_revision)
+	if not diagnostics.is_empty():
+		return {"valid": false, "token": null, "diagnostics": diagnostics}
+	_arrival_token_counter += 1
+	var token := ArrivalSourceValidationToken.new()
+	token.initialize("arrival_token_%d" % _arrival_token_counter, arrival_source_id, demand_snapshot_id, district_revision, topology_revision, eligibility_revision)
+	token.bind_gate(_arrival_commit_gate)
+	return {"valid": true, "token": token, "diagnostics": []}
+
+
+## Revalidate the same token and captured revisions without issuing a new token.
+func revalidate_arrival_source(
+	token: ArrivalSourceValidationToken,
+	demand_snapshot_id: String,
+	district_revision: int,
+	topology_revision: int,
+	eligibility_revision: int
+) -> Dictionary:
+	if token == null or not token.matches(token.arrival_source_id, demand_snapshot_id, district_revision, topology_revision, eligibility_revision):
+		if token != null:
+			token.invalidate()
+		return {"valid": false, "diagnostics": [{"code": "ARRIVAL_TOKEN_INVALID", "message": "arrival validation token does not match the captured transaction"}]}
+	var diagnostics: Array[Dictionary] = _arrival_source_diagnostics(token.arrival_source_id, demand_snapshot_id, district_revision, topology_revision, eligibility_revision)
+	if not diagnostics.is_empty():
+		token.invalidate()
+	return {"valid": diagnostics.is_empty(), "diagnostics": diagnostics}
+
+
+## Consume a token exactly once; source state and district revision remain unchanged.
+func consume_arrival_source_token(token: ArrivalSourceValidationToken) -> bool:
+	if _arrival_commit_gate == null or not _arrival_commit_gate.is_held() or token == null or not token.is_valid():
+		return false
+	return token.consume()
+
+
+func _arrival_source_diagnostics(
+	arrival_source_id: String,
+	demand_snapshot_id: String,
+	district_revision: int,
+	topology_revision: int,
+	eligibility_revision: int
+) -> Array[Dictionary]:
+	var diagnostics: Array[Dictionary] = []
+	if _arrival_commit_gate == null or not _arrival_commit_gate.is_held():
+		diagnostics.append({"code": "ARRIVAL_GATE_REQUIRED", "message": "arrival source validation requires the shared arrival gate"})
+	if _snapshot == null:
+		diagnostics.append({"code": "SESSION_REQUIRED", "message": "a District Runtime session is required"})
+	if demand_snapshot_id.is_empty() or district_revision < 0 or topology_revision < 0 or eligibility_revision < 0:
+		diagnostics.append({"code": "ARRIVAL_CAPTURE_INVALID", "message": "arrival capture identity and revisions are required"})
+	if district_revision != get_revision():
+		diagnostics.append({"code": "STALE_DISTRICT_REVISION", "message": "arrival district revision is stale"})
+	if _arrival_topology_revision >= 0 and topology_revision != _arrival_topology_revision:
+		diagnostics.append({"code": "STALE_TOPOLOGY_REVISION", "message": "arrival H5 topology revision is stale"})
+	if _arrival_eligibility_revision >= 0 and eligibility_revision != _arrival_eligibility_revision:
+		diagnostics.append({"code": "STALE_ELIGIBILITY_REVISION", "message": "arrival H6 eligibility revision is stale"})
+	var source: Dictionary = get_arrival_source(arrival_source_id)
+	if source.is_empty():
+		diagnostics.append({"code": "ARRIVAL_SOURCE_UNKNOWN", "message": "arrival source ID is not present in the committed snapshot"})
+	else:
+		if String(source.get("mode", "")) != "PEDESTRIAN":
+			diagnostics.append({"code": "ARRIVAL_SOURCE_MODE_INVALID", "message": "MVP arrival sources must use PEDESTRIAN mode"})
+		if not is_arrival_source_enabled(arrival_source_id):
+			diagnostics.append({"code": "ARRIVAL_SOURCE_DISABLED", "message": "arrival source is disabled"})
+	return diagnostics
+
+
 func preview_transaction(intent: Dictionary) -> Dictionary:
 	if _snapshot == null:
 		return _reject("SESSION_REQUIRED", "a District Runtime session is required")
@@ -175,6 +288,8 @@ func preview_transaction(intent: Dictionary) -> Dictionary:
 
 
 func commit_transaction(intent: Dictionary) -> Dictionary:
+	if _arrival_commit_gate != null and _arrival_commit_gate.is_held():
+		return _reject("ARRIVAL_TRANSACTION_BUSY", "district mutations are blocked while an arrival transaction is flushing")
 	if _snapshot == null:
 		return _reject("SESSION_REQUIRED", "a District Runtime session is required")
 	var initial_evaluation: Dictionary = _evaluate_intent(intent, _state.duplicate(true))

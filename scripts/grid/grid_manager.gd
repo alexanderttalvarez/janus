@@ -166,7 +166,9 @@ func purchase_tile(x: int, y: int, plot_id: String = DEFAULT_PLOT, floor_level: 
 	tile.owned = true
 	tile.floor_built = true
 	pathfinding_graph.mark_dirty()
-	EventBus.tile_purchased.emit(floor_level.to_int() if floor_level.is_valid_int() else 0, x, y)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("tile_purchased", floor_level.to_int() if floor_level.is_valid_int() else 0, x, y)
 
 
 ## Sell/demolish a tile.
@@ -181,7 +183,9 @@ func sell_tile(x: int, y: int, plot_id: String = DEFAULT_PLOT, floor_level: Stri
 	tile.element = GridTile.TileElement.NONE
 	tile.typology = GridTile.TileTypology.TENANT
 	pathfinding_graph.mark_dirty()
-	EventBus.tile_sold.emit(floor_level.to_int() if floor_level.is_valid_int() else 0, x, y)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("tile_sold", floor_level.to_int() if floor_level.is_valid_int() else 0, x, y)
 
 
 ## Set a tile's zone assignment.
@@ -313,7 +317,9 @@ func set_door_between(
 	if to_tile != null:
 		to_tile.set_door(to_side, enabled)
 	rebuild_pathfinding()
-	EventBus.door_changed.emit(from, to, enabled)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("door_changed", from, to, enabled)
 	return true
 
 
@@ -379,7 +385,9 @@ func add_circulation_edge(
 	to_pos: Vector2i, to_floor: String, to_plot: String
 ) -> void:
 	pathfinding_graph.add_circulation_edge(from_plot, from_floor, from_pos, to_plot, to_floor, to_pos)
-	EventBus.circulation_placed.emit("stairs", from_floor.to_int() if from_floor.is_valid_int() else 0, from_pos.x, from_pos.y)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.emit_signal("circulation_placed", "stairs", from_floor.to_int() if from_floor.is_valid_int() else 0, from_pos.x, from_pos.y)
 
 
 ## Remove a cross-floor circulation edge.

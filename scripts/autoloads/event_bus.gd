@@ -87,6 +87,9 @@ signal tenant_upgraded(tenant_id: String, new_tier: int)
 
 # ── Visitors ─────────────────────────────────────────────────────────
 
+## A complete H8 arrival envelope was committed and synchronously flushed.
+signal arrival_realized(envelope: Dictionary)
+
 ## A visitor entered the district.
 signal visitor_entered(visitor_id: String)
 
