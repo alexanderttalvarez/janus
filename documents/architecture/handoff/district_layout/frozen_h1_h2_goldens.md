@@ -7,6 +7,8 @@ production implementation.
 
 Approval recorded: 2026-08-31.
 
+**2026-08-31 Fixture C Initial Ownership Decision:** The frozen Fixture C semantic contract defines initial ownership as exactly `{market_entry,station_entry,garden_entry}`. These are section IDs selected for a connected initial controlled area; `market_hall` and `garden_plot` are whole plot IDs, not ownership values.
+
 ## Fingerprints
 
 These are SHA-256 fingerprints of the exact H2 canonical byte framing for the

@@ -14,7 +14,7 @@ This is the implementation order, authority ledger, and cutover gate for the dis
 | 06 | [Camera Envelope and Pedestrian Gateways](06_camera_and_pedestrian_gateways.md) | Draft - implementation blocked by predecessors | Requires H3 Active Plot state and H5 public topology. |
 | 07 | [Traffic Topology Migration](07_traffic_topology_migration.md) | Draft - implementation blocked by predecessors | Requires H5 public-realm/conversion inputs. |
 | 08 | [Visitor Arrival MVP Migration](08_visitor_arrival_mvp_migration.md) | Draft - implementation blocked by predecessors | Requires H6 structural eligibility; MVP does not require durable pending policy. |
-| 09 | [Save/Load V2 and District Persistence](09_save_load_v2.md) | Draft - implementation blocked by predecessors | Requires implemented H1-H8 authority snapshots, MVP immediate realization, and complete owner-versioned V1 converter registry/migration data. |
+| 09 | [Save/Load V2 and District Persistence](09_save_load_v2.md) | Draft - implementation blocked by predecessors | Requires implemented H1-H8 authority snapshots and MVP immediate realization. V2 is the first supported district-layout save schema. |
 | 10 | [Legacy Removal and Final Acceptance Gate](10_legacy_removal_and_acceptance.md) | Draft - implementation blocked by predecessors | Implementation starts after H1-H9 implementation and required design/migration approvals; acceptance requires ten adapters removed and all evidence complete. |
 
 Architecture approval confirms contracts. Implementation gates confirm predecessor evidence. H1 and H2 may be approved and implemented together for proof only. After all three proofs, H1 records **KEEP**, **REVISE**, or **REJECT**; KEEP freezes the production H1/H2 format and goldens, while REVISE/REJECT blocks H3 production work.
@@ -68,7 +68,7 @@ Literal fingerprint SHA values are generated, reviewed, and frozen only after pr
 | Camera bounds and gateway structural eligibility/transforms | H6 |
 | Authored lanes/markers and road graph | H7 |
 | Corner visitor allocation/realization | H8 |
-| V1 conversion and V2 persistence | H9 |
+| V1 rejection and V2 persistence | H9 |
 | Static/runtime acceptance audit | H10 |
 
 ## Temporary adapters
@@ -88,7 +88,7 @@ Exactly ten executable adapters exist in the migration plan; every one is remove
 | `LegacyAuthoredTrafficLayoutAdapter` | H7 | Adapt authored lanes/controls to graph values. |
 | `LegacyVisitorSpawnAdapter` | H8 | Bridge selected source records to old visitor behavior. |
 
-The H9 V1-to-V2 converter is offline migration code, not an adapter. Stale aliases are never implementable: `Legacy25LayoutAdapter`, `LegacyPlotIdAdapter`, `LegacyPedestrianRingAdapter`, `LegacyRoadSceneAdapter`, `LegacyTrafficMarkerAdapter`, `LegacyCornerArrivalAdapter`, `LegacyZoneCoordinateAdapter`, and `LegacyDistrictSaveAdapter`.
+No V1-to-V2 converter exists. Payloads without `save_schema_version`, including current V1 saves, reject before staging or live mutation and leave their slots intact. Stale aliases are never implementable: `Legacy25LayoutAdapter`, `LegacyPlotIdAdapter`, `LegacyPedestrianRingAdapter`, `LegacyRoadSceneAdapter`, `LegacyTrafficMarkerAdapter`, `LegacyCornerArrivalAdapter`, `LegacyZoneCoordinateAdapter`, and `LegacyDistrictSaveAdapter`.
 
 ## Approval readiness for H1-H3
 
@@ -101,9 +101,17 @@ The H9 V1-to-V2 converter is offline migration code, not an adapter. Stale alias
 
 The H5 corner-frontage and public-band physical-door design blockers are resolved. H5 and H7 remain implementation-blocked solely by their predecessor implementation gates; H4 remains projection lifecycle only. The approved road profile, public-realm, conversion, traffic-light, controlled-area, and crossing contracts are recorded in H1, H2, H5, H7, the central design/architecture documents, and the civic-perimeter visual kit.
 
+## 2026-08-31 Fixture C Initial Ownership Decision
+
+Fixture C initial ownership is the exact section set `{market_entry,station_entry,garden_entry}`. It is the connected controlled-area setup required by H7 tests and loads; `market_hall` and `garden_plot` are whole plot IDs, not ownership values. This resolves the prior disconnected assumption without changing any fixture geometry, masks, IDs, gates, or frozen golden values.
+
 ## 2026-08-31 Editor Preview Addendum
 
 H4 runtime projection work can remain complete for successor runtime gates. H4 editor-preview acceptance is pending until the dedicated opt-in `EditorPlugin` and `@tool` preview controller capability, including its lifecycle and parity tests, is implemented under the H4 addendum. This is a new H4 completion requirement only; H5 and H7 ownership and gates are unchanged.
+
+## 2026-08-31 V1 Save Support Decision
+
+**Approved:** V2 is the first supported district-layout save schema. Any payload lacking `save_schema_version`, including current V1 saves, is unsupported and must be rejected before staging or live-session mutation. Rejection preserves the existing slot and returns a structured incompatibility result for required presentation-owned user messaging. No V1 converter, registry, support window, compatibility adapter, fixture conversion, source/floor mapping, or migration artifact is in the plan. Future V2 migrations require explicit approval and release.
 
 ## Related authorities
 

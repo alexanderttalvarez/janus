@@ -47,6 +47,7 @@ func _ready() -> void:
 	_initialize_arrivals()
 	_initialize_zone_tool()
 	_initialize_walls()
+	_initialize_save_manager()
 
 	# Deferred state initialization — now that the scene is loaded.
 	# Start in the clean Observe view; zone buttons explicitly enter Build mode.
@@ -426,57 +427,146 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # ── Save / Load ────────────────────────────────────────────────────────
 
+func _initialize_save_manager() -> void:
+	if _district_runtime == null or not _district_runtime.has_session():
+		push_error("MainGame: SaveManager requires an active District Runtime session.")
+		return
+	SaveManager.configure_runtime(
+		Callable(self, "_serialize_v2_authorities"),
+		Callable(self, "_get_v2_layout_ref"),
+		Callable(self, "_validate_v2_authorities"),
+		Callable(self, "_commit_v2_authorities")
+	)
+
+
+func _serialize_v2_authorities() -> Dictionary:
+	return {
+		"district": _district_runtime.get_state() if _district_runtime != null and _district_runtime.has_session() else {},
+		"zone_parcel": _zone_manager.serialize() if _zone_manager != null else {},
+		"tenant": _tenant_manager.serialize() if _tenant_manager != null else {},
+		"visitor": _visitor_manager.serialize() if _visitor_manager != null else {},
+		"economy": _economy_manager.serialize() if _economy_manager != null else {},
+		"progression": _tech_tree_manager.serialize() if _tech_tree_manager != null else {},
+		"prestige": _prestige_manager.serialize() if _prestige_manager != null else {},
+		"staff": _staff_manager.serialize() if _staff_manager != null else {},
+		"synergy": _synergy_manager.serialize() if _synergy_manager != null else {},
+		"time": _time_manager.serialize() if _time_manager != null else {},
+	}
+
+
+func _get_v2_layout_ref() -> Dictionary:
+	if _district_runtime == null or not _district_runtime.has_session():
+		return {}
+	var snapshot: ResolvedDistrictSnapshot = _district_runtime.get_snapshot()
+	return {
+		"layout_id": snapshot.get_layout_id(),
+		"layout_definition_version": int(snapshot.get_data().get("layout_definition_version", 0)),
+		"definition_fingerprint": snapshot.get_fingerprint(),
+	}
+
+
+func _validate_v2_authorities(authorities: Dictionary, _layout_ref: Dictionary) -> Dictionary:
+	var required: Dictionary = {
+		"zone_parcel": ["zones", "parcel_counter", "parcel_display_number_counter"],
+		"tenant": ["tenants", "counter"],
+		"visitor": ["visitors", "counter"],
+		"economy": ["balance", "loans", "loan_counter"],
+		"progression": ["unlocked", "available_points", "total_earned"],
+		"prestige": ["prestige", "scale", "quality", "tech_points", "loan_multiplier"],
+		"staff": ["rooms", "staff", "staff_counter", "room_counter"],
+		"synergy": ["zone_scores"],
+		"time": ["sim_time", "visual_time"],
+	}
+	var diagnostics: Array[Dictionary] = []
+	for authority_name: String in SaveManager.get_v2_authority_fields():
+		if not authorities.has(authority_name) or not authorities[authority_name] is Dictionary:
+			diagnostics.append({"code": "AUTHORITY_SNAPSHOT_INVALID", "path": "$.authorities.%s" % authority_name, "message": "authority snapshot must be an object"})
+			continue
+		if not required.has(authority_name):
+			continue
+		var authority: Dictionary = authorities[authority_name]
+		for field: String in required[authority_name]:
+			if not authority.has(field):
+				diagnostics.append({"code": "AUTHORITY_FIELD_MISSING", "path": "$.authorities.%s.%s" % [authority_name, field], "message": "required authority field is missing"})
+	if _district_runtime == null or not _district_runtime.has_session():
+		diagnostics.append({"code": "DISTRICT_RUNTIME_REQUIRED", "path": "$.authorities.district", "message": "district validation requires an active session"})
+	else:
+		var district_validation: Dictionary = DistrictStateRecords.new().validate(authorities.get("district", {}), _district_runtime.get_snapshot())
+		if not bool(district_validation.get("valid", false)):
+			diagnostics.append_array(district_validation.get("diagnostics", []))
+	return {"valid": diagnostics.is_empty(), "diagnostics": diagnostics}
+
+
+func _commit_v2_authorities(authorities: Dictionary, _layout_ref: Dictionary) -> Dictionary:
+	if _district_runtime == null or not _district_runtime.has_session():
+		return {"valid": false, "diagnostics": [{"code": "DISTRICT_RUNTIME_REQUIRED", "message": "cannot commit without an active District Runtime session"}]}
+	var previous: Dictionary = _serialize_v2_authorities()
+	var applied: Dictionary = _apply_v2_authorities(authorities)
+	if bool(applied.get("valid", false)):
+		return applied
+	_apply_v2_authorities(previous)
+	return applied
+
+
+func _apply_v2_authorities(authorities: Dictionary) -> Dictionary:
+	var district_load: Dictionary = _district_runtime.replace_session(_district_runtime.get_snapshot(), authorities.get("district", {}))
+	if not bool(district_load.get("valid", false)):
+		return district_load
+	_economy_manager.deserialize(authorities["economy"])
+	_zone_manager.deserialize(authorities["zone_parcel"])
+	_tenant_manager.deserialize(authorities["tenant"])
+	_visitor_manager.deserialize(authorities["visitor"])
+	_time_manager.deserialize(authorities["time"])
+	_prestige_manager.deserialize(authorities["prestige"])
+	_tech_tree_manager.deserialize(authorities["progression"])
+	_staff_manager.deserialize(authorities["staff"])
+	_synergy_manager.deserialize(authorities["synergy"])
+	var gm: GridManager = _world.get_node("GridManager") as GridManager
+	gm.rebuild_pathfinding()
+	if _legacy_grid_projection:
+		_legacy_grid_projection.project_state(_district_runtime.get_state(), _district_runtime.get_snapshot())
+	var projection_result: Dictionary = _rebuild_loaded_projections()
+	if not bool(projection_result.get("valid", false)):
+		return projection_result
+	if _parcel_label_renderer:
+		_parcel_label_renderer.hydrate_active_floor()
+	if _zone_label_renderer:
+		_zone_label_renderer.hydrate_active_floor()
+	return {"valid": true, "diagnostics": []}
+
+
+func _rebuild_loaded_projections() -> Dictionary:
+	if _projection_coordinator != null:
+		var projection_result: Dictionary = _projection_coordinator.rebuild()
+		if not bool(projection_result.get("valid", false)):
+			return projection_result
+	if _public_realm_projection != null:
+		var public_result: Dictionary = _public_realm_projection.rebuild()
+		if not bool(public_result.get("valid", false)):
+			return public_result
+	if _camera_gateway_projection != null:
+		var camera_result: Dictionary = _camera_gateway_projection.rebuild()
+		if not bool(camera_result.get("valid", false)):
+			return camera_result
+	if _traffic_topology != null:
+		var traffic_result: Dictionary = _traffic_topology.rebuild()
+		if not bool(traffic_result.get("valid", false)):
+			return traffic_result
+		_on_road_graph_published(traffic_result.get("snapshot") as RoadGraphSnapshot)
+	return {"valid": true, "diagnostics": []}
+
+
 func save_game(slot: int) -> void:
 	if _arrival_coordinator != null and _arrival_coordinator.get_gate().is_held():
 		return
-	var gm: GridManager = _world.get_node("GridManager") as GridManager
-	var zm: ZoneManager = _world.get_node("ZoneManager") as ZoneManager
-	var data := {
-		"economy": _economy_manager.serialize() if _economy_manager else {},
-		"grid": gm.serialize() if gm else {},
-		"zones": zm.serialize() if zm else {},
-		"tenants": _tenant_manager.serialize() if _tenant_manager else {},
-		"visitors": _visitor_manager.serialize() if _visitor_manager else {},
-		"time": _time_manager.serialize() if _time_manager else {},
-		"prestige": _prestige_manager.serialize() if _prestige_manager else {},
-		"staff": _staff_manager.serialize() if _staff_manager else {},
-		"synergy": _synergy_manager.serialize() if _synergy_manager else {},
-		"district_state": _district_runtime.get_state() if _district_runtime and _district_runtime.has_session() else {},
-	}
-	SaveManager.save_game(slot, data)
+	var result: Error = SaveManager.save_game(slot)
+	if result != OK:
+		push_error("MainGame: Save failed for slot %d: %s" % [slot, error_string(result)])
 
 
 func load_game(slot: int) -> void:
 	if _arrival_coordinator != null and _arrival_coordinator.get_gate().is_held():
 		return
-	var data: Variant = SaveManager.load_game(slot)
-	if data == null or not data is Dictionary:
-		return
-	var gm: GridManager = _world.get_node("GridManager") as GridManager
-	var zm: ZoneManager = _world.get_node("ZoneManager") as ZoneManager
-	if _economy_manager: _economy_manager.deserialize(data.get("economy", {}))
-	if gm: gm.deserialize(data.get("grid", {}))
-	if zm: zm.deserialize(data.get("zones", {}))
-	if _tenant_manager: _tenant_manager.deserialize(data.get("tenants", {}))
-	if _visitor_manager: _visitor_manager.deserialize(data.get("visitors", {}))
-	if _time_manager: _time_manager.deserialize(data.get("time", {}))
-	if _prestige_manager: _prestige_manager.deserialize(data.get("prestige", {}))
-	if _staff_manager: _staff_manager.deserialize(data.get("staff", {}))
-	if _synergy_manager: _synergy_manager.deserialize(data.get("synergy", {}))
-	if _district_runtime and _district_runtime.has_session() and data.has("district_state"):
-		var district_load: Dictionary = _district_runtime.replace_session(_district_runtime.get_snapshot(), data["district_state"])
-		if bool(district_load.get("valid", false)) and _legacy_grid_projection:
-			_legacy_grid_projection.project_state(_district_runtime.get_state(), _district_runtime.get_snapshot())
-		if bool(district_load.get("valid", false)) and _projection_coordinator:
-			_projection_coordinator.rebuild()
-		if bool(district_load.get("valid", false)) and _public_realm_projection:
-			_public_realm_projection.rebuild()
-		if bool(district_load.get("valid", false)) and _camera_gateway_projection:
-			_camera_gateway_projection.rebuild()
-		if bool(district_load.get("valid", false)) and _traffic_topology:
-			_traffic_topology.rebuild()
-	if gm: gm.rebuild_pathfinding()
-	if _parcel_label_renderer:
-		_parcel_label_renderer.hydrate_active_floor()
-	if _zone_label_renderer:
-		_zone_label_renderer.hydrate_active_floor()
+	var result: Dictionary = SaveManager.load_game(slot)
+	if not bool(result.get("valid", false)):
+		push_warning("MainGame: Load rejected for slot %d: %s" % [slot, result.get("diagnostics", [])])

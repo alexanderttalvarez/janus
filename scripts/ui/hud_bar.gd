@@ -11,6 +11,10 @@ extends Control
 @onready var _clock_label: Label = $ClockLabel
 @onready var _wall_mode_label: Label = $WallModeLabel
 @onready var _camera_label: Label = $CameraLabel
+@onready var _save_button: Button = $SaveLoadButtons/SaveButton
+@onready var _load_button: Button = $SaveLoadButtons/LoadButton
+
+const SAVE_SLOT: int = 1
 
 
 func _ready() -> void:
@@ -18,6 +22,8 @@ func _ready() -> void:
 	EventBus.money_changed.connect(_on_money_changed)
 	GameManager.speed_changed.connect(_on_speed_changed)
 	GameManager.wall_mode_changed.connect(_on_wall_mode_changed)
+	_save_button.pressed.connect(_on_save_pressed)
+	_load_button.pressed.connect(_on_load_pressed)
 
 
 func _process(_delta: float) -> void:
@@ -91,3 +97,17 @@ func _on_speed_changed(speed: int) -> void:
 
 func _on_wall_mode_changed(mode: String) -> void:
 	_wall_mode_label.text = mode
+
+func _on_save_pressed() -> void:
+	var result: Error = SaveManager.save_game(SAVE_SLOT)
+	if result == OK:
+		_save_button.tooltip_text = "Saved slot %d" % SAVE_SLOT
+	else:
+		_save_button.tooltip_text = "Save failed: %s" % error_string(result)
+
+func _on_load_pressed() -> void:
+	var result: Dictionary = SaveManager.load_game(SAVE_SLOT)
+	if bool(result.get("valid", false)):
+		_load_button.tooltip_text = "Loaded slot %d" % SAVE_SLOT
+	else:
+		_load_button.tooltip_text = "Load failed: %s" % String(result.get("reason_code", "unknown error"))

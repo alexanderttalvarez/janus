@@ -258,19 +258,19 @@ A source is addressed by stable ID and exposes mode, topology anchors, enabled/e
 
 **Requirement:** Restore mutable district and arrival state against the correct immutable layout without serializing generated geometry.
 
-**Systems:** SaveManager, definition registry, migration registry, District Runtime, projection rebuild.
+**Systems:** SaveManager, definition registry, V2 compatibility policy, District Runtime, projection rebuild.
 
 **Ownership:** SaveManager orchestrates; each authority serializes its mutable state; definition registry establishes compatibility.
 
-**Communication:** Versioned payloads keyed by stable IDs; load validates and migrates before commit.
+**Communication:** V2 payloads keyed by stable IDs; load validates before commit. Schema-absent payloads, including V1, return a structured incompatibility result without mutating the live session or slot.
 
 **Persistence:** Layout ID, definition version/fingerprint, runtime mutable state, and stable IDs. Generated geometry/topology is excluded.
 
 **Scalability:** Sparse mutable data scales with acquisitions rather than total theoretical district volume.
 
-**Testing:** Round trips, migrations, unknown IDs, changed fingerprints, safe incompatible-layout rejection, no partial load, deterministic projection rebuild.
+**Testing:** V2 round trips, malformed/unknown payloads, changed fingerprints, schema-absent/V1 safe rejection, no partial load, deterministic projection rebuild.
 
-**Risks:** Definition drift, retired IDs, migration gaps, and unresolved pending-arrival semantics.
+**Risks:** Definition drift, retired IDs, future V2 migration rules not yet release-approved, and unresolved pending-arrival semantics.
 
 ## Verification Strategy
 
@@ -281,7 +281,7 @@ Architecture acceptance should be demonstrated with deterministic domain tests a
 - State tests prove shared Resources remain unchanged across multiple district sessions.
 - Transaction tests prove preview/commit parity and atomic economy/progression/state behavior.
 - Projection tests prove geometry and graphs can be discarded and rebuilt from definitions plus runtime state.
-- Save tests prove migration and safe rejection occur before live-state mutation.
+- Save tests prove V2 validation and safe rejection occur before live-state mutation. Future V2 migration rules require explicit approval and release; V1 is not supported.
 - Arrival tests separate demand counts from source selection and realization.
 - Scale tests use many slots, sparse floors, and repeated topology changes to detect accidental full-volume state or stale references.
 
@@ -307,7 +307,7 @@ Architecture acceptance should be demonstrated with deterministic domain tests a
 
 - Exact acquisition prices, progression gates, prerequisites, refunds, and failure messaging.
 - Final definition/cell-layer authoring format after proof-layout validation.
-- Definition fingerprint algorithm, migration support window, and policy for removed stable IDs.
+- Definition fingerprint algorithm and policy for removed stable IDs. Future V2 migration rules remain open and require explicit approval and release; V1 has no support window.
 - Pending arrival/cohort save policy: persist, cancel/refund, replay, or re-allocate.
 - Arrival weighting, source capacities, schedules, retries, and non-pedestrian operating costs.
 - Exact public Pedestrian Band facility catalog, costs, conflicts, and removal/refund rules.

@@ -27,10 +27,16 @@ var unlocked: Array[String] = []
 var authority_revision: int = 0
 
 ## Available tech points to spend.
-var available_points: int = 0:
+var _available_points: int = 0
+var _suppress_progression_notifications: bool = false
+var available_points: int:
+	get:
+		return _available_points
 	set(value):
-		available_points = value
-		points_changed.emit(available_points, total_earned)
+		_available_points = value
+		if _suppress_progression_notifications:
+			return
+		points_changed.emit(_available_points, total_earned)
 
 ## Total tech points earned over the game.
 var total_earned: int = 0
@@ -107,7 +113,16 @@ func serialize() -> Dictionary:
 
 
 func deserialize(data: Dictionary) -> void:
-	unlocked = data.get("unlocked", [])
+	_suppress_progression_notifications = true
+	var loaded_unlocked: Variant = data.get("unlocked", [])
+	unlocked.clear()
+	if loaded_unlocked is Array:
+		for entry: Variant in loaded_unlocked:
+			if typeof(entry) == TYPE_STRING:
+				unlocked.append(String(entry))
 	authority_revision += 1
-	available_points = data.get("available_points", 0)
-	total_earned = data.get("total_earned", 0)
+	var loaded_points: Variant = data.get("available_points", 0)
+	available_points = loaded_points
+	var loaded_earned: Variant = data.get("total_earned", 0)
+	total_earned = loaded_earned
+	_suppress_progression_notifications = false

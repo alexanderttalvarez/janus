@@ -4,7 +4,11 @@
 
 ### Amendment (2026-08-30)
 
-[Decision 27](27_district_layout_templates.md) requires saves to include district layout ID, definition version or fingerprint, stable runtime IDs, and mutable district/plot/section/floor/street/source state. Generated geometry, intersections, road graphs, and resolved topology are derived and must not be saved. Loading requires migration before commit and safe rejection of incompatible layouts without partial runtime mutation. [Decision 28](28_visitor_arrival_architecture.md) leaves the pending-arrival/cohort persistence policy open; it must be resolved before pending arrivals ship. These requirements amend the illustrative `grid` payload below without changing JSON, slot, or SaveManager orchestration decisions.
+[Decision 27](27_district_layout_templates.md) requires saves to include district layout ID, definition version or fingerprint, stable runtime IDs, and mutable district/plot/section/floor/street/source state. Generated geometry, intersections, road graphs, and resolved topology are derived and must not be saved. Loading requires validation before commit and safe rejection of incompatible layouts without partial runtime mutation. [Decision 28](28_visitor_arrival_architecture.md) leaves the pending-arrival/cohort persistence policy open; it must be resolved before pending arrivals ship. These requirements amend the illustrative `grid` payload below without changing JSON, slot, or SaveManager orchestration decisions.
+
+### Amendment (2026-08-31)
+
+For the district-layout migration, V2 is the first supported save schema. Payloads without `save_schema_version`, including current V1 saves, reject before staging or live mutation, preserve the existing slot, and return a structured incompatibility result for presentation-owned user messaging. No V1 converter, registry, source/floor mapping, baseline/derivation policy, compatibility adapter, or support window is authorized. Future V2 migrations require explicit approval and release.
 
 ### Context
 The game needs to persist economy, grid, zones, tenants, visitors, time, tech tree, prestige, and staff state. Settings (volume, keybindings) also need persistence. We needed to decide on serialization format, save structure, and responsibility.

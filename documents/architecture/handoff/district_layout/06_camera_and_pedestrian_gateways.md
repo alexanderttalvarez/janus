@@ -65,7 +65,7 @@ Identical projections in editor/runtime. Empty union disables spatial pan/focus 
 ## Migration and compatibility requirements
 
 - `LegacyCameraBoundsAdapter` bridges legacy bootstrap only.
-- `LegacyCornerSpawnAdapter` is restricted to legacy gateway/layout compatibility. It never performs persisted corner-ID migration; H9 detached migration owns that mapping.
+- `LegacyCornerSpawnAdapter` is restricted to legacy gateway/layout compatibility. It never performs persisted corner-ID migration; schema-absent V1 saves are rejected by H9.
 - Old floor-label listeners reuse `LegacyFloorIdAdapter`; no unnamed adapter is allowed.
 - Preserve a temporary policy seam for the legacy 20-purchased-tile camera rule until the decision below is recorded. The seam may never mutate state.
 
@@ -87,11 +87,10 @@ A, B, and C are neutral alternatives. Selection must assess design intent for th
 
 | Alternative | Contract |
 | --- | --- |
-| A remove at migration | The legacy rule ends as part of migration. |
-| B compatibility-only | The rule applies only to recognized V1 sessions until an explicitly defined session transition. |
-| C explicit target policy | The rule remains as an explicit target camera policy. |
+| A remove at district migration | The legacy rule ends as part of the district-layout migration. |
+| B explicit target policy | The rule remains as an explicit target camera policy. |
 
-A, B, and C are neutral alternatives. Selection must assess conflict with the Active Plot union fact, save compatibility, state-mutation risk, and player expectation. The selected contract and, for B, the exact session transition must be recorded in acceptance evidence before `LegacyCameraBoundsAdapter` removal or H10 acceptance. Implementation agents do not choose.
+A and B are neutral alternatives. Selection must assess conflict with the Active Plot union fact, state-mutation risk, and player expectation. The selected contract must be recorded in acceptance evidence before `LegacyCameraBoundsAdapter` removal or H10 acceptance. Implementation agents do not choose.
 
 ## Expected affected files/systems
 
@@ -103,7 +102,7 @@ Exact expanded-rectangle union and nearest-point clamp; viewing/activity indepen
 
 ## Required tests
 
-Empty/overlap/disjoint union, holes and nearest-point ties, pan/focus, signed elevations, H2 pass-through invariance, current-state structural eligibility, stale district/topology revisions, missing static attachment, adapter isolation, and viewing-no-mutation. Test the selected camera-margin contract across variable road widths and editor/runtime contexts and reject the unselected contracts. Test the selected legacy-rule migration/session behavior, including its no-state-mutation invariant, and reject the unselected contracts. A missing attachment or attachment absent from the committed graph is ineligible and never falls back to nearest topology.
+Empty/overlap/disjoint union, holes and nearest-point ties, pan/focus, signed elevations, H2 pass-through invariance, current-state structural eligibility, stale district/topology revisions, missing static attachment, adapter isolation, and viewing-no-mutation. Test the selected camera-margin contract across variable road widths and editor/runtime contexts and reject the unselected contracts. Test the selected legacy-rule target/removal behavior, including its no-state-mutation invariant, and reject the unselected contract. A missing attachment or attachment absent from the committed graph is ineligible and never falls back to nearest topology.
 
 ## Performance/scalability checks
 
@@ -128,7 +127,7 @@ Accidentally replacing the union with an AABB, H6 re-resolving H2 identity/pose,
 ## OPEN QUESTIONS
 
 - **DESIGN POLICY BLOCKER:** Design selects camera infrastructure margin A, B, or C and Architecture validates it before H6 acceptance; no numeric value is supplied by this handoff.
-- **DESIGN POLICY BLOCKER:** Design separately selects legacy 20-purchased-tile rule A, B, or C and Architecture validates it before `LegacyCameraBoundsAdapter` removal or H10.
+- **DESIGN POLICY BLOCKER:** Design separately selects legacy 20-purchased-tile rule A or B and Architecture validates it before `LegacyCameraBoundsAdapter` removal or H10.
 
 ## GodotPrompter skills required by implementation agents
 

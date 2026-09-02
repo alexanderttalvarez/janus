@@ -116,7 +116,7 @@ Keep the initial authority boundaries small:
 
 A save records the layout ID, definition version or fingerprint, stable runtime IDs, and mutable district state. Generated geometry, intersections, road graphs, and other topology projections are derived and are not saved.
 
-Save loading requires explicit migrations. A save whose layout identity or definition compatibility cannot be established must be rejected safely without partially mutating runtime state.
+V2 save loading validates layout identity and definition compatibility before commit. A payload lacking `save_schema_version`, including current V1 saves, is unsupported and rejects safely without partially mutating runtime state or changing the save slot. Future V2 migrations require explicit approval and release.
 
 ## Consequences
 
@@ -124,7 +124,7 @@ Save loading requires explicit migrations. A save whose layout identity or defin
 - Decision 7's `GridManager`/tile arrays are no longer the complete district authority.
 - Decision 8's `PlotData` model and single 25x25 default are superseded as the target district architecture.
 - Decision 9's character mask is superseded as a complete format because it conflates ownership and occupancy; it may remain as a parser for simple boolean cell layers.
-- Decision 15 is amended with layout compatibility, migration, and derived-data rules.
+- Decision 15 is amended with layout compatibility, future-V2 migration, and derived-data rules.
 - The existing 25x25 runtime is a non-conforming legacy implementation that requires a later migration. This decision does not define that implementation plan.
 
 ## Open Questions
@@ -132,4 +132,4 @@ Save loading requires explicit migrations. A save whose layout identity or defin
 - Exact prices, affordability rules, progression gates, and unlock timing.
 - Final authoring format after the proof layout validates or rejects the provisional hybrid.
 - Exact facility types and placement policy for public Pedestrian Bands.
-- Definition fingerprint algorithm and migration support window.
+- Definition fingerprint algorithm and policy for removed stable IDs. Future V2 migration rules require explicit approval and release.

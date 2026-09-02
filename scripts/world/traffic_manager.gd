@@ -97,6 +97,7 @@ class IntersectionCoordinator:
 class CarState:
 	var id: int = 0
 	var node: Node3D
+	var fade_tween: Tween
 	var distance: float = 0.0
 	var speed: float = 0.0
 	var desired_speed: float = 0.0
@@ -249,6 +250,8 @@ func set_crosswalk_stop_requested(crosswalk_id: StringName, requested: bool) -> 
 func clear_active_cars() -> void:
 	for lane: LaneState in _lanes:
 		for car: CarState in lane.cars:
+			if car.fade_tween != null:
+				car.fade_tween.kill()
 			if is_instance_valid(car.node):
 				car.node.queue_free()
 		lane.cars.clear()
@@ -359,6 +362,8 @@ func _update_lane(lane: LaneState, delta: float) -> void:
 		if car.distance < lane.length:
 			continue
 		_release_current_intersection_zone(lane, car)
+		if car.fade_tween != null:
+			car.fade_tween.kill()
 		if is_instance_valid(car.node):
 			car.node.queue_free()
 		car_despawned.emit(lane.id, car.id)
@@ -562,6 +567,7 @@ func _spawn_car(lane: LaneState) -> bool:
 	_set_car_opacity(0.0, car_node)
 	var fade_tween := create_tween()
 	fade_tween.tween_method(_set_car_opacity.bind(car_node), 0.0, 1.0, fade_in_duration)
+	car.fade_tween = fade_tween
 	lane.cars.append(car)
 	_apply_car_transform(lane, car)
 	car_spawned.emit(lane.id, car.id)

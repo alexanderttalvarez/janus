@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors and required migration evidence.** H10 implementation starts after H1-H9 implementation and required migration evidence. H10 removes all ten executable adapters and gathers audit evidence; H10 acceptance, not implementation start, requires zero adapters and evidence for every coverage row.
+**Draft - implementation blocked by predecessors and required acceptance evidence.** H10 implementation starts after H1-H9 implementation. H10 removes all ten executable adapters and gathers audit evidence; H10 acceptance, not implementation start, requires zero adapters and evidence for every coverage row.
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Remove runtime compatibility scaffolding and prove the complete target authority
 
 ## Dependencies
 
-- Implemented [H1](01_definition_schema_and_validation.md), [H2](02_resolved_district_model.md), [H3](03_variable_floor_grid_migration.md), [H4](04_world_projection_and_editor_preview.md), [H5](05_street_and_pedestrian_generation.md), [H6](06_camera_and_pedestrian_gateways.md), [H7](07_traffic_topology_migration.md), [H8](08_visitor_arrival_mvp_migration.md), and [H9](09_save_load_v2.md), with their required migration evidence recorded.
+- Implemented [H1](01_definition_schema_and_validation.md), [H2](02_resolved_district_model.md), [H3](03_variable_floor_grid_migration.md), [H4](04_world_projection_and_editor_preview.md), [H5](05_street_and_pedestrian_generation.md), [H6](06_camera_and_pedestrian_gateways.md), [H7](07_traffic_topology_migration.md), [H8](08_visitor_arrival_mvp_migration.md), and [H9](09_save_load_v2.md), with their required acceptance evidence recorded.
 - Implemented and tested the approved H5 zero-corner-frontage and topology-backed public-band physical access contracts.
 
 ## Source-of-truth documents
@@ -24,7 +24,7 @@ Known legacy assumptions span fixed dimensions, default IDs/floors, dense mutabl
 
 ## Target state
 
-Production has zero executable compatibility adapters/fallbacks. Explicit stable IDs and signed elevations cross boundaries; authority can survive complete projection destruction/rebuild; legacy V1 support is isolated offline only.
+Production has zero executable compatibility adapters/fallbacks. Explicit stable IDs and signed elevations cross boundaries; authority can survive complete projection destruction/rebuild; V1 and all schema-absent saves are rejected before staging without changing their slots.
 
 ## Scope
 
@@ -32,7 +32,7 @@ Delete adapters/callers/registrations; negative-search stale aliases; classify e
 
 ## Explicit non-goals
 
-No gameplay, visual redesign, unrelated refactor, archive-history rewrite, or silent loss of supported saves.
+No gameplay, visual redesign, unrelated refactor, archive-history rewrite, or silent loss of a rejected save slot.
 
 ## System ownership
 
@@ -55,7 +55,7 @@ Exactly these ten adapters must have no executable implementation, registration,
 9. `LegacyAuthoredTrafficLayoutAdapter`
 10. `LegacyVisitorSpawnAdapter`
 
-Negative-search these stale aliases, which must never be implementable: `Legacy25LayoutAdapter`, `LegacyPlotIdAdapter`, `LegacyPedestrianRingAdapter`, `LegacyRoadSceneAdapter`, `LegacyTrafficMarkerAdapter`, `LegacyCornerArrivalAdapter`, `LegacyZoneCoordinateAdapter`, and `LegacyDistrictSaveAdapter`. H9's offline converter may remain under support policy and is not an adapter.
+Negative-search these stale aliases, which must never be implementable: `Legacy25LayoutAdapter`, `LegacyPlotIdAdapter`, `LegacyPedestrianRingAdapter`, `LegacyRoadSceneAdapter`, `LegacyTrafficMarkerAdapter`, `LegacyCornerArrivalAdapter`, `LegacyZoneCoordinateAdapter`, and `LegacyDistrictSaveAdapter`. No H9 V1 converter, registry, or migration artifact exists.
 
 ## Communication and event flow
 
@@ -63,7 +63,7 @@ Negative-search these stale aliases, which must never be implementable: `Legacy2
 
 ## Persistence impact
 
-H10 does not change V2. Supported V1 conversion remains detached/offline; new games never select the legacy fixture by fallback.
+H10 does not change V2. V1 and every schema-absent payload reject before staging/live mutation, preserve the old slot, and return H9's structured incompatibility result; new games never select the legacy fixture by fallback.
 
 ## Editor/runtime behavior
 
@@ -71,7 +71,7 @@ Editor/runtime resolver, fingerprint, topology, and source outputs match. Produc
 
 ## Migration and compatibility requirements
 
-All ten adapters and unnamed equivalents are removed. H9 converter retention/removal follows explicit support policy. Unknown IDs/fingerprints reject. Archived fixtures are selected only by explicit fixture/migration identity.
+All ten adapters and unnamed equivalents are removed. No V1 converter, support window, or compatibility artifact remains. Unknown IDs/fingerprints reject. Archived fixtures are selected only by explicit fixture identity.
 
 ## Expected affected files/systems
 
@@ -89,26 +89,26 @@ Every row requires classified static/dependency evidence plus named behavioral e
 | Numeric `25`, `24`, `12`, `12.5` where district-semantic | H1-H6 | Classified hits; unequal/even/odd fixture geometry passes. |
 | `625`, per-tile mesh/allocation | H3/H4 | No fixed count; projection/state scales with actual sparse content. |
 | `DEFAULT_PLOT`, `plot_0` | H3 | No production default/inference; explicit ID rejection tests. |
-| `GROUND_FLOOR`; `G`/`F`/`B` strings as authority | H3/H9 | Signed integers in authority; labels only display/offline migration. |
+| `GROUND_FLOOR`; `G`/`F`/`B` strings as authority | H3/H9 | Signed integers in authority; labels only display. |
 | `floor_levels` | H3/H6 | View capabilities use signed elevations; viewing creates no state. |
 | `floor_plot_0_G` | H3/H4 | No hard lookup; explicit projection handle tests. |
 | `PlotData.pedestrian_boundary` and `PlotData.spawn_points` | H5/H6/H8 | Generated topology/stable sources; no serialization/authority. |
 | `virtual_exterior` and synthetic exterior plot ID | H3/H5 | Approved topology access IDs; no outside-grid/synthetic identity. |
 | `World/TrafficLayout/Lanes` and all eight `Lane_*` names | H7 | No authored graph lookup; generated graph goldens. |
 | Marker families `Spawn`, `StopLine`, `Exit`, `SourceClear`, `IntersectionHold`, `IntersectionClear` | H7 | Stable control-anchor kinds; no Node-name contract. |
-| `NW`, `NE`, `SW`, `SE` traffic/source authority | H6/H7/H9 | Stable topology IDs and detached source migration only. |
+| `NW`, `NE`, `SW`, `SE` traffic/source authority | H6/H7/H9 | Stable topology IDs; no legacy source mapping. |
 | Fixed exterior door coordinates/public-band physical-door access | H5 | Stable active pedestrian-graph edge identity without ownership transfer; implementation and migration evidence. |
 | Corner-only frontage attribution | H5 | Zero contribution; below/exact/above-threshold evidence and implementation/migration evidence. |
 | `PedestrianArea` size 25 and margin/ring | H5 | Final generated pedestrian graph and bands. |
 | Garbage coordinates `2..22`, if present | H3 | Explicit-address/shape-aware placement or classified unrelated. |
 | Zero-origin and world-Y=0 pick math | H3/H4 | Snapshot transform round trips at translated plots/elevations. |
 | Direct mutable `GridTile` writes | H3 | District transactions only; mutation-boundary audit. |
-| `owned` + `floor_built` conflation | H3/H9 | Independent truth table and explicit V1-only conversion. |
+| `owned` + `floor_built` conflation | H3/H9 | Independent target-state truth table; V1 payloads are rejected. |
 | Full-volume allocation | H3 | Sparse counts follow mutations, including elevations. |
 | Global wall/path rebuilds | H4/H5 | Scoped deltas/rebuild evidence and escalation diagnostics. |
 | Bare `Vector2i` across boundaries | H3 | Typed explicit-address API/dependency audit. |
 | Hand-authored roads/crosswalks/traffic markers | H4/H5/H7 | Scene/resource audit plus generated manifest/graph parity. |
-| Save V1 direct manager mutation | H9 | Offline detached conversion and atomic candidate commit. |
+| Schema-absent/V1 save mutation | H9 | Reject before staging/live mutation; preserve slot and return structured incompatibility result. |
 
 The final matrix records file/line or tool artifact, test/fixture name, and pass/fail for every row.
 
@@ -117,7 +117,7 @@ The final matrix records file/line or tool artifact, test/fixture name, and pass
 - Exactly ten adapters are removed; all stale aliases and unnamed equivalents are absent.
 - Every coverage row has objective evidence and all three fixtures pass end to end.
 - Approved H5 frontage and public-band access contracts have implementation and migration tests; `LegacyExteriorAccessAdapter` is gone.
-- Save V2 round-trip, recognized V1 conversion, malformed/unknown/fingerprint rejection, and post-commit-only event pass.
+- Save V2 round-trip, schema-absent/V1 rejection with slot preservation, malformed/unknown/fingerprint rejection, and post-commit-only event pass.
 - Projection destruction/rebuild preserves authority; editor/runtime parity and clean console pass.
 - Concrete H1-H9 performance budgets pass with no repeated-cycle leak.
 
@@ -125,7 +125,7 @@ The final matrix records file/line or tool artifact, test/fixture name, and pass
 
 - Exact static searches listed in the matrix across scripts/scenes/resources/settings/tests/exports.
 - Dependency/signal/orphan/scene/resource/registry audits.
-- `fixture.legacy_25_single`, `fixture.variable_30x40_single`, and `fixture.mixed_3x3` resolution, transactions, projections, conversion, graphs, arrivals, save/load, and cleanup.
+- `fixture.legacy_25_single`, `fixture.variable_30x40_single`, and `fixture.mixed_3x3` resolution, transactions, projections, graphs, arrivals, V2 save/load, and cleanup.
 - Existing zone/parcel regression suite on non-legacy fixtures.
 - Fault injection at every transaction/load/projection boundary and clean debug console.
 
@@ -135,14 +135,15 @@ Record resolver, session, graph, projection, wall, camera, arrival, save, staged
 
 ### Release-policy contracts
 
-Acceptance evidence is rooted exactly at `documents/architecture/evidence/district_layout_acceptance/` with subfolders `proof/`, `migration/`, `performance/`, `audits/`, and `signoff/`. Selected policy files are stored under `signoff/`. Required signoff roles are exactly Architecture, Design, QA, and Release; the release owner assigns actual people. Signer names and the open V1 support window are policy assignments, not implementation-agent choices.
+Acceptance evidence is rooted exactly at `documents/architecture/evidence/district_layout_acceptance/` with subfolders `proof/`, `migration/`, `performance/`, `audits/`, and `signoff/`. Selected policy files are stored under `signoff/`. Required signoff roles are exactly Architecture, Design, QA, and Release; the release owner assigns actual people.
+
+**Selected now:** V1 has no production support. H9 rejects every schema-absent payload before staging/live mutation, preserves the slot, and returns a structured incompatibility result. This is an approved policy, not a release signoff or support-window decision.
 
 No alternative below is selected by this handoff:
 
 | Policy | Alternatives | Selection authority and criterion | Required before |
 | --- | --- | --- | --- |
 | Performance | A baseline-relative; B target-platform absolute; C hybrid | Release + Architecture select based on target hardware and CI stability. | H4 performance acceptance. |
-| V1 support | A no production support; B one-release support; C multi-release support | Release + Product select based on shipped save population and support cost. | H9 cutover. |
 | Archive | A export exclusion; B separate test pack; C non-`res://` fixture repository | Release + QA select based on proof reproducibility and zero runtime reachability. | H10 acceptance. |
 
 ## Failure and rollback behavior
@@ -156,7 +157,7 @@ Unrelated numeric hits, hidden resource references, defaults without adapter nam
 ## FACTS
 
 - H10 removes ten adapters, not nine.
-- H9 offline conversion is not an adapter.
+- V1 production support is not in scope; schema-absent payloads reject without slot mutation.
 
 ## ASSUMPTIONS
 
@@ -164,7 +165,7 @@ Unrelated numeric hits, hidden resource references, defaults without adapter nam
 
 ## OPEN QUESTIONS
 
-- Selected performance, V1 support, and archive policies; signer assignments and the support window remain release-owner policy records under `signoff/`.
+- Selected performance and archive policies; signer assignments remain release-owner policy records under `signoff/`.
 
 ## GodotPrompter skills required by implementation agents
 

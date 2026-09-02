@@ -165,7 +165,7 @@ Every C `PLOT` buildability mask is exactly the union of its listed P2/P3 sectio
 - P2 variant mappings are exactly `ENTRY` ordinal `0` and `REAR` ordinal `1`, in that order. P3 mappings are exactly `ENTRY` ordinal `0`, `REAR` ordinal `1`, and `COURT` ordinal `2`, in that order. Every C slot section carries the applicable uppercase `section_role`, repeats the selected mapping ordinal and exact normalized P2/P3 mask after binding the role to its authored section ID, and must be byte-equal to that mapping. Station binds `ENTRY -> station_entry`, `REAR -> station_wing`, and `COURT -> station_yard`; all other bindings are the names shown in the table. A mismatch in role, ordinal, or mask rejects rather than choosing either copy.
 - `monument_mass` exists exactly once, in `fixture.fixed.civic_monument.fixed_occupants`, with occupant ordinal `0`; `civic_monument.fixed_occupants` is empty and references that fixed-block definition. `service_core_workshop` and `service_core_tower` each exist exactly once as slot-level fixed occupants on their named Plot slots, each with occupant ordinal `0`; they do not occur in any template or variant. `service_core_tower` has one occupant ID and ordinal across its two elevation-mask records. Every proof-fixture occupant is therefore ordinal `0` within its owning slot or fixed-block definition, with no duplicated occupant definition.
 
-- Initial ownership is exactly `{market_entry,station_entry,garden_entry}`.
+- **2026-08-31 Fixture C Initial Ownership Decision / implementation note:** Initial ownership is exactly `{market_entry,station_entry,garden_entry}`. These exact three entry sections are the only initially owned sections and are selected to produce a connected initial controlled area. Whole plot IDs `market_hall` and `garden_plot` are not ownership values.
 - All seven `*_entry` sections are initially available and entry-eligible. Every other section is initially available, unowned, and not entry-eligible. Fixed occupancy never implies ownership.
 - Cap provenance is closed. `fixture.template.market` has cap `-3..+6`: `market_hall` overrides it with `-2..+5`, `canal_plot` overrides it with `-1..+3`, and `arcade_plot` has no override and therefore remains `-3..+6`. `fixture.template.courtyard` has cap `-2..+4`: `station_plot` has no override and therefore remains `-2..+4`, while `garden_plot` overrides it with `0..+2`. `fixture.template.tower` has cap `-5..+9`: `workshop_plot` overrides it with `-1..+2`, and `tower_plot` overrides it with `-4..+7`. These are the exact effective physical caps. No other district, template, or slot cap exists in fixture C beyond the root legal range `-5..+9`; these constraints are physical fixture facts only.
 - Pedestrian arrival sources and exact authored topology selectors are:
@@ -208,7 +208,7 @@ Fixture source-anchor/segment counts remain golden expectations. Literal lowerca
 
 ## Persistence impact
 
-Definitions are not save state. Saves reference compatible layout/version/fingerprint; semantic ID changes require H9 migration.
+Definitions are not save state. V2 saves reference compatible layout/version/fingerprint; semantic ID changes reject unless a future V2 migration is explicitly approved and released.
 
 ## Editor/runtime behavior
 

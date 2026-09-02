@@ -45,7 +45,7 @@ Public-realm geometry, pedestrian graph, conversion eligibility/state writes, pe
 
 `RoadGraphSnapshot` carries layout/resolver/district/graph revisions and stable lanes, segments, intersections, crosswalks, stops, route attachments, control anchors, traffic-control descriptors, and outer ring. `RoadGraphDelta` carries ordered added/changed/removed IDs, invalid routes/reservations, attachments, and reason. Control kinds replace Spawn/StopLine/Exit/SourceClear/IntersectionHold/IntersectionClear Node-name contracts without preserving scene identity.
 
-Initial routes are straight-through only. Turn-capable extension points remain in the contract, but no turn route is active. Existing intersection reservation behavior remains authoritative for straight crossings; intersections have no traffic lights or pedestrian crossings. The controlled area is the connected union of Active Plot rectangles. District acquisition rules guarantee this invariant; any proof fixture with disconnected initially-active Plots must be corrected before use.
+Initial routes are straight-through only. Turn-capable extension points remain in the contract, but no turn route is active. Existing intersection reservation behavior remains authoritative for straight crossings; intersections have no traffic lights or pedestrian crossings. The controlled area is the connected union of Active Plot rectangles. District acquisition rules guarantee this invariant. H7 test fixture/load setup for Fixture C must use the approved initial ownership set `{market_entry,station_entry,garden_entry}`; TrafficTopology and TrafficManager must never compensate for a disconnected substitute setup.
 
 Every outward-facing lane at the controlled-area road perimeter has paired spawn and despawn anchors just outside the boundary intersection, oriented by lane direction. As the controlled area expands, topology moves active anchors outward. Converted or inactive roads have no active anchors. TrafficTopology owns anchors and graph state; TrafficManager owns only presentation and transient cars.
 
@@ -77,7 +77,7 @@ Deterministic graph IDs; immutable ring; conversion connectivity never vetoes; s
 
 ## Required tests
 
-Profiles, graph goldens, straight-only routes with inactive turn extensions, conversion/deltas, route/reservation cleanup, missed-revision recovery, adapter exactness, save exclusion, connected controlled-area fixtures, active-anchor migration, converted/inactive anchor exclusion, traffic-control placement, clock offsets/phases/pause/time-scale behavior, yellow clearing, and canonical pedestrian crossing speed. Prove that outer midpoint crosswalk controls are traffic-functional without becoming H5 pedestrian graph crossings.
+Profiles, graph goldens, straight-only routes with inactive turn extensions, conversion/deltas, route/reservation cleanup, missed-revision recovery, adapter exactness, save exclusion, connected controlled-area fixtures including Fixture C loaded with `{market_entry,station_entry,garden_entry}`, active-anchor migration, converted/inactive anchor exclusion, traffic-control placement, clock offsets/phases/pause/time-scale behavior, yellow clearing, and canonical pedestrian crossing speed. Prove that outer midpoint crosswalk controls are traffic-functional without becoming H5 pedestrian graph crossings.
 
 ## Performance/scalability checks
 

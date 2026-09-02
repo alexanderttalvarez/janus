@@ -483,6 +483,13 @@ func _clear_merge_boundary_doors(sources: Array[ZoneData], source: ZoneData) -> 
 					grid_manager.set_door_between(first, second, false, source.plot_id, source.floor)
 
 
+func _serialize_tiles(p_tiles: Array[Vector2i]) -> Array[Dictionary]:
+	var serialized_tiles: Array[Dictionary] = []
+	for tile: Vector2i in p_tiles:
+		serialized_tiles.append({"x": tile.x, "y": tile.y})
+	return serialized_tiles
+
+
 func _dictionary_tiles(tile_set: Dictionary) -> Array[Vector2i]:
 	var tiles: Array[Vector2i] = []
 	for tile_pos: Vector2i in tile_set:
@@ -850,7 +857,7 @@ func serialize() -> Dictionary:
 			"type": zone.type,
 			"subtype": zone.subtype,
 			"floor": zone.floor,
-			"tiles": zone.tiles,
+			"tiles": _serialize_tiles(zone.tiles),
 			"parcel_layout_seed": zone.parcel_layout_seed,
 			"typologies": _serialize_typologies(zone.typologies),
 			"zone_name": zone.zone_name,
@@ -878,7 +885,10 @@ func deserialize(data: Dictionary) -> void:
 		zone.type = zone_data.get("type", "")
 		zone.subtype = zone_data.get("subtype", "")
 		zone.floor = zone_data.get("floor", GridManager.GROUND_FLOOR)
-		zone.tiles = zone_data.get("tiles", [])
+		var restored_tiles: Array[Vector2i] = []
+		for tile_data: Dictionary in zone_data.get("tiles", []):
+			restored_tiles.append(Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)))
+		zone.tiles = restored_tiles
 		zone.parcel_layout_seed = int(zone_data.get("parcel_layout_seed", _generate_parcel_layout_seed(zone.id)))
 		if zone.parcel_layout_seed <= 0:
 			zone.parcel_layout_seed = _generate_parcel_layout_seed(zone.id)
