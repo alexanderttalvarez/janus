@@ -24,7 +24,7 @@ A localized pure planning pass is slightly more complex than a global re-split b
 - Future tenant lifecycle consumes retirement outcomes but is not part of the zone-edit transaction.
 
 ### References
-- [Handoff 06 — Paint-First Zone Mutation and Preservation](../handoff/06_paint_first_zone_mutation.md)
-- [Handoff 01 — Deterministic Parcel Splitting](../handoff/01_parcel_splitting.md)
-- [Handoff 02 — Immediate Debug Business Assignment](../handoff/02_immediate_debug_business_assignment.md)
-- [Handoff 05 — Automatic Parcel Doors](../handoff/05_automatic_parcel_doors.md)
+- [Handoff 06 — Paint-First Zone Mutation and Preservation](../handoff/zone_parcels/06_paint_first_zone_mutation.md)
+- [Handoff 01 — Deterministic Parcel Splitting](../handoff/zone_parcels/01_parcel_splitting.md)
+- [Handoff 02 — Immediate Debug Business Assignment](../handoff/zone_parcels/02_immediate_debug_business_assignment.md)
+- [Handoff 05 — Automatic Parcel Doors](../handoff/zone_parcels/05_automatic_parcel_doors.md)

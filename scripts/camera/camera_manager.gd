@@ -60,10 +60,6 @@ var _is_rotating: bool = false
 ## Reference to the active zoom tween (for interruption).
 var _zoom_tween: Tween
 
-## Position limit center and radius (set from GridManager on init).
-var _limit_center: Vector3 = Vector3.ZERO
-var _limit_radius: float = 50.0  # Legacy fallback only; H6 supplies the active union.
-
 ## H6 immutable camera envelope. Null preserves legacy fallback behavior.
 var _camera_bounds_snapshot: CameraBoundsSnapshot
 
@@ -299,12 +295,6 @@ func _apply_floor_visibility(_current_level: String) -> void:
 
 # ── Position Limits ────────────────────────────────────────────────────
 
-## Set the position limit from GridManager data.
-func set_position_limit(center: Vector3, radius: float) -> void:
-	_limit_center = center
-	_limit_radius = radius
-
-
 ## Replace the legacy radial clamp with an immutable H6 camera envelope.
 func set_camera_bounds_snapshot(snapshot: CameraBoundsSnapshot) -> void:
 	_camera_bounds_snapshot = null if snapshot == null else snapshot.duplicate_value()
@@ -313,11 +303,6 @@ func set_camera_bounds_snapshot(snapshot: CameraBoundsSnapshot) -> void:
 func get_camera_bounds_snapshot() -> CameraBoundsSnapshot:
 	return null if _camera_bounds_snapshot == null else _camera_bounds_snapshot.duplicate_value()
 
-
-## Clamp camera position to stay within the allowed area.
-func _clamp_position(pos: Vector3) -> Vector3:
-	# Unused — panning now works via CameraRig, not root.
-	return pos
 
 
 # ── Shader Integration ─────────────────────────────────────────────────

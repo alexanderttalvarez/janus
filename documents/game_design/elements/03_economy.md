@@ -13,7 +13,7 @@ The economy drives the tension between creative ambition and financial reality. 
 
 | Stream | Description | Frequency |
 |--------|-------------|-----------|
-| **Rent** | Player-set daily rate per zone (Kreds/tile/day). Collected from each active tenant. | Daily (sim clock) |
+| **Rent** | Player-set daily rate per zone (Kreds/tile/day), credited from each active tenant. | Daily (sim clock) |
 | **Parking Fees** | If parking structures are built (post-MVP). | Per visitor visit |
 | **Event Income** | Seasonal events, pop-up spaces (post-MVP). | Event-driven |
 
@@ -27,6 +27,10 @@ The player sets a **daily rent rate per zone** (in Kreds/tile/day). This rate ap
 | **At market rate** | Normal application speed. Tenant satisfaction is neutral. |
 | **Above market rate** | Fewer applications. Tenants that do apply have lower satisfaction. Risk of closure if revenue doesn't cover rent. |
 | **Far above market rate** | No applications. Zone stays vacant. |
+
+#### Daily settlement
+
+Rent is credited once on every authoritative simulation-day boundary. At 1× speed, one simulation day is 24 real seconds. The daily rate remains the player-facing and tenant-viability input; it is not converted into a weekly rate or deferred to weekly settlement.
 
 #### Market Rate Formula
 
@@ -83,13 +87,21 @@ The legacy calibration supplied values through U3 only; it has no approved U4 or
 
 One-time cost for placing zones, amenities, and circulation elements. Prices vary by type and are defined in their respective system documents.
 
+### Transaction and debug policy
+
+Economy is the sole balance authority. Purchases use the approved quote → reserve → guaranteed capture → cancel transaction contract. Prices and progression eligibility are immutable policy inputs; they are not invented by Economy.
+
+A reservation is short-lived transaction state only: it is not saved and creates no committed balance change. Cancelling before capture is free. Refunds after a committed purchase, construction cancellation, demolition, and street-conversion reversal remain unapproved policy.
+
+When debug cost bypass is active, every player-paid action is free. It still performs normal gameplay validation and commits normally, but its economic quote and captured debit are zero.
+
 ### Staff Wages
 
 Flat rate per employee. **500 Kreds/week/employee** (MVP). Post-MVP: wages may scale with prestige.
 
 ### Maintenance
 
-Maintenance is handled through the Maintenance System (post-MVP). There is no recurring tile-based maintenance cost in the MVP. Repair costs are paid per action when maintenance staff perform repairs.
+Maintenance is handled through the Maintenance System **post-MVP**. There are no recurring maintenance charges, repairs, repair costs, or maintenance staff in MVP.
 
 ### Transportation Fees
 
@@ -139,7 +151,7 @@ Bad designs underperform slowly but inevitably:
 1. Low visitor attraction → shops earn less
 2. Shops can't cover rent → tenant satisfaction drops → shops close
 3. Vacant zones generate no rent → revenue falls
-4. Expenses (staff, maintenance, loans) continue → net loss
+4. Expenses (staff and loans; maintenance post-MVP) continue → net loss
 5. Debt grows → loan interest compounds
 6. Player can't afford improvements → situation worsens
 7. Game warns recovery is unlikely → player chooses to continue or restart
@@ -154,11 +166,11 @@ Bad designs underperform slowly but inevitably:
 
 All numerical values are starting calibrations for playtesting. Key targets:
 - Starting 500,000 Kreds should fund meaningful early expansion (~200-300 tiles + basic construction)
-- Rent income should comfortably cover maintenance + staff in a well-designed district
+- Rent income should comfortably cover staff in a well-designed district; maintenance is a future post-MVP cost.
 - Loan interest should be punishing but not instant-death
 - Transportation ROI should be achievable but require planning
 
 ### Progressive Complexity
 
-MVP economy: Rent, tile purchase, construction, staff wages, maintenance, loans. The MVP Plot's single ground section is initially owned.
-Post-MVP additions: additional Plot Section acquisition, Street Segment conversion, parking fees, event income, prestige-scaled wages, transportation.
+MVP economy: daily rent, approved tile purchase, approved construction, staff wages, and loans. The MVP Plot's single ground section is initially owned.
+Post-MVP additions: maintenance, additional Plot Section acquisition, Street Segment conversion, parking fees, event income, prestige-scaled wages, and transportation.

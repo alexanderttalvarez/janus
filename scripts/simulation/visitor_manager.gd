@@ -1,8 +1,7 @@
 ## VisitorManager — Centralized visitor lifecycle, tick handling, and culling.
 ##
-## Visitors spawn from plot-owned corner spawn points and advance through the
-## pedestrian ring into the building. The manager owns lifecycle and culling;
-## plot geometry owns spawn-point definitions.
+## Visitors are prepared and committed through ArrivalCoordinator, then advance
+## through the pedestrian ring into the building. The manager owns lifecycle and culling.
 class_name VisitorManager
 extends Node
 
@@ -24,9 +23,6 @@ const ZOOM_HIDE_THRESHOLD: float = 35.0
 
 ## Maximum active visitors for the current MVP.
 const MAX_VISITORS: int = 20
-
-## One spawn attempt per five-second visitor tick.
-const SPAWN_PER_TICK: int = 1
 
 ## Maximum visible visitor Node3Ds supported by the architecture.
 const MAX_VISIBLE_VISITORS: int = 60
@@ -90,41 +86,9 @@ func _ready() -> void:
 func on_visitor_tick() -> void:
 	if _arrival_coordinator != null:
 		_arrival_coordinator.on_visitor_tick()
-	else:
-		_spawn_visitors_if_needed()
 	_decay_visitor_needs()
 	_sync_data_positions()
 	_apply_culling()
-
-
-## Spawn at most one visitor per tick until the active population reaches 20.
-func _spawn_visitors_if_needed() -> void:
-	if _grid_manager == null or all_visitors.size() >= MAX_VISITORS:
-		return
-	for _i in range(SPAWN_PER_TICK):
-		if all_visitors.size() >= MAX_VISITORS:
-			break
-		_spawn_visitor_at_plot_spawn_point()
-
-
-func _spawn_visitor_at_plot_spawn_point() -> void:
-	var spawn_points := _grid_manager.get_spawn_points(GridManager.DEFAULT_PLOT)
-	if spawn_points.is_empty():
-		return
-	var point: Dictionary = spawn_points[randi_range(0, spawn_points.size() - 1)]
-	var spawn_position: Vector3 = point.get("position", Vector3.ZERO)
-	var visitor := VisitorData.new()
-	visitor.initialize(_next_id(), "G", spawn_position)
-	visitor.location_type = "pedestrian_area"
-	visitor.spawn_point_id = point.get("id", "")
-	visitor.waypoint_index = _pedestrian_area.get_nearest_waypoint_index(spawn_position)
-	visitor.position = spawn_position
-	visitor.target_position = _pedestrian_area.get_waypoint(visitor.waypoint_index)
-	visitor.current_state = "moving"
-	all_visitors.append(visitor)
-	var event_bus: Node = get_node_or_null("/root/EventBus")
-	if event_bus != null:
-		event_bus.emit_signal("visitor_entered", visitor.id)
 
 
 
@@ -491,7 +455,7 @@ func on_zoom_changed(zoom: float) -> void:
 # ── Lifecycle ──────────────────────────────────────────────────────────
 
 ## Request a voluntary exit through a canonically selected eligible arrival source.
-func request_visitor_leave(visitor_id: String, spawn_point_id: String = "") -> void:
+func request_visitor_leave(visitor_id: String) -> void:
 	if _arrival_coordinator != null:
 		var selected: Dictionary = _arrival_coordinator.select_exit_source()
 		if not bool(selected.get("valid", false)):
@@ -508,28 +472,6 @@ func request_visitor_leave(visitor_id: String, spawn_point_id: String = "") -> v
 				if visual:
 					visual.set_target(visitor.target_position)
 			return
-		return
-	var spawn_points: Array = _grid_manager.get_spawn_points(GridManager.DEFAULT_PLOT) if _grid_manager else []
-	for visitor: VisitorData in all_visitors:
-		if visitor.id != visitor_id or visitor.current_state == "leaving":
-			continue
-		var point: Dictionary = {}
-		if spawn_point_id.is_empty() and not spawn_points.is_empty():
-			point = spawn_points[randi_range(0, spawn_points.size() - 1)]
-		else:
-			for candidate: Dictionary in spawn_points:
-				if candidate.get("id", "") == spawn_point_id:
-					point = candidate
-					break
-		if point.is_empty():
-			return
-		visitor.spawn_point_id = point.get("id", "")
-		visitor.current_state = "leaving"
-		visitor.target_position = point.get("position", visitor.position)
-		if visitor.is_visible and is_instance_valid(visitor.visual_node):
-			var visual := visitor.visual_node as Visitor
-			if visual:
-				visual.set_target(visitor.target_position)
 		return
 
 
@@ -549,7 +491,6 @@ func prepare_detached_visitor(arrival_source_id: String, source_record: Dictiona
 	visitor.position = position
 	visitor.target_position = position
 	visitor.current_state = "moving"
-	visitor.spawn_point_id = ""
 	return {
 		"valid": true,
 		"visitor": visitor,
@@ -658,7 +599,6 @@ func deserialize(data: Dictionary) -> void:
 		visitor.location_type = visitor_data.get("location_type", "pedestrian_area")
 		visitor.entry_door_side = visitor_data.get("entry_door_side", 0)
 		visitor.arrival_source_id = visitor_data.get("arrival_source_id", "")
-		visitor.spawn_point_id = ""
 		visitor.waypoint_index = visitor_data.get("waypoint_index", 0)
 		visitor.current_state = visitor_data.get("current_state", "moving")
 		visitor.budget = visitor_data.get("budget", 0)

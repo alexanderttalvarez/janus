@@ -11,7 +11,6 @@ var _public_realm_projection: PublicRealmProjection
 var _camera_manager: Node3D
 var _metrics: ProjectionMetrics
 var _margin_policy: CameraMarginPolicy = CameraMarginPolicy.new()
-var _legacy_camera_adapter: LegacyCameraBoundsAdapter = LegacyCameraBoundsAdapter.new()
 var _camera_bounds: CameraBoundsSnapshot
 var _gateway_eligibility: GatewayEligibilitySnapshot
 var _subscribed: bool = false
@@ -54,7 +53,7 @@ func rebuild() -> Dictionary:
 	var margin_result: Dictionary = _margin_policy.calculate(road_profile, _metrics.grid_unit_size)
 	if not bool(margin_result.get("valid", false)):
 		return {"valid": false, "diagnostics": margin_result.get("diagnostics", [])}
-	var active: Array[Dictionary] = _legacy_camera_adapter.get_active_plot_records(snapshot, state)
+	var active: Array[Dictionary] = _get_active_plot_records(snapshot, state)
 	var active_ids: Array[String] = []
 	var rectangles: Array[Dictionary] = []
 	for plot: Dictionary in active:
@@ -112,6 +111,30 @@ func _on_session_replaced(_layout_id: String, _fingerprint: String) -> void:
 	var result: Dictionary = rebuild()
 	if not bool(result.get("valid", false)):
 		push_error("H6 rebuild rejected replaced district session: %s" % result.get("diagnostics", []))
+
+
+func _get_active_plot_records(snapshot: ResolvedDistrictSnapshot, state: Dictionary) -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	for plot: Dictionary in snapshot.get_data().get("plots", []):
+		if _is_plot_active(snapshot, state, String(plot.get("id", ""))):
+			records.append(plot)
+	records.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left.get("id", "")) < String(right.get("id", "")))
+	return records
+
+
+func _is_plot_active(snapshot: ResolvedDistrictSnapshot, state: Dictionary, plot_id: String) -> bool:
+	for section: Dictionary in snapshot.get_data().get("sections", []):
+		if String(section.get("plot_id", "")) != plot_id:
+			continue
+		var default_owned: bool = bool(section.get("initially_owned", false))
+		var owned: bool = default_owned
+		for plot_state: Dictionary in state.get("plot_states", []):
+			for override: Dictionary in plot_state.get("section_state_overrides", []):
+				if String(override.get("runtime_section_id", "")) == String(section.get("id", "")):
+					owned = bool(override.get("owned", default_owned))
+		if owned:
+			return true
+	return false
 
 
 func _expand_rect(rectangle: Dictionary, margin_quarter: float, source_plot_id: String) -> Dictionary:
@@ -185,6 +208,6 @@ func _selector_plot_active(snapshot: ResolvedDistrictSnapshot, state: Dictionary
 		var resolved_slot_id: String = String(plot.get("slot_id", ""))
 		var slot_parts: PackedStringArray = resolved_slot_id.split("/")
 		if resolved_slot_id == authored_slot_id or slot_parts.has(authored_slot_id):
-			if _legacy_camera_adapter.is_plot_active(snapshot, state, String(plot.get("id", ""))):
+			if _is_plot_active(snapshot, state, String(plot.get("id", ""))):
 				return true
 	return false

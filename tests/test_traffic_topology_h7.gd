@@ -1,4 +1,4 @@
-## H7 tests for immutable road topology, graph deltas, controls, and adapter isolation.
+## H7 tests for immutable road topology, graph deltas, controls, and cleanup.
 extends SceneTree
 
 var _passed: int = 0
@@ -7,7 +7,6 @@ var _failed: int = 0
 
 func _init() -> void:
 	_test_control_clock()
-	_test_legacy_adapter()
 	_test_topology_fixture()
 	print("Traffic Topology H7 tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
@@ -29,34 +28,6 @@ func _test_control_clock() -> void:
 	clock.advance(1.0)
 	_assert(is_equal_approx(clock.elapsed_t, fmod(paused_phase + 2.0, 10.0)), "traffic clock applies simulation time scale")
 	_assert(clock.vehicle_state(5.0) != clock.vehicle_state(0.0), "east-west control offset produces a half-cycle phase shift")
-
-
-func _test_legacy_adapter() -> void:
-	var traffic_layout: Node3D = Node3D.new()
-	var lanes_root: Node3D = Node3D.new()
-	lanes_root.name = "Lanes"
-	traffic_layout.add_child(lanes_root)
-	for lane_id: String in LegacyAuthoredTrafficLayoutAdapter.LEGACY_LANE_IDS:
-		var lane: Node3D = Node3D.new()
-		lane.name = lane_id
-		lanes_root.add_child(lane)
-		for marker_name: String in LegacyAuthoredTrafficLayoutAdapter.MARKER_FAMILIES:
-			var marker: Marker3D = Marker3D.new()
-			marker.name = marker_name
-			lane.add_child(marker)
-	var zones_root: Node3D = Node3D.new()
-	zones_root.name = "IntersectionZones"
-	traffic_layout.add_child(zones_root)
-	for zone_name: String in LegacyAuthoredTrafficLayoutAdapter.RESERVATION_ZONES:
-		var zone: Node3D = Node3D.new()
-		zone.name = zone_name
-		zones_root.add_child(zone)
-	get_root().add_child(traffic_layout)
-	var adapter: LegacyAuthoredTrafficLayoutAdapter = load("res://scripts/traffic/legacy_authored_traffic_layout_adapter.gd").new() as LegacyAuthoredTrafficLayoutAdapter
-	var result: Dictionary = adapter.validate(traffic_layout)
-	_assert(bool(result.get("valid", false)) and int(result.get("lane_count", 0)) == 8, "legacy adapter validates the exact eight authored lanes")
-	_assert(int(result.get("marker_family_count", 0)) == 6 and int(result.get("reservation_zone_count", 0)) == 4, "legacy adapter validates all marker families and reservation zones")
-	traffic_layout.queue_free()
 
 
 func _test_topology_fixture() -> void:

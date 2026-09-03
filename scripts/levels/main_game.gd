@@ -19,11 +19,11 @@ extends Node3D
 @onready var _wall_manager: WallManager = $World/WallManager
 @onready var _traffic_manager: TrafficManager = $World/TrafficManager
 var _district_runtime: DistrictRuntime
+var _initial_snapshot: ResolvedDistrictSnapshot
 var _projection_coordinator: ProjectionCoordinator
 var _public_realm_projection: PublicRealmProjection
 var _camera_gateway_projection: CameraGatewayProjection
 var _traffic_topology: TrafficTopology
-var _legacy_grid_projection: RefCounted
 var _parcel_label_renderer: ParcelLabelRenderer
 var _zone_label_renderer: ZoneLabelRenderer
 var _arrival_coordinator: ArrivalCoordinator
@@ -66,41 +66,59 @@ func _initialize_grid() -> void:
 		push_error("MainGame: GridManager not found under World.")
 		return
 
-	var footprint_path := "res://resources/plots/footprints/25x25_full.txt"
-	var plot := gm.create_plot(GridManager.DEFAULT_PLOT, 25, 25, footprint_path)
+	_initial_snapshot = _resolve_initial_snapshot()
+	if _initial_snapshot == null:
+		return
+	var snapshot_data: Dictionary = _initial_snapshot.get_data()
+	var plot_records: Array = snapshot_data.get("plots", [])
+	if plot_records.is_empty():
+		push_error("MainGame: Resolved district contains no buildable plots.")
+		return
+	var plot_record: Dictionary = plot_records[0]
+	var plot_rect: Dictionary = plot_record.get("rect_quarter", {})
+	var width: int = maxi(1, (int(plot_rect.get("maximum_x4", 0)) - int(plot_rect.get("minimum_x4", 0))) / 4)
+	var height: int = maxi(1, (int(plot_rect.get("maximum_z4", 0)) - int(plot_rect.get("minimum_z4", 0))) / 4)
+	var plot := gm.create_plot(GridManager.DEFAULT_PLOT, width, height)
 	if plot == null:
 		push_error("MainGame: Failed to create default plot.")
 		return
 
+	var buildability: Dictionary = {}
+	for cell: Array in plot_record.get("buildability_mask", []):
+		buildability[Vector2i(int(cell[0]), int(cell[1]))] = true
 	var fg := plot.get_floor(GridManager.GROUND_FLOOR)
 	if fg != null:
 		for x in range(fg.width):
 			for y in range(fg.height):
 				var tile := fg.get_tile(x, y)
-				if tile != null:
-					tile.owned = true
-					tile.floor_built = true
-				# The default built floor is the public circulation field. Zone
-				# commits carve Tenant/Transit space out of this field explicitly.
+				if tile == null or not buildability.has(Vector2i(x, y)):
+					continue
+				tile.owned = true
+				tile.floor_built = true
+			# The resolved buildability field is the public circulation field. Zone
+			# commits carve Tenant/Transit space out of this field explicitly.
 				tile.element = GridTile.TileElement.CIRCULATION
 
-	var adapters_script: Script = load("res://scripts/district/district_legacy_adapters.gd")
-	var exterior_access: RefCounted = adapters_script.LegacyExteriorAccessAdapter.new()
-	exterior_access.initialize(gm)
-	exterior_access.preserve_frontage(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR)
-
 	gm.rebuild_pathfinding()
-	print("MainGame: Grid initialized — plot_0, 25×25, all tiles owned.")
+	print("MainGame: Grid initialized from resolved district — %d×%d." % [width, height])
+
+
+func _resolve_initial_snapshot() -> ResolvedDistrictSnapshot:
+	var factory: RefCounted = load("res://scripts/resources/district_layout_fixture_factory.gd").new()
+	var resolver: RefCounted = load("res://scripts/resources/district_layout_resolver.gd").new()
+	var resolution: Dictionary = resolver.resolve(factory.build_fixture("A"))
+	if not bool(resolution.get("valid", false)):
+		push_error("MainGame: District layout resolution failed: %s" % resolution.get("diagnostics", []))
+		return null
+	return resolution.get("snapshot") as ResolvedDistrictSnapshot
 
 
 func _initialize_district_runtime() -> void:
-	var bootstrap_script: Script = load("res://scripts/district/district_legacy_adapters.gd")
-	var bootstrap: RefCounted = bootstrap_script.LegacyLayoutBootstrapAdapter.new()
-	var bootstrap_result: Dictionary = bootstrap.create_legacy_snapshot()
-	if not bool(bootstrap_result.get("valid", false)):
-		push_error("MainGame: District layout bootstrap failed.")
+	if _initial_snapshot == null:
+		_initial_snapshot = _resolve_initial_snapshot()
+	if _initial_snapshot == null:
 		return
-	var snapshot: ResolvedDistrictSnapshot = bootstrap_result.get("snapshot") as ResolvedDistrictSnapshot
+	var snapshot: ResolvedDistrictSnapshot = _initial_snapshot
 	_district_runtime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
 	_district_runtime.name = "DistrictRuntime"
 	add_child(_district_runtime)
@@ -119,12 +137,6 @@ func _initialize_district_runtime() -> void:
 	if not bool(session_result.get("valid", false)):
 		push_error("MainGame: District Runtime session creation failed.")
 		return
-
-	var projection: RefCounted = bootstrap_script.LegacyGridProjectionAdapter.new()
-	projection.initialize(_world.get_node("GridManager") as GridManager, snapshot)
-	_legacy_grid_projection = projection
-	_district_runtime.subscribe_committed(Callable(projection, "on_district_committed"))
-	projection.project_state(_district_runtime.get_state(), snapshot)
 
 
 func _initialize_projection() -> void:
@@ -223,7 +235,6 @@ func _initialize_camera() -> void:
 	# Center camera on the 25-tile grid (tiles at 0..24, center at 12.5).
 	_camera_manager.global_position = Vector3(12.5, 20, 12.5)
 	# Allow camera to move well beyond the grid edges.
-	_camera_manager.set_position_limit(Vector3.ZERO, 50.0)
 	_camera_manager.floor_levels = ["G"]
 	_camera_manager.current_floor_index = 0
 
@@ -523,8 +534,6 @@ func _apply_v2_authorities(authorities: Dictionary) -> Dictionary:
 	_synergy_manager.deserialize(authorities["synergy"])
 	var gm: GridManager = _world.get_node("GridManager") as GridManager
 	gm.rebuild_pathfinding()
-	if _legacy_grid_projection:
-		_legacy_grid_projection.project_state(_district_runtime.get_state(), _district_runtime.get_snapshot())
 	var projection_result: Dictionary = _rebuild_loaded_projections()
 	if not bool(projection_result.get("valid", false)):
 		return projection_result

@@ -12,7 +12,6 @@ var _pedestrian_graph: PedestrianGraphSnapshot
 var _gateway_eligibility: GatewayEligibilitySnapshot
 var _visitor_manager: VisitorManager
 var _demand_authority: VisitorDemandAuthority
-var _legacy_adapter: LegacyVisitorSpawnAdapter
 var _gate: ArrivalCommitGate = ArrivalCommitGate.new()
 var _dispatcher: ArrivalCommitDispatcher = ArrivalCommitDispatcher.new()
 var _transaction_counter: int = 0
@@ -32,8 +31,6 @@ func initialize(
 	_district_runtime.set_arrival_revision_context(_pedestrian_graph.zone_revision, _gateway_eligibility.topology_revision)
 	_visitor_manager = p_visitor_manager
 	_visitor_manager.configure_arrival_coordinator(self)
-	_legacy_adapter = load("res://scripts/simulation/legacy_visitor_spawn_adapter.gd").new() as LegacyVisitorSpawnAdapter
-	_legacy_adapter.initialize(_visitor_manager)
 	_district_runtime.set_arrival_commit_gate(_gate)
 	_visitor_manager.set_arrival_commit_gate(_gate)
 	if _dispatcher.get_subscriber_count() == 0:
@@ -118,7 +115,7 @@ func realize_arrival(demand: ArrivalDemandSnapshot) -> Dictionary:
 	if not bool(validation.get("valid", false)):
 		return _abort(owner_token, token, prepared, validation.get("diagnostics", []))
 	token = validation.get("token", null) as ArrivalSourceValidationToken
-	prepared = _legacy_adapter.prepare_selected_source(source, demand)
+	prepared = _visitor_manager.prepare_detached_visitor(source_id, source, demand)
 	if not bool(prepared.get("valid", false)):
 		return _abort(owner_token, token, prepared, prepared.get("diagnostics", []))
 	var current: Dictionary = _capture_context()
