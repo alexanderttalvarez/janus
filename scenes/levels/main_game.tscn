@@ -5,7 +5,6 @@
 [ext_resource type="Script" uid="uid://bs30mfoth3xer" path="res://scripts/zones/zone_manager.gd" id="3_zone_manager"]
 [ext_resource type="Script" uid="uid://cegguehmuiv8i" path="res://scripts/walls/wall_manager.gd" id="4_gpckr"]
 [ext_resource type="Script" uid="uid://cxb7ishmx4bbn" path="res://scripts/simulation/time_manager.gd" id="4_time_manager"]
-[ext_resource type="Material" path="res://resources/materials/surroundings_ground.tres" id="5_e1i65"]
 [ext_resource type="Script" uid="uid://b32xkrc4r11rw" path="res://scripts/zones/zone_tool.gd" id="5_zone_tool"]
 [ext_resource type="Material" path="res://resources/materials/surroundings_pedestrian.tres" id="6_8c1vm"]
 [ext_resource type="Script" uid="uid://c3brpcylxq0ev" path="res://scripts/world/pedestrian_area.gd" id="6_mwvdt"]
@@ -22,9 +21,6 @@
 [ext_resource type="Script" uid="uid://bdbijwelo76ye" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
 [ext_resource type="PackedScene" uid="uid://bh40r23u87png" path="res://scenes/ui/game_ui.tscn" id="14_game_ui"]
 [ext_resource type="Script" uid="uid://b147v2i3hemjr" path="res://scripts/walls/door_tool.gd" id="19_8c1vm"]
-
-[sub_resource type="BoxMesh" id="BoxMesh_mlqf3"]
-size = Vector3(56, 0.1, 56)
 
 [sub_resource type="BoxMesh" id="BoxMesh_wg31f"]
 size = Vector3(25, 0.1, 5)
@@ -72,13 +68,6 @@ script = ExtResource("3_zone_manager")
 script = ExtResource("4_gpckr")
 
 [node name="Surroundings" type="Node3D" parent="World" unique_id=878440049]
-
-[node name="Terrain" type="Node3D" parent="World/Surroundings" unique_id=260113501]
-
-[node name="GroundPlane" type="MeshInstance3D" parent="World/Surroundings/Terrain" unique_id=1935661685]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, -0.1, 12.5)
-material_override = ExtResource("5_e1i65")
-mesh = SubResource("BoxMesh_mlqf3")
 
 [node name="PedestrianAreas" type="Node3D" parent="World/Surroundings" unique_id=625773378]
 script = ExtResource("6_mwvdt")

@@ -19,6 +19,7 @@ const OP_DEMOLISH_CONSTRUCTION: String = "DEMOLISH_CONSTRUCTION"
 const OP_DEMOLISH_FIXED_OCCUPANT: String = "DEMOLISH_FIXED_OCCUPANT"
 const OP_SET_SOURCE_ENABLED: String = "SET_SOURCE_ENABLED"
 const OP_CONVERT_STREET: String = "CONVERT_STREET"
+const OP_PAINT_ZONE: String = "PAINT_ZONE"
 
 var _snapshot: ResolvedDistrictSnapshot
 var _state: Dictionary = {}
@@ -276,6 +277,9 @@ func preview_transaction(intent: Dictionary) -> Dictionary:
 	var quote: Dictionary = _quote(evaluation)
 	if not bool(quote.get("accepted", false)):
 		return _reject_diagnostics(quote.get("diagnostics", []))
+	var zone_preview: Dictionary = _zone_preview(intent, evaluation["state"])
+	if not bool(zone_preview.get("accepted", false)):
+		return _reject_diagnostics(zone_preview.get("diagnostics", []))
 	return {
 		"valid": true,
 		"candidate_state": evaluation["state"].duplicate(true),
@@ -283,6 +287,7 @@ func preview_transaction(intent: Dictionary) -> Dictionary:
 		"quote": quote.duplicate(true),
 		"policy_snapshot": evaluation["policy_snapshot"].duplicate(true),
 		"revisions": evaluation["revisions"].duplicate(true),
+		"zone_preview": zone_preview.get("preview", null),
 		"diagnostics": [],
 	}
 
@@ -397,6 +402,8 @@ func _evaluate_intent(intent: Dictionary, base_state: Dictionary) -> Dictionary:
 			_apply_demolish_occupant(intent, candidate, delta, diagnostics)
 		OP_SET_SOURCE_ENABLED:
 			_apply_source_enabled(intent, candidate, delta, diagnostics)
+		OP_PAINT_ZONE:
+			_apply_paint_zone(intent, delta, diagnostics)
 		OP_CONVERT_STREET:
 			if not _street_conversion_validator.is_valid():
 				diagnostics.append({"code": "CONVERSION_VALIDATOR_REQUIRED", "message": "H5 conversion validator must be injected before street conversion"})
@@ -552,6 +559,19 @@ func _apply_demolish_occupant(intent: Dictionary, state: Dictionary, delta: Dict
 	delta["kind"] = "fixed_occupant_demolished"
 
 
+func _apply_paint_zone(intent: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
+	var zone_type: String = String(intent.get("zone_type", ""))
+	var cells: Array = intent.get("cells", [])
+	if zone_type.is_empty() or cells.is_empty():
+		diagnostics.append({"code": "ZONE_PAINT_INPUT_INVALID", "message": "zone paint requires a type and one or more explicit cells"})
+		return
+	if not intent.has("runtime_plot_id") or not intent.has("floor_id") or not intent.has("elevation"):
+		diagnostics.append({"code": "ZONE_PAINT_ADDRESS_REQUIRED", "message": "zone paint requires an explicit plot and floor address"})
+		return
+	delta["affected_ids"].append(String(intent.get("runtime_plot_id", "")))
+	delta["kind"] = "zone_painted"
+
+
 func _apply_convert_street(intent: Dictionary, state: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
 	var street_id: String = String(intent.get("street_segment_id", ""))
 	var states: Array = state.get("street_segment_states", []).duplicate(true)
@@ -621,9 +641,18 @@ func _economy_cancel(reservation: Dictionary) -> void:
 
 
 func _flush_authority_notifications() -> Array[Dictionary]:
-	if _ports == null or _ports.economy == null:
-		return []
-	return _ports.economy.flush_notifications()
+	var diagnostics: Array[Dictionary] = []
+	if _ports != null and _ports.economy != null:
+		diagnostics.append_array(_ports.economy.flush_notifications())
+	if _ports != null and _ports.zone != null:
+		diagnostics.append_array(_ports.zone.flush_notifications())
+	return diagnostics
+
+
+func _zone_preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	if _ports == null or _ports.zone == null:
+		return {"accepted": true, "preview": null, "diagnostics": []}
+	return _ports.zone.preview(intent, candidate_state)
 
 
 func _zone_prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:

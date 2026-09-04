@@ -44,6 +44,7 @@ func _ready() -> void:
 	_initialize_synergy()
 	_initialize_district_runtime()
 	_initialize_projection()
+	_focus_camera_on_generated_floor()
 	_initialize_arrivals()
 	_initialize_zone_tool()
 	_initialize_walls()
@@ -103,10 +104,37 @@ func _initialize_grid() -> void:
 	print("MainGame: Grid initialized from resolved district — %d×%d." % [width, height])
 
 
+func _get_initial_floor_address() -> Dictionary:
+	if _initial_snapshot == null:
+		return {}
+	var data: Dictionary = _initial_snapshot.get_data()
+	var plots: Array = data.get("plots", [])
+	if plots.is_empty() or not plots[0] is Dictionary:
+		return {}
+	var runtime_plot_id: String = String(plots[0].get("id", ""))
+	for floor: Dictionary in data.get("floors", []):
+		if String(floor.get("plot_id", "")) == runtime_plot_id and int(floor.get("elevation", 999)) == 0:
+			return {
+				"runtime_plot_id": runtime_plot_id,
+				"floor_id": String(floor.get("id", "")),
+				"elevation": 0,
+			}
+	return {}
+
+
+func _get_initial_projection_plot_id() -> String:
+	if _initial_snapshot == null:
+		return ""
+	var plots: Array = _initial_snapshot.get_data().get("plots", [])
+	if plots.is_empty() or not plots[0] is Dictionary:
+		return ""
+	return String(plots[0].get("id", ""))
+
+
 func _resolve_initial_snapshot() -> ResolvedDistrictSnapshot:
 	var factory: RefCounted = load("res://scripts/resources/district_layout_fixture_factory.gd").new()
 	var resolver: RefCounted = load("res://scripts/resources/district_layout_resolver.gd").new()
-	var resolution: Dictionary = resolver.resolve(factory.build_fixture("A"))
+	var resolution: Dictionary = resolver.resolve(factory.build_fixture("fixture.legacy_25_single"))
 	if not bool(resolution.get("valid", false)):
 		push_error("MainGame: District layout resolution failed: %s" % resolution.get("diagnostics", []))
 		return null
@@ -168,6 +196,10 @@ func _initialize_projection() -> void:
 	if not bool(public_result.get("valid", false)):
 		push_error("MainGame: Initial public-realm projection build failed.")
 		return
+	if _parcel_label_renderer != null:
+		_parcel_label_renderer.hydrate_active_floor()
+	if _zone_label_renderer != null:
+		_zone_label_renderer.hydrate_active_floor()
 	_camera_gateway_projection = load("res://scripts/camera/camera_gateway_projection.gd").new() as CameraGatewayProjection
 	var camera_gateway_setup: Dictionary = _camera_gateway_projection.initialize(_district_runtime, _public_realm_projection, _camera_manager, metrics)
 	if not bool(camera_gateway_setup.get("valid", false)):
@@ -203,6 +235,7 @@ func _initialize_parcel_label_renderer() -> void:
 	_parcel_label_renderer.name = "ParcelLabelRenderer"
 	_parcel_label_renderer.zone_manager = _zone_manager
 	_parcel_label_renderer.camera_manager = _camera_manager
+	_parcel_label_renderer.configure_plot_mapping(GridManager.DEFAULT_PLOT, _get_initial_projection_plot_id())
 	_world.add_child(_parcel_label_renderer)
 
 
@@ -214,6 +247,7 @@ func _initialize_zone_label_renderer() -> void:
 	_zone_label_renderer.name = "ZoneLabelRenderer"
 	_zone_label_renderer.zone_manager = _zone_manager
 	_zone_label_renderer.camera_manager = _camera_manager
+	_zone_label_renderer.configure_plot_mapping(GridManager.DEFAULT_PLOT, _get_initial_projection_plot_id())
 	_world.add_child(_zone_label_renderer)
 
 
@@ -239,6 +273,18 @@ func _initialize_camera() -> void:
 	_camera_manager.current_floor_index = 0
 
 	print("MainGame: Camera initialized at center of grid.")
+
+
+func _focus_camera_on_generated_floor() -> void:
+	if _projection_coordinator == null or _camera_manager == null:
+		return
+	var floor: Floor = _projection_coordinator.get_projected_floor(_get_initial_floor_address())
+	if floor == null:
+		return
+	var center: Vector3 = floor.to_global(floor.grid_coordinate_to_local(Vector2(floor.grid_width, floor.grid_height) * 0.5))
+	var camera_position: Vector3 = _camera_manager.global_position
+	_camera_manager.global_position = Vector3(center.x, camera_position.y, center.z)
+	print("MainGame: Camera focused on generated floor at %s." % center)
 
 
 # ── Time Initialization ────────────────────────────────────────────────
@@ -403,6 +449,12 @@ func _initialize_zone_tool() -> void:
 
 	# ZoneTool starts INACTIVE: painting only begins when the player presses a
 	# zone-type button in the BottomToolbar (which sets is_active = true).
+	_zone_tool.configure_projection(
+		_projection_coordinator,
+		_get_initial_floor_address(),
+		GridManager.DEFAULT_PLOT,
+		GridManager.GROUND_FLOOR
+	)
 	_zone_tool.is_active = false
 	_zone_tool.active_zone_type = ZoneData.ZONE_TYPE_NAMES[0]  # Retail by default.
 

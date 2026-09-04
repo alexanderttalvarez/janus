@@ -93,12 +93,12 @@ Prestige values map to named tiers. Each tier provides mechanical benefits. With
 
 | Tier | Prestige Range | Visitor Attraction (spawn multiplier) | Tenant Tier Access | Rent Ceiling ($/tile/day) |
 |------|---------------|--------------------------------------|-------------------|--------------------------|
-| **Empty Lot** | 0–500 | 0.5x | Tier 1 (basic) | $5 |
-| **Local Shop** | 501–1,500 | 1.0x | Tiers 1–2 | $10 |
-| **Neighborhood Center** | 1,501–3,500 | 1.5x | Tiers 1–3 | $18 |
-| **Regional Mall** | 3,501–6,500 | 2.0x | Tiers 1–4 | $30 |
-| **City Destination** | 6,501–9,000 | 2.5x | Tiers 1–5 | $45 |
-| **Megacity Mall** | 9,001–10,000+ | 3.0x | Tiers 1–5 + Exclusive | $60 |
+| **Empty Lot** | 0–499 | 0.5x | Tier 1 (basic) | $5 |
+| **Small Market** | 500–1,499 | 1.0x | Tiers 1–2 | $10 |
+| **Neighborhood Center** | 1,500–3,499 | 1.5x | Tiers 1–3 | $18 |
+| **Regional Mall** | 3,500–6,499 | 2.0x | Tiers 1–4 | $30 |
+| **City Destination** | 6,500–8,999 | 2.5x | Tiers 1–5 | $45 |
+| **Megacity Mall** | 9,000–10,000+ | 3.0x | Tiers 1–5 + Exclusive | $60 |
 
 ### Hybrid Threshold/Multiplier Behavior
 

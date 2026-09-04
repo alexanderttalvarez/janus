@@ -66,6 +66,9 @@ class DistrictZonePort extends RefCounted:
 	func get_revision() -> int:
 		return 0
 
+	func preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+		return {"accepted": true, "preview": null, "diagnostics": []}
+
 	func prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
 		return {"accepted": true, "prepare_token": {"candidate": candidate_state.duplicate(true)}, "diagnostics": []}
 
@@ -74,6 +77,9 @@ class DistrictZonePort extends RefCounted:
 
 	func undo(prepare_token: Dictionary) -> Dictionary:
 		return {"accepted": true, "diagnostics": []}
+
+	func flush_notifications() -> Array[Dictionary]:
+		return []
 
 
 class ZoneManagerPort extends DistrictZonePort:
@@ -85,6 +91,11 @@ class ZoneManagerPort extends DistrictZonePort:
 	func get_revision() -> int:
 		return 0 if manager == null else int(manager.call("get_district_revision"))
 
+	func preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+		if manager == null:
+			return {"accepted": false, "diagnostics": [{"code": "ZONE_MANAGER_REQUIRED", "message": "ZoneManager is required"}]}
+		return manager.call("preview_district_candidate", intent, candidate_state)
+
 	func prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
 		if manager == null:
 			return {"accepted": false, "diagnostics": [{"code": "ZONE_MANAGER_REQUIRED", "message": "ZoneManager is required"}]}
@@ -95,6 +106,9 @@ class ZoneManagerPort extends DistrictZonePort:
 
 	func undo(prepare_token: Dictionary) -> Dictionary:
 		return manager.call("undo_district_candidate", prepare_token)
+
+	func flush_notifications() -> Array[Dictionary]:
+		return manager.call("flush_district_notifications")
 
 
 class DistrictProgressionPort extends RefCounted:

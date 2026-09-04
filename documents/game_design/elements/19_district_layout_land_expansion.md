@@ -73,6 +73,7 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 ### Street Segment Conversion
 
 - A Street Segment is purchased and converted as a whole, including both Pedestrian Bands and its carriageway.
+- Conversion costs 3,000 Kreds per tile in that complete Street Corridor. The value is sourced from centralized tunable Economy policy and captured immutably for the transaction.
 - Conversion creates pedestrian public space and removes general vehicle traffic from that segment.
 - A Street Segment is eligible only when all of these conditions are met:
   - The layout marks it purchasable.
@@ -131,8 +132,9 @@ The road profile, generated public-realm, conversion, frontage/access, and traff
 
 ## OPEN QUESTIONS
 
-- Exact prices and price scaling for Plot Sections, floor-space tiles, Street Segments, and transport facilities.
-- Exact economy requirements and progression gates for land expansion, vertical construction, street conversion, and transport facilities.
-- Demolition rules, timing, and prices for old buildings retained after section purchase.
+- Construction-cancellation refund policy.
+- Demolition timing and consequences for old buildings retained after Plot Section purchase; an eligible whole fixed-structure demolition costs the approved flat 20-Kred fee and creates no refund.
+- Exact progression gates for land expansion, vertical construction, street conversion, and transport facilities.
+- Transport-facility prices and operating fees.
 - The final typed-resource schema, token-grid format, validation rules, and whether the provisional hybrid pipeline should be retained.
 - Presentation details for warnings and for future public-transport arrivals.

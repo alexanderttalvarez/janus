@@ -25,8 +25,7 @@ const DRAG_PREVIEW_ALPHA: float = 0.55
 
 ## World Y for all tile visuals. Must sit clearly above the GridOverlay plane
 ## (floor.tscn places it at y=0.1) or the meshes are hidden/z-fight with it.
-const TILE_VISUAL_Y: float = 0.15
-const TILE_SIZE: float = 1.0
+const TILE_VISUAL_OFFSET: float = 0.15
 const INVALID_PERIMETER_Y: float = 0.22
 const INVALID_PERIMETER_THICKNESS: float = 0.05
 const INVALID_PERIMETER_HEIGHT: float = 0.025
@@ -56,6 +55,22 @@ var preview_split_result: SplitResult
 var can_finish: bool = false
 ## Red perimeter feedback for invalid pending geometry.
 var _invalid_perimeter_root: Node3D
+var _projection_coordinator: ProjectionCoordinator
+var _active_floor_address: Dictionary = {}
+var _source_plot_id: String = ""
+var _source_floor_label: String = ""
+
+
+func configure_projection(
+	coordinator: ProjectionCoordinator,
+	floor_address: Dictionary,
+	source_plot_id: String,
+	source_floor_label: String
+) -> void:
+	_projection_coordinator = coordinator
+	_active_floor_address = floor_address.duplicate(true)
+	_source_plot_id = source_plot_id
+	_source_floor_label = source_floor_label
 
 
 func _ready() -> void:
@@ -83,23 +98,21 @@ func _update_preview_validation() -> void:
 		can_finish = false
 		_clear_invalid_perimeter()
 	else:
-		var zone_manager := _get_zone_manager()
-		var pending_tiles := _combined_pending_tiles()
-		if zone_manager == null:
+		var pending_tiles: Array[Vector2i] = _combined_pending_tiles()
+		var runtime := _get_district_runtime()
+		var intent: Dictionary = _make_district_paint_intent()
+		if runtime == null or intent.is_empty():
 			preview_split_result = SplitResult.failure(
 				SplitResult.Status.INVALID_ZONE_GEOMETRY,
-				"ZONE_MANAGER_UNAVAILABLE"
+				"DISTRICT_RUNTIME_UNAVAILABLE"
 			)
 		else:
-			if _none_mode:
-				preview_split_result = zone_manager.preview_paint(
-					_preview_zone_type(), pending_tiles, _preview_floor(), _preview_plot_id(),
-					_combined_pending_typologies(), "none"
-				)
-			else:
-				preview_split_result = zone_manager.preview_paint(
-					_preview_zone_type(), pending_tiles, _preview_floor(), _preview_plot_id(),
-					_combined_pending_typologies(), "zone"
+			var preview: Dictionary = runtime.preview_transaction(intent)
+			preview_split_result = preview.get("zone_preview", null) as SplitResult
+			if preview_split_result == null:
+				preview_split_result = SplitResult.failure(
+					SplitResult.Status.INVALID_ZONE_GEOMETRY,
+					"DISTRICT_ZONE_PREVIEW_REJECTED"
 				)
 		can_finish = preview_split_result != null and preview_split_result.is_success()
 		if can_finish:
@@ -162,12 +175,12 @@ func _preview_zone_type() -> String:
 
 func _preview_floor() -> String:
 	var existing := _editing_zone()
-	return existing.floor if existing != null else "G"
+	return existing.floor if existing != null else _source_floor_label
 
 
 func _preview_plot_id() -> String:
 	var existing := _editing_zone()
-	return existing.plot_id if existing != null else GridManager.DEFAULT_PLOT
+	return existing.plot_id if existing != null else _source_plot_id
 
 
 func _show_invalid_perimeter(tiles: Array[Vector2i]) -> void:
@@ -177,13 +190,16 @@ func _show_invalid_perimeter(tiles: Array[Vector2i]) -> void:
 	var tile_set: Dictionary = {}
 	for tile_pos in tiles:
 		tile_set[tile_pos] = true
+	var tile_size := _get_projected_tile_size()
+	if tile_size <= 0.0:
+		return
 	var material := StandardMaterial3D.new()
 	material.albedo_color = INVALID_PERIMETER_COLOR
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	var horizontal_mesh := BoxMesh.new()
-	horizontal_mesh.size = Vector3(TILE_SIZE + INVALID_PERIMETER_THICKNESS, INVALID_PERIMETER_HEIGHT, INVALID_PERIMETER_THICKNESS)
+	horizontal_mesh.size = Vector3(tile_size + INVALID_PERIMETER_THICKNESS, INVALID_PERIMETER_HEIGHT, INVALID_PERIMETER_THICKNESS)
 	var vertical_mesh := BoxMesh.new()
-	vertical_mesh.size = Vector3(INVALID_PERIMETER_THICKNESS, INVALID_PERIMETER_HEIGHT, TILE_SIZE + INVALID_PERIMETER_THICKNESS)
+	vertical_mesh.size = Vector3(INVALID_PERIMETER_THICKNESS, INVALID_PERIMETER_HEIGHT, tile_size + INVALID_PERIMETER_THICKNESS)
 	for tile_pos in tiles:
 		if not tile_set.has(tile_pos + Vector2i.UP):
 			_add_invalid_perimeter_segment(horizontal_mesh, material, tile_pos, Vector3(0.0, 0.0, -0.5))
@@ -199,7 +215,13 @@ func _add_invalid_perimeter_segment(mesh: BoxMesh, material: StandardMaterial3D,
 	var segment := MeshInstance3D.new()
 	segment.mesh = mesh
 	segment.material_override = material
-	segment.position = Vector3(float(tile_pos.x) + 0.5, INVALID_PERIMETER_Y, float(tile_pos.y) + 0.5) + offset
+	var projected_position := _project_grid_coordinate(Vector2(tile_pos) + Vector2(0.5, 0.5) + Vector2(offset.x, offset.z))
+	if projected_position == Vector3.INF:
+		return
+	segment.global_position = projected_position + Vector3(0.0, INVALID_PERIMETER_Y, 0.0)
+	var floor := _get_projected_floor()
+	if floor != null:
+		segment.global_rotation.y = floor.global_rotation.y
 	_invalid_perimeter_root.add_child(segment)
 
 
@@ -277,7 +299,10 @@ func _update_drag_preview(end_tile: Vector2i) -> void:
 			if not _can_paint_tile_for_rectangle(tile_pos):
 				continue
 		var mesh := _make_tile_mesh(DRAG_PREVIEW_ALPHA)
-		mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y + 0.01, float(tile_pos.y) + 0.5)
+		var projected_position := _project_cell_center(tile_pos)
+		if projected_position == Vector3.INF:
+			continue
+		mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET + 0.01, 0.0)
 		_drag_preview_root.add_child(mesh)
 
 
@@ -349,21 +374,18 @@ static func rectangle_tiles(start_tile: Vector2i, end_tile: Vector2i) -> Array[V
 
 
 func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
-	var gm := _get_grid_manager()
-	if gm == null:
-		return false
-	var tile: GridTile = gm.get_tile(tile_pos.x, tile_pos.y)
-	if tile == null or not tile.owned or not tile.floor_built:
+	if tile_pos.x < 0 or tile_pos.y < 0 or _projection_coordinator == null or _active_floor_address.is_empty():
 		return false
 	var zm := _get_zone_manager()
 	if zm == null:
 		return false
-	if _none_mode:
-		return not tile.zone_id.is_empty()
-	var occupying_zone := zm.get_zone_at_tile(tile_pos)
-	if occupying_zone == null:
-		return true
-	return occupying_zone.type == active_zone_type
+	return zm.can_paint_tile_for_tool(
+		tile_pos,
+		_preview_floor(),
+		_preview_plot_id(),
+		_preview_zone_type(),
+		_none_mode
+	)
 
 
 func _erase_at_mouse() -> void:
@@ -377,24 +399,10 @@ func _erase_at_mouse() -> void:
 
 
 func _can_paint(tile_pos: Vector2i) -> bool:
-	var gm := _get_grid_manager()
-	if gm == null:
-		return false
-	var tile: GridTile = gm.get_tile(tile_pos.x, tile_pos.y)
-	if tile == null or not tile.owned:
+	if tile_pos.x < 0 or tile_pos.y < 0:
 		return false
 	if _remove_mode:
 		return _painted_tiles.has(tile_pos)
-	if _none_mode:
-		var none_zone_manager := _get_zone_manager()
-		return none_zone_manager != null and none_zone_manager.is_tile_in_zone(tile_pos)
-	# Different zone types cannot be painted over; same-type zones can be merged.
-	var zm := _get_zone_manager()
-	if zm and zm.is_tile_in_zone(tile_pos):
-		var occupying_zone := zm.get_zone_at_tile(tile_pos)
-		return occupying_zone != null and occupying_zone.type == active_zone_type
-	# Adjacency is retained for hover feedback only. Rectangle painting uses
-	# _can_paint_tile_for_rectangle() so the full drag area can be selected.
 	return _can_paint_tile_for_rectangle(tile_pos)
 
 
@@ -404,8 +412,12 @@ func _update_hover() -> void:
 		return
 	var tile_pos := _get_tile_under_mouse()
 	if _can_paint(tile_pos):
+		var projected_position := _project_cell_center(tile_pos)
+		if projected_position == Vector3.INF:
+			_preview_mesh.visible = false
+			return
 		_preview_mesh.visible = true
-		_preview_mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y, float(tile_pos.y) + 0.5)
+		_preview_mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET, 0.0)
 		var color := _get_typology_color(_typo_mode)
 		color.a = HOVER_ALPHA
 		(_preview_mesh.material_override as StandardMaterial3D).albedo_color = color
@@ -415,8 +427,11 @@ func _update_hover() -> void:
 
 ## Create a tile-sized visual mesh in the current zone color at the given alpha.
 func _make_tile_mesh(alpha: float) -> MeshInstance3D:
+	var tile_size := _get_projected_tile_size()
+	if tile_size <= 0.0:
+		return MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = Vector3(0.96, 0.07, 0.96)
+	box.size = Vector3(tile_size * 0.96, tile_size * 0.07, tile_size * 0.96)
 	var mat := StandardMaterial3D.new()
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var color := _get_typology_color(_typo_mode)
@@ -434,7 +449,10 @@ func _show_painted_tile(tile_pos: Vector2i) -> void:
 		_refresh_painted_tile(tile_pos)
 		return
 	var mesh := _make_tile_mesh(PAINTED_ALPHA)
-	mesh.position = Vector3(float(tile_pos.x) + 0.5, TILE_VISUAL_Y, float(tile_pos.y) + 0.5)
+	var projected_position := _project_cell_center(tile_pos)
+	if projected_position == Vector3.INF:
+		return
+	mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET, 0.0)
 	_visual_root.add_child(mesh)
 	_painted_meshes[tile_pos] = mesh
 
@@ -461,18 +479,12 @@ func finish() -> bool:
 	_update_preview_validation()
 	if not can_finish:
 		return false
-	var zone_manager := _get_zone_manager()
-	if zone_manager == null:
+	var runtime := _get_district_runtime()
+	var intent: Dictionary = _make_district_paint_intent()
+	if runtime == null or intent.is_empty():
 		return false
-	var committed_zone: ZoneData = zone_manager.paint_zone(
-		active_zone_type,
-		_painted_tiles,
-		_preview_floor(),
-		_preview_plot_id(),
-		_painted_typologies,
-		"none" if _none_mode else "zone"
-	)
-	if committed_zone == null and not (_none_mode and zone_manager.last_split_result != null and zone_manager.last_split_result.is_success()):
+	var committed: Dictionary = runtime.commit_transaction(intent)
+	if not bool(committed.get("valid", false)):
 		_update_preview_validation()
 		return false
 	cancel()
@@ -557,27 +569,86 @@ func _get_typology_color(typology: GridTile.TileTypology, alpha: float = 1.0) ->
 
 func _get_tile_under_mouse() -> Vector2i:
 	var vp := get_viewport()
-	if vp == null:
-		return Vector2i.ZERO
+	if vp == null or _projection_coordinator == null or _active_floor_address.is_empty():
+		return Vector2i(-1, -1)
 	var cam := vp.get_camera_3d()
 	if cam == null:
-		return Vector2i.ZERO
-	var origin := cam.project_ray_origin(vp.get_mouse_position())
-	var dir := cam.project_ray_normal(vp.get_mouse_position())
-	if abs(dir.y) < 0.001:
-		return Vector2i.ZERO
-	var t := (0.0 - origin.y) / dir.y
-	var hit := origin + dir * t
-	var gm := _get_grid_manager()
-	if gm:
-		return gm.world_to_grid(hit)
-	return Vector2i.ZERO
+		return Vector2i(-1, -1)
+	var pick: Dictionary = _projection_coordinator.pick_cell(
+		_active_floor_address,
+		cam.project_ray_origin(vp.get_mouse_position()),
+		cam.project_ray_normal(vp.get_mouse_position())
+	)
+	if not bool(pick.get("valid", false)):
+		return Vector2i(-1, -1)
+	return pick.get("cell", Vector2i(-1, -1)) as Vector2i
 
 
-func _get_grid_manager() -> GridManager:
+func _make_district_paint_intent() -> Dictionary:
+	var runtime := _get_district_runtime()
+	if runtime == null or not runtime.has_session():
+		return {}
+	var snapshot: ResolvedDistrictSnapshot = runtime.get_snapshot()
+	var plots: Array = snapshot.get_data().get("plots", [])
+	if plots.size() != 1:
+		return {}
+	var runtime_plot_id: String = String(plots[0].get("id", ""))
+	var floor_id: String = ""
+	for floor: Dictionary in snapshot.get_data().get("floors", []):
+		if String(floor.get("plot_id", "")) == runtime_plot_id and int(floor.get("elevation", 999)) == 0:
+			floor_id = String(floor.get("id", ""))
+			break
+	if runtime_plot_id.is_empty() or floor_id.is_empty():
+		return {}
+	var cells: Array = []
+	for tile_pos: Vector2i in _combined_pending_tiles():
+		cells.append([tile_pos.x, tile_pos.y])
+	return {
+		"operation": DistrictRuntime.OP_PAINT_ZONE,
+		"expected_district_revision": runtime.get_revision(),
+		"runtime_plot_id": runtime_plot_id,
+		"floor_id": floor_id,
+		"elevation": 0,
+		"zone_plot_id": _preview_plot_id(),
+		"zone_floor_label": _preview_floor(),
+		"zone_type": _preview_zone_type(),
+		"cells": cells,
+		"typologies": _combined_pending_typologies(),
+		"paint_mode": "none" if _none_mode else "zone",
+		"economy_value": 0,
+	}
+
+
+func _get_projected_floor() -> Floor:
+	if _projection_coordinator == null or _active_floor_address.is_empty():
+		return null
+	return _projection_coordinator.get_projected_floor(_active_floor_address)
+
+
+func _get_projected_tile_size() -> float:
+	if _projection_coordinator == null or _active_floor_address.is_empty():
+		return 0.0
+	return _projection_coordinator.get_projected_tile_size(_active_floor_address)
+
+
+func _project_grid_coordinate(grid_coordinate: Vector2) -> Vector3:
+	if _projection_coordinator == null or _active_floor_address.is_empty():
+		return Vector3.INF
+	return _projection_coordinator.project_grid_coordinate(_active_floor_address, grid_coordinate)
+
+
+func _project_cell_center(cell: Vector2i) -> Vector3:
+	if _projection_coordinator == null or _active_floor_address.is_empty():
+		return Vector3.INF
+	return _projection_coordinator.project_cell_center(_active_floor_address, cell)
+
+
+func _get_district_runtime() -> DistrictRuntime:
 	var root := get_tree().current_scene
-	if root: return root.get_node_or_null("World/GridManager") as GridManager
+	if root:
+		return root.get_node_or_null("DistrictRuntime") as DistrictRuntime
 	return null
+
 
 func _get_zone_manager() -> ZoneManager:
 	var root := get_tree().current_scene

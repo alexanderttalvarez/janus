@@ -110,5 +110,5 @@ MVP focuses on one initially owned Plot and its building loop: build floors -> p
 
 ### OPEN QUESTIONS
 
-- Demolition rules and prices for buildings that remain after a Plot Section purchase.
-- Exact floor-space acquisition prices and progression gates.
+- Demolition timing and consequences for buildings that remain after a Plot Section purchase. An eligible whole fixed-structure demolition costs the approved flat 20-Kred fee and creates no refund.
+- Progression gates for floor-space acquisition.

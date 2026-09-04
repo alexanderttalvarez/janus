@@ -15,6 +15,7 @@ var _runtime: DistrictRuntime
 var _metrics: ProjectionMetrics
 var _builder: ProjectionDescriptorBuilder
 var _active_root: Node3D
+var _active_floor_index: Dictionary = {}
 var _manifest: Dictionary = {}
 var _generation: int = 0
 var _build_token: int = 0
@@ -121,6 +122,7 @@ func _commit(result: ProjectionResult) -> Dictionary:
 	var old_root: Node3D = _active_root
 	_active_root = result.candidate_root
 	add_child(_active_root)
+	_rebuild_floor_index()
 	if old_root != null and is_instance_valid(old_root):
 		old_root.queue_free()
 	_generation += 1
@@ -138,6 +140,7 @@ func dispose() -> void:
 	if _active_root != null and is_instance_valid(_active_root):
 		_active_root.queue_free()
 	_active_root = null
+	_active_floor_index.clear()
 	_runtime = null
 	_metrics = null
 	_builder = null
@@ -151,6 +154,78 @@ func get_manifest() -> Dictionary:
 
 func get_active_root() -> Node3D:
 	return _active_root
+
+
+## Resolve a generated floor from the full H3/H4 floor address.
+func get_projected_floor(address: Dictionary) -> Floor:
+	var floor_id: String = String(address.get("floor_id", ""))
+	if floor_id.is_empty():
+		return null
+	var floor: Floor = _active_floor_index.get(floor_id, null) as Floor
+	if floor == null or not is_instance_valid(floor):
+		return null
+	var runtime_plot_id: String = String(address.get("runtime_plot_id", ""))
+	if not runtime_plot_id.is_empty() and String(floor.get_meta("runtime_plot_id", "")) != runtime_plot_id:
+		return null
+	if address.has("elevation") and int(floor.get_meta("elevation", 0)) != int(address["elevation"]):
+		return null
+	return floor
+
+
+## Project a fractional local grid coordinate through the generated floor.
+func project_grid_coordinate(address: Dictionary, grid_coordinate: Vector2) -> Vector3:
+	var floor: Floor = get_projected_floor(address)
+	if floor == null:
+		return Vector3.INF
+	return floor.to_global(floor.grid_coordinate_to_local(grid_coordinate))
+
+
+## Project the canonical center of one local grid cell.
+func project_cell_center(address: Dictionary, cell: Vector2i) -> Vector3:
+	return project_grid_coordinate(address, Vector2(cell) + Vector2(0.5, 0.5))
+
+
+## Return the projected local cell under a world-space camera ray.
+func pick_cell(address: Dictionary, ray_origin: Vector3, ray_direction: Vector3) -> Dictionary:
+	var floor: Floor = get_projected_floor(address)
+	if floor == null or ray_direction.length_squared() <= 0.000001:
+		return {"valid": false, "cell": Vector2i(-1, -1)}
+	var local_origin: Vector3 = floor.to_local(ray_origin)
+	var local_direction: Vector3 = floor.global_transform.basis.inverse() * ray_direction.normalized()
+	var grid_origin: Marker3D = floor.get_grid_origin()
+	var plane_y: float = grid_origin.position.y if grid_origin != null else 0.0
+	if absf(local_direction.y) < 0.000001:
+		return {"valid": false, "cell": Vector2i(-1, -1)}
+	var distance: float = (plane_y - local_origin.y) / local_direction.y
+	if distance < 0.0:
+		return {"valid": false, "cell": Vector2i(-1, -1)}
+	var local_hit: Vector3 = local_origin + local_direction * distance
+	var origin_position: Vector3 = grid_origin.position if grid_origin != null else Vector3.ZERO
+	var cell_position := Vector2i(
+		floori((local_hit.x - origin_position.x) / floor.tile_size),
+		floori((local_hit.z - origin_position.z) / floor.tile_size)
+	)
+	if cell_position.x < 0 or cell_position.y < 0 or cell_position.x >= floor.grid_width or cell_position.y >= floor.grid_height:
+		return {"valid": false, "cell": cell_position, "world_position": floor.to_global(local_hit)}
+	return {"valid": true, "cell": cell_position, "world_position": floor.to_global(local_hit)}
+
+
+func get_projected_tile_size(address: Dictionary) -> float:
+	var floor: Floor = get_projected_floor(address)
+	return floor.tile_size if floor != null else 0.0
+
+
+func _rebuild_floor_index() -> void:
+	_active_floor_index.clear()
+	if _active_root == null:
+		return
+	for child: Node in _active_root.get_children():
+		var floor: Floor = child as Floor
+		if floor == null:
+			continue
+		var floor_id: String = String(floor.get_meta("runtime_floor_id", ""))
+		if not floor_id.is_empty():
+			_active_floor_index[floor_id] = floor
 
 
 func _materialize(
@@ -188,6 +263,8 @@ func _materialize(
 		floor_node.rotation.y = float(descriptor.get("rotation_y", 0.0))
 		floor_node.set_meta("generated_projection", true)
 		floor_node.set_meta("runtime_floor_id", descriptor.get("floor_id", ""))
+		floor_node.set_meta("runtime_plot_id", descriptor.get("plot_id", ""))
+		floor_node.set_meta("elevation", elevation)
 		floor_node.apply_projection(descriptor, _metrics)
 		root.add_child(floor_node)
 	_materialize_batches(root, batches)

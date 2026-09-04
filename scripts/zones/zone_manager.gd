@@ -28,6 +28,10 @@ var _parcel_display_number_counter: int = 0
 ## Most recent pure split attempt for future UI/debug feedback.
 var last_split_result: SplitResult
 
+## H3 holds zone gameplay notifications until the district envelope commits.
+var _district_notifications_deferred: bool = false
+var _deferred_district_notifications: Array[Dictionary] = []
+
 ## Most recent committed debug subtype assignment result.
 var last_assignment_result: BusinessAssignmentResult
 
@@ -41,7 +45,26 @@ func get_district_revision() -> int:
 
 
 ## Prepare a detached coordination token without writing zone authority.
+func preview_district_candidate(intent: Dictionary, _candidate_state: Dictionary) -> Dictionary:
+	if String(intent.get("operation", "")) != DistrictRuntime.OP_PAINT_ZONE:
+		return {"accepted": true, "preview": null, "diagnostics": []}
+	var preview: SplitResult = preview_paint(
+		String(intent.get("zone_type", "")),
+		_to_vector2i_array(intent.get("cells", [])),
+		String(intent.get("zone_floor_label", "")),
+		String(intent.get("zone_plot_id", "")),
+		intent.get("typologies", {}),
+		String(intent.get("paint_mode", "zone"))
+	)
+	if preview == null or not preview.is_success():
+		return {"accepted": false, "diagnostics": [{"code": "ZONE_PAINT_REJECTED", "message": "ZoneManager rejected the detached zone paint candidate"}]}
+	return {"accepted": true, "preview": preview, "diagnostics": []}
+
+
 func prepare_district_candidate(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	var preview: Dictionary = preview_district_candidate(intent, candidate_state)
+	if not bool(preview.get("accepted", false)):
+		return preview
 	return {
 		"accepted": true,
 		"prepare_token": {
@@ -60,6 +83,23 @@ func commit_district_candidate(prepare_result: Dictionary) -> Dictionary:
 	var prepare_token: Dictionary = prepare_result.get("prepare_token", prepare_result)
 	if prepare_token.is_empty() or int(prepare_token.get("zone_revision", -1)) != authority_revision:
 		return {"accepted": false, "diagnostics": [{"code": "STALE_ZONE_REVISION", "message": "zone authority changed before coordinated commit"}]}
+	var intent: Dictionary = prepare_token.get("intent", {})
+	if String(intent.get("operation", "")) != DistrictRuntime.OP_PAINT_ZONE:
+		return {"accepted": true, "diagnostics": []}
+	_district_notifications_deferred = true
+	var committed: ZoneData = paint_zone(
+		String(intent.get("zone_type", "")),
+		_to_vector2i_array(intent.get("cells", [])),
+		String(intent.get("zone_floor_label", "")),
+		String(intent.get("zone_plot_id", "")),
+		intent.get("typologies", {}),
+		String(intent.get("paint_mode", "zone"))
+	)
+	if committed == null and not (String(intent.get("paint_mode", "zone")) == "none" and last_split_result != null and last_split_result.is_success()):
+		_district_notifications_deferred = false
+		_deferred_district_notifications.clear()
+		return {"accepted": false, "diagnostics": [{"code": "ZONE_PAINT_COMMIT_FAILED", "message": "ZoneManager could not commit the prepared paint candidate"}]}
+	prepare_token["mutated"] = true
 	return {"accepted": true, "diagnostics": []}
 
 
@@ -70,7 +110,9 @@ func undo_district_candidate(prepare_result: Dictionary) -> Dictionary:
 		return {"accepted": true, "diagnostics": []}
 	var prior: Variant = prepare_token.get("prior_zone_state", {})
 	if prior is Dictionary:
-		deserialize(prior)
+		_restore_zone_projection(prior, int(prepare_token.get("zone_revision", authority_revision)))
+	_district_notifications_deferred = false
+	_deferred_district_notifications.clear()
 	return {"accepted": true, "diagnostics": []}
 
 
@@ -80,6 +122,63 @@ func undo_district_candidate(prepare_result: Dictionary) -> Dictionary:
 ## Whether the active assignment mode permits the normal tenant lifecycle.
 func permits_tenant_lifecycle() -> bool:
 	return assignment_mode != AssignmentMode.DEBUG_IMMEDIATE
+
+
+func flush_district_notifications() -> Array[Dictionary]:
+	var diagnostics: Array[Dictionary] = []
+	var notifications: Array[Dictionary] = _deferred_district_notifications.duplicate(true)
+	_deferred_district_notifications.clear()
+	_district_notifications_deferred = false
+	for notification: Dictionary in notifications:
+		var event_bus: Node = get_node_or_null("/root/EventBus")
+		if event_bus == null:
+			continue
+		var signal_name: String = String(notification.get("signal", ""))
+		var arguments: Array = notification.get("arguments", [])
+		if signal_name.is_empty():
+			diagnostics.append({"code": "ZONE_NOTIFICATION_INVALID", "message": "deferred zone notification has no signal name"})
+			continue
+		_emit_zone_event_now(event_bus, signal_name, arguments)
+	return diagnostics
+
+
+func _emit_zone_event(signal_name: String, arguments: Array) -> void:
+	if _district_notifications_deferred:
+		_deferred_district_notifications.append({"signal": signal_name, "arguments": arguments.duplicate(true)})
+		return
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		_emit_zone_event_now(event_bus, signal_name, arguments)
+
+
+func _emit_zone_event_now(event_bus: Node, signal_name: String, arguments: Array) -> void:
+	match signal_name:
+		"zone_created":
+			if arguments.size() == 3:
+				event_bus.emit_signal("zone_created", String(arguments[0]), String(arguments[1]), int(arguments[2]))
+		"zone_modified", "zone_deleted":
+			if arguments.size() == 1:
+				event_bus.emit_signal(signal_name, String(arguments[0]))
+
+
+func _to_vector2i_array(values: Array) -> Array[Vector2i]:
+	var result: Array[Vector2i] = []
+	for value: Variant in values:
+		if value is Vector2i:
+			result.append(value)
+		elif value is Array and value.size() == 2:
+			result.append(Vector2i(int(value[0]), int(value[1])))
+	return result
+
+
+func _restore_zone_projection(prior: Dictionary, revision: int) -> void:
+	for zone: ZoneData in zones.values():
+		_clear_zone_tiles(zone.tiles, zone.plot_id, zone.floor)
+	deserialize(prior)
+	for zone: ZoneData in zones.values():
+		_mark_zone_tiles(zone)
+	_rebuild_pathfinding()
+	authority_revision = revision
 
 
 # ── Zone CRUD ──────────────────────────────────────────────────────────
@@ -122,14 +221,10 @@ func create_zone(
 		_mark_zone_tiles(committed_zone)
 	_rebuild_pathfinding()
 	authority_revision += 1
-	var created_event_bus: Node = get_node_or_null("/root/EventBus")
-	if created_event_bus != null:
-		created_event_bus.emit_signal("zone_created", candidate.id, candidate.type, candidate.tiles.size())
+	_emit_zone_event("zone_created", [candidate.id, candidate.type, candidate.tiles.size()])
 	for committed_zone: ZoneData in transaction:
 		if committed_zone != candidate:
-			var modified_event_bus: Node = get_node_or_null("/root/EventBus")
-			if modified_event_bus != null:
-				modified_event_bus.emit_signal("zone_modified", committed_zone.id)
+			_emit_zone_event("zone_modified", [committed_zone.id])
 	return candidate
 
 
@@ -217,14 +312,10 @@ func paint_zone(
 	_mark_zone_tiles(survivor)
 	_rebuild_pathfinding()
 	authority_revision += 1
-	var event_bus: Node = get_node_or_null("/root/EventBus")
-	if event_bus != null:
-		event_bus.emit_signal("zone_modified", survivor.id)
+	_emit_zone_event("zone_modified", [survivor.id])
 	for source: ZoneData in source_zones:
 		if source.id != survivor.id:
-			var deleted_event_bus: Node = get_node_or_null("/root/EventBus")
-			if deleted_event_bus != null:
-				deleted_event_bus.emit_signal("zone_deleted", source.id)
+			_emit_zone_event("zone_deleted", [source.id])
 	_restore_counters(counter_snapshot)
 	return survivor
 
@@ -277,15 +368,11 @@ func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: Strin
 				break
 		if candidate == null:
 			zones.erase(zone_id)
-			var deleted_event_bus: Node = get_node_or_null("/root/EventBus")
-			if deleted_event_bus != null:
-				deleted_event_bus.emit_signal("zone_deleted", zone_id)
+			_emit_zone_event("zone_deleted", [zone_id])
 		else:
 			_copy_zone_state(candidate, source)
 			_mark_zone_tiles(source)
-			var event_bus: Node = get_node_or_null("/root/EventBus")
-			if event_bus != null:
-				event_bus.emit_signal("zone_modified", zone_id)
+			_emit_zone_event("zone_modified", [zone_id])
 	_rebuild_pathfinding()
 	authority_revision += 1
 	return candidates[0] if not candidates.is_empty() else null
@@ -1550,6 +1637,28 @@ func _rebuild_pathfinding() -> void:
 	var grid_manager := _get_grid_manager()
 	if grid_manager:
 		grid_manager.rebuild_pathfinding()
+
+
+## Read-only paint eligibility for ZoneTool; GridManager remains an internal H3 projection.
+func can_paint_tile_for_tool(
+	tile_pos: Vector2i,
+	floor: String,
+	plot_id: String,
+	zone_type: String,
+	none_mode: bool
+) -> bool:
+	var manager := _get_grid_manager()
+	if manager == null:
+		return false
+	var tile: GridTile = manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
+	if tile == null or not tile.owned or not tile.floor_built:
+		return false
+	var occupying_zone := get_zone_at_tile(tile_pos, floor, plot_id)
+	if none_mode:
+		return occupying_zone != null
+	if occupying_zone == null:
+		return true
+	return occupying_zone.type == zone_type
 
 
 func _get_grid_manager() -> GridManager:

@@ -99,7 +99,7 @@ The game should feel complete at MVP and rich at full scope.
 Real-time simulation with pause and speed controls (Pause, 1x, 2x, 3x). Standard for the genre, allows players to observe at their own pace and manage during critical moments.
 
 ### Progression: Prestige & Mall Levels
-**Prestige** is the core progression metric. It represents the district's reputation and desirability. Earning prestige advances the player through **Mall Levels** — tiered milestones with evocative names (e.g., "Local Shopping Building" → "Neighborhood Center" → "Regional Mall" → "Megacity Mall"). Each level unlocks nodes in a tech tree. Progression is hybrid: prestige drives level advancement, which gates tech unlocks, which enable new building capabilities.
+**Prestige** is the core progression metric. It represents the district's reputation and desirability. Earning prestige advances the player through **Mall Levels** — tiered milestones with evocative names (e.g., "Small Market" → "Neighborhood Center" → "Regional Mall" → "Megacity Mall"). Each level unlocks nodes in a tech tree. Progression is hybrid: prestige drives level advancement, which gates tech unlocks, which enable new building capabilities.
 
 ### Failure States: The Death Spiral
 No hard game over. Bad designs underperform. The failure loop is slow and visible: low visitor attraction → shops close from lack of customers → no new businesses want to move in → expenses (staff, maintenance) outpace revenue → debt grows → player can't afford improvements. The game warns the player when recovery is unlikely, but the choice to continue or restart is theirs.

@@ -11,7 +11,15 @@ const LABEL_PIXEL_SIZE: float = 0.008
 ## Supplied by MainGame before this node enters the scene tree.
 var zone_manager: ZoneManager
 var camera_manager: CameraManager
+var source_plot_id: String = ""
+var projection_plot_id: String = ""
+var _projection_coordinator: ProjectionCoordinator
 var _active_floor_level: String = GridManager.GROUND_FLOOR
+
+
+func configure_plot_mapping(source_id: String, projected_id: String) -> void:
+	source_plot_id = source_id
+	projection_plot_id = projected_id
 
 
 func _ready() -> void:
@@ -30,6 +38,7 @@ func _exit_tree() -> void:
 
 ## Rebuild committed zone labels for the active instantiated floor only.
 func hydrate_active_floor() -> void:
+	_bind_projection_events()
 	_clear_all_label_containers()
 	if not DebugManager.show_zone_labels:
 		return
@@ -37,7 +46,7 @@ func hydrate_active_floor() -> void:
 	if floor == null:
 		return
 	for zone: ZoneData in zone_manager.get_zones_on_floor(_active_floor_level):
-		if zone.plot_id == floor.plot_id:
+		if _zone_matches_floor(zone, floor):
 			_render_zone(floor, zone)
 
 
@@ -52,6 +61,7 @@ func _connect_events() -> void:
 		DebugManager.zone_labels_visibility_changed.connect(_on_zone_labels_visibility_changed)
 	if camera_manager != null and not camera_manager.floor_changed.is_connected(_on_floor_changed):
 		camera_manager.floor_changed.connect(_on_floor_changed)
+	_bind_projection_events()
 
 
 func _disconnect_events() -> void:
@@ -65,6 +75,21 @@ func _disconnect_events() -> void:
 		DebugManager.zone_labels_visibility_changed.disconnect(_on_zone_labels_visibility_changed)
 	if camera_manager != null and camera_manager.floor_changed.is_connected(_on_floor_changed):
 		camera_manager.floor_changed.disconnect(_on_floor_changed)
+	if _projection_coordinator != null and _projection_coordinator.projection_committed.is_connected(_on_projection_committed):
+		_projection_coordinator.projection_committed.disconnect(_on_projection_committed)
+
+
+func _bind_projection_events() -> void:
+	if _projection_coordinator == null:
+		var world := get_parent()
+		if world != null:
+			_projection_coordinator = world.get_node_or_null("ProjectionCoordinator") as ProjectionCoordinator
+	if _projection_coordinator != null and not _projection_coordinator.projection_committed.is_connected(_on_projection_committed):
+		_projection_coordinator.projection_committed.connect(_on_projection_committed)
+
+
+func _on_projection_committed(_manifest: Dictionary) -> void:
+	hydrate_active_floor()
 
 
 func _on_zone_created(zone_id: String, _zone_type: String, _tile_count: int) -> void:
@@ -98,7 +123,7 @@ func _refresh_committed_zone(zone_id: String) -> void:
 	if zone == null or zone.floor != _active_floor_level:
 		return
 	var floor := _find_floor(zone.plot_id, zone.floor)
-	if floor == null or floor != _get_active_floor():
+	if floor == null or floor != _get_active_floor() or not _zone_matches_floor(zone, floor):
 		return
 	_remove_zone_group(floor, zone_id)
 	_render_zone(floor, zone)
@@ -150,11 +175,20 @@ func _make_label(text: String) -> Label3D:
 	return label
 
 
+func _zone_matches_floor(zone: ZoneData, floor: Floor) -> bool:
+	return not source_plot_id.is_empty() and not projection_plot_id.is_empty() and zone.plot_id == source_plot_id and floor.plot_id == projection_plot_id
+
+
+func _get_projection_root() -> Node3D:
+	_bind_projection_events()
+	return _projection_coordinator.get_active_root() if _projection_coordinator != null else null
+
+
 func _get_active_floor() -> Floor:
-	var world := get_parent()
-	if world == null:
+	var projection_root := _get_projection_root()
+	if projection_root == null:
 		return null
-	for child in world.get_children():
+	for child in projection_root.get_children():
 		var floor := child as Floor
 		if floor != null and floor.floor_level == _active_floor_level:
 			return floor
@@ -162,10 +196,12 @@ func _get_active_floor() -> Floor:
 
 
 func _find_floor(plot_id: String, floor_level: String) -> Floor:
-	var world := get_parent()
-	if world == null:
+	var projection_root := _get_projection_root()
+	if projection_root == null:
 		return null
-	for child in world.get_children():
+	if plot_id != source_plot_id or projection_plot_id.is_empty():
+		return null
+	for child in projection_root.get_children():
 		var floor := child as Floor
 		if floor != null and floor.plot_id == plot_id and floor.floor_level == floor_level:
 			return floor
@@ -193,20 +229,20 @@ func _remove_zone_group(floor: Floor, zone_id: String) -> void:
 
 
 func _remove_zone_group_from_all_floors(zone_id: String) -> void:
-	var world := get_parent()
-	if world == null:
+	var projection_root := _get_projection_root()
+	if projection_root == null:
 		return
-	for child in world.get_children():
+	for child in projection_root.get_children():
 		var floor := child as Floor
 		if floor != null:
 			_remove_zone_group(floor, zone_id)
 
 
 func _clear_all_label_containers() -> void:
-	var world := get_parent()
-	if world == null:
+	var projection_root := _get_projection_root()
+	if projection_root == null:
 		return
-	for child in world.get_children():
+	for child in projection_root.get_children():
 		var floor := child as Floor
 		if floor == null:
 			continue

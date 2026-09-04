@@ -69,19 +69,34 @@ The approved tile-cost calibrations remain in force. Labels below are reconciled
 | **Floor 2 (F2)** | 1.4x | 1,400 Kreds |
 | **Floor 3 (F3)** | 1.6x | 1,600 Kreds |
 | **Floor 4 (F4)** | 1.8x | 1,800 Kreds |
+| **Floor 5 (F5)** | 2.0x | 2,000 Kreds |
+| **Floor 6 (F6)** | 2.2x | 2,200 Kreds |
+| **Floor 7 (F7)** | 2.4x | 2,400 Kreds |
+| **Floor 8 (F8)** | 2.6x | 2,600 Kreds |
 | **Floor 9 (F9)** | 2.8x | 2,800 Kreds |
 | **Underground 1 (U1)** | 1.2x | 1,200 Kreds |
 | **Underground 2 (U2)** | 1.4x | 1,400 Kreds |
 | **Underground 3 (U3)** | 1.6x | 1,600 Kreds |
+| **Underground 4 (U4)** | 1.8x | 1,800 Kreds |
+| **Underground 5 (U5)** | 2.0x | 2,000 Kreds |
 
-The legacy calibration supplied values through U3 only; it has no approved U4 or U5 values.
+The approved vertical schedule advances by 200 Kreds per elevation step after the initial listed calibration. It fully covers F1–F9 and U1–U5.
 
-### OPEN QUESTIONS: New District-Expansion Prices
+### Plot Section Pricing
 
-- Plot Section prices and scaling, including how the approved G tile calibration contributes to a section price.
-- Street Segment purchase/conversion prices.
-- Demolition prices.
-- U4 and U5 floor-space tile prices.
+A Plot Section costs its tile count multiplied by the approved Ground tile cost of **1,000 Kreds**. The purchase grants vertical rights over the section mask but does not include demolition, construction, or a separate vertical-rights surcharge.
+
+### Street Segment Conversion Pricing
+
+A Street Segment conversion costs **3,000 Kreds per tile in the complete Street Corridor** being converted, including both Pedestrian Bands and the carriageway. Conversion is irreversible in MVP and creates no refund.
+
+### Demolition Pricing
+
+An eligible demolition transaction costs a flat **20 Kreds per whole fixed structure**. The transaction addresses one stable fixed-occupant identity across all of its occupied elevations; partial demolition is not supported. Demolition of occupied zone/tenant dependencies remains unavailable in MVP and rejects without charge. Completed demolition creates no refund.
+
+### Tunable Economy Policy
+
+All approved economy values, including the 3,000-Kred Street Corridor tile cost and 20-Kred demolition fee, belong to one centralized economy-policy configuration. They are tunable for playtesting, but runtime transactions consume an immutable captured policy snapshot; no caller, UI, or mutable global variable may alter a value during a transaction.
 
 ### Construction
 
@@ -91,7 +106,7 @@ One-time cost for placing zones, amenities, and circulation elements. Prices var
 
 Economy is the sole balance authority. Purchases use the approved quote → reserve → guaranteed capture → cancel transaction contract. Prices and progression eligibility are immutable policy inputs; they are not invented by Economy.
 
-A reservation is short-lived transaction state only: it is not saved and creates no committed balance change. Cancelling before capture is free. Refunds after a committed purchase, construction cancellation, demolition, and street-conversion reversal remain unapproved policy.
+A reservation is short-lived transaction state only: it is not saved and creates no committed balance change. Cancelling before capture is free. Completed Street Segment conversion is irreversible in MVP and completed demolition has no refund. Construction-cancellation refunds remain unapproved policy.
 
 When debug cost bypass is active, every player-paid action is free. It still performs normal gameplay validation and commits normally, but its economic quote and captured debit are zero.
 
@@ -128,7 +143,7 @@ The player can access loans at any time. Max **2 active loans** simultaneously.
 | Prestige Tier | Max Loan Amount | Monthly Interest Rate |
 |---------------|----------------|----------------------|
 | **Empty Lot** | 100,000 Kreds | 8% |
-| **Local Shop** | 250,000 Kreds | 6% |
+| **Small Market** | 250,000 Kreds | 6% |
 | **Neighborhood Center** | 500,000 Kreds | 5% |
 | **Regional Mall** | 1,000,000 Kreds | 4% |
 | **City Destination** | 2,000,000 Kreds | 3% |
