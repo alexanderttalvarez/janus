@@ -1,6 +1,31 @@
 ## H5 tests for public-realm descriptors, conversion, graph merging, and H4 batches.
 extends SceneTree
 
+class FakeEconomy extends DistrictRuntimePorts.DistrictEconomyPort:
+	func get_policy_snapshot() -> Dictionary:
+		return {"revision": 1, "schema_version": 1}
+
+	func quote(_transaction: Dictionary, _state: Dictionary) -> Dictionary:
+		return {"accepted": true, "value": 0, "economy_revision": 1, "diagnostics": []}
+
+	func reserve(_quote: Dictionary) -> Dictionary:
+		return {"accepted": true, "reservation_token": {"id": 1}, "diagnostics": []}
+
+	func guarantee_capture(reservation: Dictionary) -> Dictionary:
+		return {"accepted": true, "guaranteed_capture_token": reservation, "diagnostics": []}
+
+	func capture(_token: Dictionary) -> Dictionary:
+		return {"accepted": true, "diagnostics": []}
+
+	func cancel(_token: Dictionary) -> Dictionary:
+		return {"accepted": true, "diagnostics": []}
+
+
+class FakeProgression extends DistrictRuntimePorts.DistrictProgressionPort:
+	func get_policy_snapshot() -> Dictionary:
+		return {"revision": 1, "elevation_eligibility": [0, 1, 2, -1, -2, -3], "selected_plot_ids": [], "street_conversion_eligible": true}
+
+
 var _passed: int = 0
 var _failed: int = 0
 
@@ -95,6 +120,9 @@ func _init() -> void:
 	request.descriptor_batches = [batch]
 	_assert(bool(request.validate().get("valid", false)), "H4 accepts the H5 batch with matching revisions")
 	var runtime: DistrictRuntime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	var h3_ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
+	h3_ports.initialize(FakeEconomy.new(), DistrictRuntimePorts.DistrictZonePort.new(), FakeProgression.new())
+	runtime.configure_ports(h3_ports)
 	var created: Dictionary = runtime.create_session(snapshot)
 	runtime.set_street_conversion_validator(Callable(builder, "validate_conversion_intent"))
 	runtime.replace_session(snapshot, conversion_state)

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors and two design-policy decisions.** Requires H3 Active Plot state, [H5](05_street_and_pedestrian_generation.md) public topology/pedestrian graph, and recorded Design selections with Architecture validation for camera infrastructure margin and the legacy 20-purchased-tile rule.
+**Approved — 2026-09-03.** Implementation remains blocked by implemented H3 selected/Active Plot views and [H5](05_street_and_pedestrian_generation.md) public topology/pedestrian graph. The camera-margin and legacy-rule design selections are recorded and architecture-validated.
 
 ## Purpose
 
@@ -25,7 +25,7 @@ Camera uses radial origin bounds and floor strings; `PlotData` stores corner spa
 
 ## Target state
 
-The pan/focus region is the geometric union of each Active Plot rectangle expanded by margin, not an enclosing AABB. Focus outside the union clamps to the nearest point in that union with deterministic tie-breaks. Gateway eligibility is derived only from H2 attachment/pose, H5's final graph, current source state, and matching revisions. Viewing and eligibility never mutate district state or create `FloorState`.
+The pan/focus region is the geometric union of each Active Plot rectangle and each Progression-selected/unlocked Plot rectangle, expanded by margin, not an enclosing AABB. Focus outside the union clamps to the nearest point in that union with deterministic tie-breaks. Gateway eligibility is derived only from H2 attachment/pose, H5's final graph, current source state, and matching revisions. Viewing and eligibility never mutate district state or create `FloorState`.
 
 ## Scope
 
@@ -48,11 +48,11 @@ Demand, source allocation/capacity/weight, visitor realization, road graph, stat
 
 ## Data contracts
 
-`CameraBoundsSnapshot` contains revisions, sorted Active Plot IDs, expanded rectangle union, margin, and empty status. `GatewayProjection` may package `arrival_source_id`, authored selector, H2 topology attachment ID, and H2 baseline `DistrictGridPose`, but labels attachment and pose owner as H2 and cannot alter or re-resolve either. `GatewayEligibilitySnapshot` reports current source state, structural eligibility, reason codes, and committed district/topology revisions only.
+`CameraBoundsSnapshot` contains District and Progression revisions, sorted Active Plot IDs, sorted selected/unlocked Plot IDs, expanded rectangle union, margin, and empty status. `GatewayProjection` may package `arrival_source_id`, authored selector, H2 topology attachment ID, and H2 baseline `DistrictGridPose`, but labels attachment and pose owner as H2 and cannot alter or re-resolve either. `GatewayEligibilitySnapshot` reports current source state, structural eligibility, reason codes, and committed district/topology revisions only.
 
 ## Communication and event flow
 
-`Active Plot rectangles -> expanded union -> CameraManager`; `H2 attachment/pose + H5 final graph + current source state -> eligibility snapshot -> H8`.
+`Active Plot + selected/unlocked Plot rectangles -> expanded union -> CameraManager`;  `H2 attachment/pose + H5 final graph + current source state -> eligibility snapshot -> H8`.
 
 ## Persistence impact
 
@@ -126,8 +126,8 @@ Accidentally replacing the union with an AABB, H6 re-resolving H2 identity/pose,
 
 ## OPEN QUESTIONS
 
-- **DESIGN POLICY BLOCKER:** Design selects camera infrastructure margin A, B, or C and Architecture validates it before H6 acceptance; no numeric value is supplied by this handoff.
-- **DESIGN POLICY BLOCKER:** Design separately selects legacy 20-purchased-tile rule A or B and Architecture validates it before `LegacyCameraBoundsAdapter` removal or H10.
+- **Resolved:** Design selected road-profile-relative camera margin (B); Architecture validates it as deterministic, presentation-only, and compatible with variable road widths and editor/runtime parity.
+- **Resolved:** Design selected removal of the legacy 20-purchased-tile rule (A); camera uses the expanded Active plus selected/unlocked Plot union without mutating District state.
 
 ## GodotPrompter skills required by implementation agents
 

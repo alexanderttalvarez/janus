@@ -132,13 +132,11 @@ func _get_initial_projection_plot_id() -> String:
 
 
 func _resolve_initial_snapshot() -> ResolvedDistrictSnapshot:
-	var factory: RefCounted = load("res://scripts/resources/district_layout_fixture_factory.gd").new()
-	var resolver: RefCounted = load("res://scripts/resources/district_layout_resolver.gd").new()
-	var resolution: Dictionary = resolver.resolve(factory.build_fixture("fixture.legacy_25_single"))
-	if not bool(resolution.get("valid", false)):
-		push_error("MainGame: District layout resolution failed: %s" % resolution.get("diagnostics", []))
-		return null
-	return resolution.get("snapshot") as ResolvedDistrictSnapshot
+	var adapter: RefCounted = load("res://scripts/district/legacy_layout_bootstrap_adapter.gd").new()
+	var snapshot: ResolvedDistrictSnapshot = adapter.resolve_fixture("fixture.legacy_25_single")
+	if snapshot == null:
+		push_error("MainGame: District layout resolution failed through the explicit legacy bootstrap adapter.")
+	return snapshot
 
 
 func _initialize_district_runtime() -> void:
@@ -209,6 +207,8 @@ func _initialize_projection() -> void:
 	if not bool(camera_gateway_result.get("valid", false)):
 		push_error("MainGame: Initial camera/gateway projection build failed: %s" % camera_gateway_result.get("diagnostics", []))
 		return
+	if _tech_tree_manager != null and not _tech_tree_manager.progression_changed.is_connected(_camera_gateway_projection.on_progression_changed):
+		_tech_tree_manager.progression_changed.connect(_camera_gateway_projection.on_progression_changed)
 	_traffic_topology = load("res://scripts/traffic/traffic_topology.gd").new() as TrafficTopology
 	_traffic_topology.name = "TrafficTopology"
 	_world.add_child(_traffic_topology)
@@ -371,7 +371,10 @@ func _initialize_prestige() -> void:
 	_prestige_manager.prestige_recalculated.connect(func(_p: int, _s: int, _q: int):
 		if _tech_tree_manager:
 			_tech_tree_manager.available_points = _prestige_manager.tech_points
+			_tech_tree_manager.sync_mall_level(_prestige_manager.get_mall_level_index())
 	)
+	if _tech_tree_manager:
+		_tech_tree_manager.sync_mall_level(_prestige_manager.get_mall_level_index())
 
 	print("MainGame: Prestige system initialized — monthly recalculation.")
 
@@ -534,7 +537,7 @@ func _validate_v2_authorities(authorities: Dictionary, _layout_ref: Dictionary) 
 		"tenant": ["tenants", "counter"],
 		"visitor": ["visitors", "counter"],
 		"economy": ["balance", "loans", "loan_counter"],
-		"progression": ["unlocked", "available_points", "total_earned"],
+		"progression": ["unlocked", "available_points", "total_earned", "selected_plot_ids", "plot_access_grants_earned", "plot_access_grants_consumed", "awarded_milestone_ids"],
 		"prestige": ["prestige", "scale", "quality", "tech_points", "loan_multiplier"],
 		"staff": ["rooms", "staff", "staff_counter", "room_counter"],
 		"synergy": ["zone_scores"],
@@ -551,6 +554,10 @@ func _validate_v2_authorities(authorities: Dictionary, _layout_ref: Dictionary) 
 		for field: String in required[authority_name]:
 			if not authority.has(field):
 				diagnostics.append({"code": "AUTHORITY_FIELD_MISSING", "path": "$.authorities.%s.%s" % [authority_name, field], "message": "required authority field is missing"})
+	if authorities.get("progression", {}) is Dictionary and _tech_tree_manager != null:
+		var progression_validation: Dictionary = _tech_tree_manager.validate_serialized_state(authorities["progression"])
+		if not bool(progression_validation.get("valid", false)):
+			diagnostics.append_array(progression_validation.get("diagnostics", []))
 	if _district_runtime == null or not _district_runtime.has_session():
 		diagnostics.append({"code": "DISTRICT_RUNTIME_REQUIRED", "path": "$.authorities.district", "message": "district validation requires an active session"})
 	else:

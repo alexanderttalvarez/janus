@@ -2,22 +2,22 @@
 
 This is the implementation order, authority ledger, and cutover gate for the district-layout program. It refines the [architecture blueprint](../../design_handoff.md), [Decision 27](../../decisions/27_district_layout_templates.md), and [Decision 28](../../decisions/28_visitor_arrival_architecture.md).
 
-## Ordered chain and gates
+## Handoff IDs and implementation gates
 
 | Order | Handoff | Architecture status | Implementation gate |
 | ---: | --- | --- | --- |
 | 01 | [Definition Schema and Validation](01_definition_schema_and_validation.md) | Draft - ready for architecture approval | Proof tooling may be implemented with H2. Production format remains provisional through proofs A-C. |
 | 02 | [Resolved District Model](02_resolved_district_model.md) | Draft - ready for architecture approval | Provisional resolver work may be implemented with H1. Production contract remains provisional through proofs A-C. |
-| 03 | [Variable Floor Grid Migration](03_variable_floor_grid_migration.md) | Draft - ready for architecture approval | Production implementation requires H1 KEEP and frozen H1/H2 goldens. |
+| 03 | [Variable Floor Grid Migration](03_variable_floor_grid_migration.md) | Approved — 2026-09-03 | H1 KEEP, frozen H1/H2 goldens, and Economy/Progression dependencies are satisfied. |
 | 04 | [World Projection and Editor Preview](04_world_projection_and_editor_preview.md) | Runtime projection work complete; editor-preview acceptance pending | Runtime projection remains available to successor gates. Full H4 acceptance requires the opt-in editor-plugin capability and tests in the 2026-08-31 addendum. |
-| 05 | [Street and Pedestrian Generation](05_street_and_pedestrian_generation.md) | Draft - implementation blocked by predecessors | The corner-frontage and public-band physical-door decisions are approved; requires H3 transactions and H4 projection lifecycle. |
-| 06 | [Camera Envelope and Pedestrian Gateways](06_camera_and_pedestrian_gateways.md) | Draft - implementation blocked by predecessors | Requires H3 Active Plot state and H5 public topology. |
+| 05 | [Street and Pedestrian Generation](05_street_and_pedestrian_generation.md) | Approved — 2026-09-03 | Public-realm, Economy, Progression, selected-Plot, and god-mode contracts are reconciled; implementation requires H3 transactions and H4 runtime projection lifecycle. |
+| 06 | [Camera Envelope and Pedestrian Gateways](06_camera_and_pedestrian_gateways.md) | Approved — 2026-09-03 | Camera policy is selected/validated; implementation requires H3 selected/Active Plot views and H5 public topology. |
 | 07 | [Traffic Topology Migration](07_traffic_topology_migration.md) | Draft - implementation blocked by predecessors | Requires H5 public-realm/conversion inputs. |
-| 08 | [Visitor Arrival MVP Migration](08_visitor_arrival_mvp_migration.md) | Draft - implementation blocked by predecessors | Requires H6 structural eligibility; MVP does not require durable pending policy. |
+| 08 | [Visitor Arrival MVP Migration](08_visitor_arrival_mvp_migration.md) | Approved — 2026-09-03 | Requires H3 source state, H5 pedestrian graph, H6 structural eligibility, and VisitorManager lifecycle; it is independent of H7 traffic topology and requires no durable pending policy. |
 | 09 | [Save/Load V2 and District Persistence](09_save_load_v2.md) | Draft - implementation blocked by predecessors | Requires implemented H1-H8 authority snapshots and MVP immediate realization. V2 is the first supported district-layout save schema. |
 | 10 | [Legacy Removal and Final Acceptance Gate](10_legacy_removal_and_acceptance.md) | Draft - implementation blocked by predecessors | Implementation starts after H1-H9 implementation and required design/migration approvals; acceptance requires ten adapters removed and all evidence complete. |
 
-Architecture approval confirms contracts. Implementation gates confirm predecessor evidence. H1 and H2 may be approved and implemented together for proof only. After all three proofs, H1 records **KEEP**, **REVISE**, or **REJECT**; KEEP freezes the production H1/H2 format and goldens, while REVISE/REJECT blocks H3 production work.
+Architecture approval confirms contracts. Implementation gates confirm only the explicitly stated predecessor evidence; numeric Handoff IDs do not create unstated dependencies. H7 traffic topology and H8 pedestrian MVP arrival are parallel branches after H5, with H8 additionally requiring H6. H1 and H2 may be approved and implemented together for proof only. After all three proofs, H1 records **KEEP**, **REVISE**, or **REJECT**; KEEP freezes the production H1/H2 format and goldens, while REVISE/REJECT blocks H3 production work.
 
 ## Global invariants
 

@@ -206,7 +206,7 @@ The target architecture replaces plot-corner spawn points with district pedestri
 ### MVP Visitor Spawning
 
 - VisitorManager attempts to spawn one visitor every 5-second visitor tick.
-- Spawning stops when the active population reaches 20 visitors.
+- Spawning stops when the active population reaches 200 visitors.
 - A visitor counts toward the cap immediately, including while fading in or
   voluntarily leaving.
 - New visitor visuals fade from 0% to 100% opacity over 2 seconds.

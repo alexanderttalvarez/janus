@@ -119,6 +119,10 @@ func get_state_read() -> Dictionary:
 	return {"district_revision": get_revision(), "state": get_state(), "snapshot": _snapshot}
 
 
+func get_progression_policy_snapshot() -> Dictionary:
+	return _policy_snapshot()
+
+
 func get_traversal_read_view() -> DistrictTraversalReadView:
 	return null if _traversal_view == null else _traversal_view.duplicate_value()
 
@@ -386,6 +390,10 @@ func _evaluate_intent(intent: Dictionary, base_state: Dictionary) -> Dictionary:
 	if int(intent["expected_district_revision"]) != int(base_state.get("district_revision", 0)):
 		return _evaluation_failure("STALE_DISTRICT_REVISION", "district revision no longer matches the intent")
 	var policy: Dictionary = _policy_snapshot()
+	if policy.is_empty():
+		return _evaluation_failure("PROGRESSION_POLICY_UNAVAILABLE", "an immutable Progression policy snapshot is required")
+	var normalized_intent: Dictionary = intent.duplicate(true)
+	_normalize_economy_intent(normalized_intent)
 	var revisions: Dictionary = _capture_revisions(policy)
 	var candidate: Dictionary = base_state.duplicate(true)
 	var delta: Dictionary = {"operation": operation, "affected_ids": []}
@@ -405,7 +413,9 @@ func _evaluate_intent(intent: Dictionary, base_state: Dictionary) -> Dictionary:
 		OP_PAINT_ZONE:
 			_apply_paint_zone(intent, delta, diagnostics)
 		OP_CONVERT_STREET:
-			if not _street_conversion_validator.is_valid():
+			if not bool(policy.get("street_conversion_eligible", false)):
+				diagnostics.append({"code": "STREET_CONVERSION_UNAVAILABLE", "message": "Progression does not permit Street Segment conversion"})
+			elif not _street_conversion_validator.is_valid():
 				diagnostics.append({"code": "CONVERSION_VALIDATOR_REQUIRED", "message": "H5 conversion validator must be injected before street conversion"})
 			else:
 				var conversion: Dictionary = _street_conversion_validator.call(intent, base_state, _snapshot)
@@ -422,7 +432,7 @@ func _evaluate_intent(intent: Dictionary, base_state: Dictionary) -> Dictionary:
 	var state_validation: Dictionary = _state_records.validate(candidate, _snapshot)
 	if not bool(state_validation.get("valid", false)):
 		return {"valid": false, "diagnostics": state_validation.get("diagnostics", [])}
-	return {"valid": true, "state": candidate, "delta": delta, "policy_snapshot": policy, "revisions": revisions, "intent": intent.duplicate(true), "diagnostics": []}
+	return {"valid": true, "state": candidate, "delta": delta, "policy_snapshot": policy, "revisions": revisions, "intent": normalized_intent, "diagnostics": []}
 
 
 func _apply_acquire_section(intent: Dictionary, state: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
@@ -439,10 +449,13 @@ func _apply_acquire_section(intent: Dictionary, state: Dictionary, delta: Dictio
 		return
 	var plot_id: String = String(section["plot_id"])
 	if not _plot_active(state, plot_id):
+		var selected_plot_ids: Array = _policy_snapshot().get("selected_plot_ids", [])
+		if not selected_plot_ids.has(plot_id):
+			diagnostics.append({"code": "PLOT_NOT_SELECTED", "message": "first section requires a committed Progression Plot selection"})
 		if not bool(section.get("initially_entry_eligible", false)):
 			diagnostics.append({"code": "ENTRY_SECTION_REQUIRED", "message": "inactive Plot must begin through an entry-eligible section"})
-		elif not bool(intent.get("approved_initial_entry_context", false)) and not _has_active_adjacent_plot(state, plot_id):
-			diagnostics.append({"code": "PLOT_NOT_ADJACENT", "message": "first section must be orthogonally adjacent to an Active Plot or approved initial context"})
+		elif not _has_runtime_accessible_adjacent_plot(state, plot_id, selected_plot_ids):
+			diagnostics.append({"code": "PLOT_NOT_ADJACENT", "message": "first section must be orthogonally adjacent to an Active or selected Plot"})
 	if diagnostics.is_empty():
 		var plot_state: Dictionary = _ensure_plot_state(state, plot_id)
 		var overrides: Array = plot_state["section_state_overrides"]
@@ -462,8 +475,11 @@ func _apply_acquire_space(intent: Dictionary, state: Dictionary, policy: Diction
 		diagnostics.append({"code": "FLOOR_ADDRESS_INVALID", "message": "explicit floor address is invalid"})
 	if cells.size() != 1:
 		diagnostics.append({"code": "SEQUENTIAL_ACQUISITION_REQUIRED", "message": "vertical space is acquired one tile at a time"})
-	if elevation < int(policy.get("minimum_elevation", -5)) or elevation > int(policy.get("maximum_elevation", 9)):
-		diagnostics.append({"code": "PROGRESSION_CAP", "message": "progression policy does not permit this elevation"})
+	var physical_range: Dictionary = _physical_range_for_floor(floor, plot_id)
+	if elevation < int(physical_range.get("minimum_elevation", -5)) or elevation > int(physical_range.get("maximum_elevation", 9)):
+		diagnostics.append({"code": "PHYSICAL_CAP", "message": "requested elevation exceeds the resolved physical Plot cap"})
+	if not (policy.get("elevation_eligibility", []) as Array).has(elevation):
+		diagnostics.append({"code": "ELEVATION_UNAVAILABLE", "message": "Progression does not permit this elevation"})
 	if diagnostics.is_empty():
 		var cell: Array = cells[0]
 		var floor_state: Dictionary = _floor_state(state, String(intent["floor_id"]), elevation)
@@ -491,8 +507,11 @@ func _apply_construct(intent: Dictionary, state: Dictionary, policy: Dictionary,
 	var plot: Dictionary = _record_by_id(_snapshot.get_data().get("plots", []), plot_id)
 	if not _plot_active(state, plot_id):
 		diagnostics.append({"code": "PLOT_NOT_ACTIVE", "message": "construction requires an owned Active Plot"})
-	if elevation < int(policy.get("minimum_elevation", -5)) or elevation > int(policy.get("maximum_elevation", 9)):
-		diagnostics.append({"code": "PROGRESSION_CAP", "message": "progression policy does not permit this elevation"})
+	var physical_range: Dictionary = _physical_range_for_floor(floor, plot_id)
+	if elevation < int(physical_range.get("minimum_elevation", -5)) or elevation > int(physical_range.get("maximum_elevation", 9)):
+		diagnostics.append({"code": "PHYSICAL_CAP", "message": "requested elevation exceeds the resolved physical Plot cap"})
+	if not (policy.get("elevation_eligibility", []) as Array).has(elevation):
+		diagnostics.append({"code": "ELEVATION_UNAVAILABLE", "message": "Progression does not permit this elevation"})
 	if cells.is_empty():
 		diagnostics.append({"code": "CONSTRUCTION_CELLS_REQUIRED", "message": "construction requires at least one cell"})
 	var floor_state: Dictionary = _floor_state(state, floor_id, elevation)
@@ -545,9 +564,14 @@ func _apply_demolish_construction(intent: Dictionary, state: Dictionary, delta: 
 
 func _apply_demolish_occupant(intent: Dictionary, state: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
 	var occupant_id: String = String(intent.get("fixed_occupant_id", ""))
-	if _record_by_id(_snapshot.get_data().get("fixed_occupants", []), occupant_id).is_empty():
+	var occupant: Dictionary = _record_by_id(_snapshot.get_data().get("fixed_occupants", []), occupant_id)
+	if occupant.is_empty():
 		diagnostics.append({"code": "OCCUPANT_UNKNOWN", "message": "fixed occupant address is unknown"})
 		return
+	if bool(intent.get("partial", false)) or intent.has("cells"):
+		diagnostics.append({"code": "PARTIAL_FIXED_DEMOLITION_UNSUPPORTED", "message": "fixed-occupant demolition addresses one whole stable identity"})
+	if bool(intent.get("occupied_dependency", false)) or not intent.get("tenant_dependency_ids", []).is_empty():
+		diagnostics.append({"code": "OCCUPIED_DEPENDENCY", "message": "occupied zone or tenant dependencies reject demolition in MVP"})
 	var demolished: Array = state.get("demolished_fixed_occupant_ids", []).duplicate(true)
 	if demolished.has(occupant_id):
 		diagnostics.append({"code": "OCCUPANT_ALREADY_DEMOLISHED", "message": "fixed occupant is already demolished"})
@@ -593,6 +617,34 @@ func _apply_convert_street(intent: Dictionary, state: Dictionary, delta: Diction
 	delta["kind"] = "street_converted"
 
 
+func _physical_range_for_floor(floor: Dictionary, plot_id: String) -> Dictionary:
+	var plot: Dictionary = _record_by_id(_snapshot.get_data().get("plots", []), plot_id)
+	if not plot.is_empty():
+		return plot.get("physical_elevation_cap", {})
+	return {"minimum_elevation": -5, "maximum_elevation": 9}
+
+
+func _normalize_economy_intent(intent: Dictionary) -> void:
+	var operation: String = String(intent.get("operation", ""))
+	match operation:
+		OP_ACQUIRE_SECTION:
+			intent["charge_category"] = "PLOT_SECTION"
+			var section: Dictionary = _record_by_id(_snapshot.get_data().get("sections", []), String(intent.get("runtime_section_id", "")))
+			intent["section_tile_count"] = section.get("mask", []).size()
+		OP_ACQUIRE_SPACE:
+			intent["charge_category"] = "VERTICAL_SPACE"
+			intent["tile_count"] = intent.get("cells", []).size()
+		OP_CONVERT_STREET:
+			intent["charge_category"] = "STREET_CONVERSION"
+			var street: Dictionary = _record_by_id(_snapshot.get_data().get("street_segments", []), String(intent.get("street_segment_id", "")))
+			var rect: Dictionary = street.get("rect_quarter", {})
+			intent["street_corridor_tile_count"] = maxi(0, ((int(rect.get("maximum_x4", 0)) - int(rect.get("minimum_x4", 0))) / 4) * ((int(rect.get("maximum_z4", 0)) - int(rect.get("minimum_z4", 0))) / 4))
+		OP_DEMOLISH_FIXED_OCCUPANT:
+			intent["charge_category"] = "FIXED_DEMOLITION"
+		_:
+			intent["charge_category"] = "NO_CHARGE"
+
+
 func _apply_source_enabled(intent: Dictionary, state: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
 	var source_id: String = String(intent.get("arrival_source_id", ""))
 	var source: Dictionary = _record_by_authored_id(_snapshot.get_data().get("arrival_source_attachments", []), source_id)
@@ -613,8 +665,15 @@ func _apply_source_enabled(intent: Dictionary, state: Dictionary, delta: Diction
 
 func _quote(evaluation: Dictionary) -> Dictionary:
 	if _ports == null or _ports.economy == null:
-		return {"accepted": true, "value": 0, "economy_revision": 0, "diagnostics": []}
-	return _ports.economy.quote({"intent": evaluation.get("intent", {}), "delta": evaluation.get("delta", {}), "candidate_state": evaluation.get("state", {})}, evaluation.get("state", {}))
+		return {"accepted": false, "diagnostics": [{"code": "ECONOMY_POLICY_UNAVAILABLE", "message": "Economy authority is required for every district transaction"}]}
+	var transaction: Dictionary = {
+		"intent": evaluation.get("intent", {}).duplicate(true),
+		"delta": evaluation.get("delta", {}).duplicate(true),
+		"candidate_state": evaluation.get("state", {}).duplicate(true),
+		"economy_policy_snapshot": _ports.economy.get_policy_snapshot(),
+		"progression_policy_snapshot": evaluation.get("policy_snapshot", {}).duplicate(true),
+	}
+	return _ports.economy.quote(transaction, evaluation.get("state", {}))
 
 
 func _economy_reserve(quote: Dictionary) -> Dictionary:
@@ -674,7 +733,7 @@ func _zone_undo(prepare_token: Dictionary) -> void:
 
 func _policy_snapshot() -> Dictionary:
 	if _ports == null or _ports.progression == null:
-		return {"revision": 0, "minimum_elevation": -5, "maximum_elevation": 9}
+		return {}
 	return _ports.progression.get_policy_snapshot().duplicate(true)
 
 
@@ -682,8 +741,9 @@ func _capture_revisions(policy: Dictionary) -> Dictionary:
 	return {
 		"district_revision": get_revision(),
 		"economy_revision": 0 if _ports == null or _ports.economy == null else _ports.economy.get_revision(),
+		"economy_policy_revision": -1 if _ports == null or _ports.economy == null else int(_ports.economy.get_policy_snapshot().get("revision", -1)),
 		"zone_revision": 0 if _ports == null or _ports.zone == null else _ports.zone.get_revision(),
-		"progression_revision": int(policy.get("revision", 0)),
+		"progression_revision": int(policy.get("revision", -1)),
 	}
 
 
@@ -693,6 +753,8 @@ func _revalidate(revisions: Dictionary) -> Array[Dictionary]:
 		diagnostics.append({"code": "STALE_DISTRICT_REVISION", "message": "district changed while transaction was preparing"})
 	if _ports != null and _ports.economy != null and _ports.economy.get_revision() != int(revisions.get("economy_revision", -1)):
 		diagnostics.append({"code": "STALE_ECONOMY_REVISION", "message": "economy changed while transaction was preparing"})
+	if _ports != null and _ports.economy != null and int(_ports.economy.get_policy_snapshot().get("revision", -1)) != int(revisions.get("economy_policy_revision", -2)):
+		diagnostics.append({"code": "STALE_ECONOMY_POLICY_REVISION", "message": "economy policy changed while transaction was preparing"})
 	if _ports != null and _ports.zone != null and _ports.zone.get_revision() != int(revisions.get("zone_revision", -1)):
 		diagnostics.append({"code": "STALE_ZONE_REVISION", "message": "ZoneManager changed while transaction was preparing"})
 	if _ports != null and _ports.progression != null and int(_ports.progression.get_policy_snapshot().get("revision", -1)) != int(revisions.get("progression_revision", -2)):
@@ -807,6 +869,21 @@ func _plot_active(state: Dictionary, plot_id: String) -> bool:
 	return false
 
 
+func _has_runtime_accessible_adjacent_plot(state: Dictionary, plot_id: String, selected_plot_ids: Array) -> bool:
+	var target: Dictionary = _record_by_id(_snapshot.get_data().get("plots", []), plot_id)
+	if target.is_empty():
+		return false
+	for candidate: Dictionary in _snapshot.get_data().get("plots", []):
+		var candidate_id: String = String(candidate.get("id", ""))
+		if candidate_id == plot_id:
+			continue
+		if not selected_plot_ids.has(candidate_id) and not _plot_active(state, candidate_id):
+			continue
+		if _plots_adjacent(target, candidate):
+			return true
+	return false
+
+
 func _has_active_adjacent_plot(state: Dictionary, plot_id: String) -> bool:
 	var target: Dictionary = _record_by_id(_snapshot.get_data().get("plots", []), plot_id)
 	if target.is_empty():
@@ -824,7 +901,16 @@ func _plots_adjacent(left: Dictionary, right: Dictionary) -> bool:
 	var right_slot: Dictionary = _record_by_id(_snapshot.get_data().get("slots", []), String(right.get("slot_id", "")))
 	if left_slot.is_empty() or right_slot.is_empty():
 		return false
-	return (String(left_slot["row_track_id"]) == String(right_slot["row_track_id"]) and absi(int(left_slot["ordinal"]) - int(right_slot["ordinal"])) == 1) or (String(left_slot["column_track_id"]) == String(right_slot["column_track_id"]) and absi(int(left_slot["ordinal"]) - int(right_slot["ordinal"])) == 1)
+	var same_row: bool = String(left_slot.get("row_track_id", "")) == String(right_slot.get("row_track_id", ""))
+	var same_column: bool = String(left_slot.get("column_track_id", "")) == String(right_slot.get("column_track_id", ""))
+	var column_step: int = absi(_track_ordinal(String(left_slot.get("column_track_id", ""))) - _track_ordinal(String(right_slot.get("column_track_id", ""))))
+	var row_step: int = absi(_track_ordinal(String(left_slot.get("row_track_id", ""))) - _track_ordinal(String(right_slot.get("row_track_id", ""))))
+	return (same_row and column_step == 1) or (same_column and row_step == 1)
+
+
+func _track_ordinal(track_id: String) -> int:
+	var parts: PackedStringArray = track_id.split("_")
+	return 0 if parts.size() < 2 else int(parts[1])
 
 
 func _floor_state(state: Dictionary, floor_id: String, elevation: int) -> Dictionary:

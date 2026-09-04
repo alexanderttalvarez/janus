@@ -8,12 +8,13 @@ Development requires a debug mode to bypass unlocks, costs, and time constraints
 ### Decision
 - **DebugManager is an autoload** — available globally during development.
 - **Auto-disabled in release builds** — it must not permit debug bypasses in a release build.
-- **Toggle flags:** `god_mode` (unlocks everything and activates free-cost play), `infinite_money` (activates free-cost play only), `instant_construction`, and `time_warp`.
+- **Toggle flags:** `god_mode` (bypasses all progression/Tech eligibility and activates free-cost play), `infinite_money` (activates free-cost play only), `instant_construction`, and `time_warp`.
 - **Debug UI overlay** — toggle with F12; it exposes flags and quick actions only in debug builds.
 - **Active debug cost bypass makes every player-paid action free.** The Economy transaction boundary returns a zero-cost quote and captures no debit. Cost bypass applies consistently to direct spending, construction, and coordinated District transactions; callers must not implement ad-hoc free-cost exceptions.
 - Debug bypasses do not change authoritative eligibility, geometry, validity, atomicity, or persistence contracts. They only override the cost/unlock/time checks explicitly listed here.
 
 ### Integration Points
+- Progression's immutable debug snapshot treats all Tech/progression eligibility as satisfied if `DebugManager.god_mode`: all physical elevations, Street conversion, and the eight additional Plot Access selections are available without prestige tiers or Tech Points. The normal 9-Plot cap, stable-ID validity, and orthogonal Plot-selection rule still apply.
 - `TechTreeManager.can_unlock()` returns `true` if `DebugManager.god_mode`.
 - Economy's quote/reserve/capture port treats a charge as free if `DebugManager.god_mode` or `DebugManager.infinite_money`.
 - `TenantManager.start_construction()` sets duration to `0` if `DebugManager.instant_construction`.

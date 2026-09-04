@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - ready for architecture approval.** Production implementation is blocked until H1 records KEEP and H1/H2 goldens are frozen.
+**Approved — 2026-09-03.** The H1 KEEP decision, frozen H1/H2 goldens, and Economy/Progression architecture dependencies are satisfied.
 
 ## Purpose
 
@@ -12,6 +12,8 @@ Own the session District Runtime lifecycle and migrate the fixed grid to sparse,
 
 - Frozen [H1](01_definition_schema_and_validation.md) and [H2](02_resolved_district_model.md) after KEEP.
 - Existing zone/parcel rules; `ZoneManager` remains their sole writer.
+- [Economy Handoff 01](../economy/01_transaction_authority_and_policy_boundary.md) and [Economy Handoff 02](../economy/02_expansion_pricing_and_refund_policy.md).
+- [Progression Handoff 01](../progression/01_eligibility_policy_and_snapshot_boundary.md).
 
 ## Source-of-truth documents
 
@@ -32,7 +34,7 @@ One session-scoped, non-autoload District Runtime holds one immutable snapshot a
 - Session create/replace/dispose lifecycle; sparse state; explicit address migration; revisioned immutable reads.
 - Plot Section acquisition and orthogonally adjacent Plot activation through designated entry-eligible sections.
 - Sequential tile-by-tile vertical-space acquisition, construction and demolition transactions.
-- Physical/progression cap checks, elevation-adjacent 2-tile footprint limits only within acquired vertical rights, revision guards, detached candidates, economy reservation/finalize/cancel, progression policy snapshots, ZoneManager coordination, atomic commit, and one committed delta.
+- Physical/progression cap checks, selected-Plot eligibility, elevation-adjacent 2-tile footprint limits only within acquired vertical rights, revision guards, detached candidates, Economy quote/reserve/guaranteed-capture/cancel, Progression policy snapshots, ZoneManager coordination, atomic commit, and one committed delta.
 
 ## Explicit non-goals
 
@@ -44,8 +46,8 @@ Prices/formulas, public-realm conversion (H5), generated Nodes (H4), or zone wri
 | --- | --- |
 | District Runtime | Sole district writer, state lifecycle, district transactions/revisions/deltas. |
 | `ZoneManager` | Sole zone/parcel writer; validates or rejects coordinated candidate changes. |
-| Economy | Reservation/finalize/cancel and balances. |
-| Progression | Immutable policy/cap snapshots and revisions. |
+| Economy | H1 quote/reserve/guaranteed-capture/cancel, H2 immutable price-policy snapshots, and balances. |
+| Progression | H1 immutable eligibility/cap snapshots, Plot Access selection state, and revisions. |
 | H4 | Generated projection lifecycle. |
 | H5 | Street conversion and public realm only. |
 
@@ -57,10 +59,11 @@ Prices/formulas, public-realm conversion (H5), generated Nodes (H4), or zone wri
 
 ### Acquisition rules
 
-- A Plot becomes Active when any section is owned.
-- The first acquired section of an inactive Plot must be a designated entry-eligible section and the Plot must be orthogonally adjacent through resolved topology to an Active Plot or approved initial entry context. Diagonal/corner contact is insufficient.
-- Later section acquisition follows resolved section adjacency and policy results.
-- Vertical space is acquired one tile at a time in sequential elevation order. No full-volume allocation is permitted.
+- A Plot becomes Active only when any section is owned. A Progression-selected/unlocked Plot is camera-accessible but is not Active and is not stored as mutable District state.
+- The first acquired section of an inactive Plot requires a committed Progression Plot Access selection for that stable Plot ID. The selected Plot must already have passed Progression's orthogonal adjacency rule; District Runtime still validates resolved topology and the designated entry-eligible section. Diagonal/corner contact is insufficient.
+- The initial Plot is the sole initially owned Plot. Progression permits at most eight additional selected Plots, for a maximum of nine total Plots.
+- Later section acquisition follows resolved section adjacency and captured Economy/Progression policy results.
+- Vertical space is acquired one tile at a time in sequential elevation order. No full-volume allocation is permitted; normal Progression permits only F1/F2 through Multi-Floor and U1–U3 through Underground, while F3–F9/U4–U5 reject as unavailable. A valid non-release god-mode Progression snapshot instead treats the full physical range F1–F9/U1–U5 as eligible; District physical limits still apply.
 - Construction requires ownership/right, availability, buildability, acquired vertical space, no incompatible fixed occupancy, and current caps.
 - Each constructed upper or underground floor footprint may extend by at most two orthogonal tile steps beyond the constructed footprint at the adjacent comparison elevation, and every cell of the extended footprint must remain inside owned/acquired vertical rights. For an upper elevation `n`, the immediately lower supporting elevation is `n-1`. Underground acquisition is sequential from `0` to `-1` to `-2` and onward; for elevation `-n`, the adjacent geometric comparison elevation is one step toward ground. This comparison defines only the two-tile geometric rule and does not invent underground structural-engineering semantics. Overhang grants no new rights.
 
@@ -82,7 +85,7 @@ Preview and commit evaluate the same intent against the district snapshot/revisi
 
 Every rejection may publish diagnostics but publishes no gameplay signal, state delta, save-visible change, or observer-visible candidate. The only externally observable outcomes are unchanged pre-commit authority or one complete committed envelope. This protocol is closed: append is the commit point and there is no post-append compensating rollback path.
 
-Demolition never clears zone state directly. Until a separately approved dependency policy exists, occupied zone/tenant dependencies reject. No handoff invents prices, refunds, eviction, or cap formulas.
+Demolition never clears zone state directly. Occupied zone/tenant dependencies reject until a post-MVP tenant policy exists. An otherwise eligible whole fixed-occupant demolition uses Economy H2's flat 20-Kred fee and creates no refund; partial demolition remains unsupported. District Runtime owns non-economic demolition eligibility and Economy owns the capture.
 
 ## Communication and event flow
 
@@ -90,7 +93,7 @@ Demolition never clears zone state directly. Until a separately approved depende
 
 ## Persistence impact
 
-Persist sparse authority only. Explicit migration maps `G->0`, `F<n>->+n`, `B<n>->-n`; malformed values reject. Full arrays, indexes, transforms, graphs, and Nodes are excluded.
+Persist sparse District authority only. Explicit migration maps `G->0`, `F<n>->+n`, `B<n>->-n`; malformed values reject. Progression persists selected/unlocked Plot IDs and grant state under its own authority; District reads those committed values but does not duplicate them. Full arrays, indexes, transforms, graphs, reservations, and Nodes are excluded.
 
 ## Editor/runtime behavior
 
@@ -107,12 +110,13 @@ District Runtime/state/transactions, legacy grid/floor boundaries, zone coordina
 ## Acceptance criteria
 
 - Sole-writer and sparse-state invariants hold across all fixtures.
-- Section activation, sequential vertical acquisition, direction-correct upper/underground cap and adjacent-footprint rules, construction/demolition, revision rejection, guaranteed-capture economy protocol, and zone coordination are externally atomic.
+- Selected-Plot-gated section activation, sequential vertical acquisition, direction-correct upper/underground cap and adjacent-footprint rules, construction/demolition, revision rejection, Economy guaranteed-capture protocol, Progression snapshot revalidation, and zone coordination are externally atomic.
+- An unlocked Plot becomes camera-accessible without becoming Active; only a successful first-section purchase changes District Active state.
 - Camera viewing allocates no state; every success emits one delta and every rejection emits none.
 
 ## Required tests
 
-Lifecycle/isolation; explicit-address migration; section adjacency; vertical sequence; caps; upper `n` versus `n-1` and underground `-n` versus the adjacent elevation toward ground two-orthogonal-tile footprint limits, including owned/acquired-right rejection; detached candidates; stale revisions; economy reserve/convert/capture/cancel; `ZoneManager` prepare/swap/undo; notification/save/input barrier exclusion; append-capability preflight; non-throwing journal append; exact commit-point semantics; synchronous ordered envelope fan-out while the gate remains held; subscriber-fault isolation and diagnostics; no intervening transaction/save; adapter isolation. Inject failure at every pre-append boundary and subscriber faults during flush; prove either unchanged pre-commit authority with no envelope or one complete ordered committed envelope with no rollback or reordering.
+Lifecycle/isolation; explicit-address migration; Progression-selected Plot eligibility, selection cap, orthogonal adjacency, unlocked-versus-Active separation, and selected-Plot persistence ownership; section adjacency; vertical sequence and F1/F2/U1–U3 eligibility with explicit higher-elevation rejection; caps; upper `n` versus `n-1` and underground `-n` versus the adjacent elevation toward ground two-orthogonal-tile footprint limits, including owned/acquired-right rejection; detached candidates; stale revisions; Economy H1/H2 quote/reserve/guaranteed-capture/cancel and policy-revision staleness; `ZoneManager` prepare/swap/undo; notification/save/input barrier exclusion; append-capability preflight; non-throwing journal append; exact commit-point semantics; synchronous ordered envelope fan-out while the gate remains held; subscriber-fault isolation and diagnostics; no intervening transaction/save; adapter isolation. Inject failure at every pre-append boundary and subscriber faults during flush; prove either unchanged pre-commit authority with no envelope or one complete ordered committed envelope with no rollback or reordering.
 
 ## Performance/scalability checks
 

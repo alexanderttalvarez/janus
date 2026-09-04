@@ -59,7 +59,9 @@ func _generate_application(zone: ZoneData, parcel: Parcel) -> void:
 		parcel.tenant_id = tenant.id
 		tenant.current_state = TenantData.TenantState.EXCLUSIVITY_LOCK
 		all_tenants.append(tenant)
-		EventBus.tenant_applied.emit(zone.id, tenant.id, tier)
+		var event_bus: Node = get_node_or_null("/root/EventBus")
+		if event_bus != null:
+			event_bus.tenant_applied.emit(zone.id, tenant.id, tier)
 
 
 ## Calculate what tier of tenant the district supports.
@@ -97,22 +99,26 @@ func _calculate_application_score(tenant: TenantData, zone: ZoneData, _parcel: P
 
 ## Update construction progress for all constructing tenants.
 func _update_construction(sim_day: int) -> void:
+	var event_bus: Node = get_node_or_null("/root/EventBus")
 	for t: TenantData in all_tenants:
 		if t.current_state == TenantData.TenantState.EXCLUSIVITY_LOCK:
 			# Start construction after 1-week exclusivity.
 			t.start_construction(sim_day, 4)  # Assume 4 tiles per parcel.
-			EventBus.tenant_construction_started.emit(t.zone_id, t.id)
+			if event_bus != null:
+				event_bus.tenant_construction_started.emit(t.zone_id, t.id)
 		elif t.current_state == TenantData.TenantState.CONSTRUCTING:
 			var prev_progress := t.construction_progress
 			t.update_construction(sim_day)
 			if t.current_state == TenantData.TenantState.OPERATING and prev_progress < 0.99:
-				EventBus.tenant_opened.emit(t.zone_id, t.id)
+				if event_bus != null:
+					event_bus.tenant_opened.emit(t.zone_id, t.id)
 
 
 # ── Viability ──────────────────────────────────────────────────────────
 
 ## Check viability for all operating tenants.
 func _check_viability() -> void:
+	var event_bus: Node = get_node_or_null("/root/EventBus")
 	for t: TenantData in all_tenants:
 		if t.current_state == TenantData.TenantState.OPERATING or t.current_state == TenantData.TenantState.CRITICAL:
 			# Simulate revenue based on tier.
@@ -121,7 +127,8 @@ func _check_viability() -> void:
 
 			var viable := t.check_viability()
 			if not viable:
-				EventBus.tenant_viability_changed.emit(t.id, "Closing" if t.current_state == TenantData.TenantState.CLOSING else "Critical")
+				if event_bus != null:
+					event_bus.tenant_viability_changed.emit(t.id, "Closing" if t.current_state == TenantData.TenantState.CLOSING else "Critical")
 				if t.current_state == TenantData.TenantState.CLOSING:
 					_close_tenant(t)
 
@@ -140,7 +147,9 @@ func _close_tenant(tenant: TenantData) -> void:
 					parcel.has_tenant = false
 					parcel.tenant_id = ""
 
-	EventBus.tenant_closed.emit(tenant.zone_id, tenant.id)
+	var event_bus: Node = get_node_or_null("/root/EventBus")
+	if event_bus != null:
+		event_bus.tenant_closed.emit(tenant.zone_id, tenant.id)
 
 
 # ── Serialization ──────────────────────────────────────────────────────

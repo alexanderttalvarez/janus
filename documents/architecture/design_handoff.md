@@ -106,7 +106,7 @@ No single character or boolean may stand for several of these concepts.
 
 ### Camera envelope
 
-The pan/focus envelope is the union of Active Plot rectangles plus a configurable margin. It is recomputed from committed state and does not use purchased-tile radial distance as the target rule.
+The pan/focus envelope is the union of Active Plot and selected/unlocked Plot rectangles plus a configurable margin. A selected/unlocked Plot is camera-accessible before any section is owned; Active Plot remains derived only from owned sections. The envelope is recomputed from committed state and does not use purchased-tile radial distance as the target rule.
 
 ## System Boundaries
 

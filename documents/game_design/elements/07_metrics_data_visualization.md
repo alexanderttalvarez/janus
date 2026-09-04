@@ -13,7 +13,8 @@ A minimal bar at the top or side of the screen provides essential information at
 | Metric | Description |
 |--------|-------------|
 | **Money** | Current balance in Kreds |
-| **Daily Visitors** | Current number of visitors in the district |
+| **Current Visitors** | Live active population currently in the district |
+| **Daily Arrivals** | Visitors realized since the current simulation-day boundary |
 | **Prestige** | Total prestige score + current tier name (e.g., "★ 2,850 — Neighborhood Center") |
 | **Simulation Speed** | Pause / 1x / 2x / 3x controls |
 
@@ -83,8 +84,8 @@ Panels open when the player requests detailed information. They can be closed to
 
 | Section | Data |
 |---------|------|
-| **Current Count** | Visitors currently in the district |
-| **Daily Average** | Average visitors per day (last 7/30 days) |
+| **Current Count** | Live active population currently in the district |
+| **Daily Average** | Average live active population across the current simulation day; resets at the next day boundary |
 | **Satisfaction** | Average visitor satisfaction score (0–100) |
 | **Top Thoughts** | Aggregation of the 5 most common visitor thoughts |
 | **Purpose Breakdown** | % of visitors by primary goal (Shopping, Dining, etc.) |

@@ -1,6 +1,6 @@
 # H6 Policy Selection Record
 
-**Status:** Provisional implementation policy, approved for implementation by Design direction.
+**Status:** Design-selected and architecture-validated policy — 2026-09-03.
 
 ## Camera infrastructure margin
 
@@ -19,6 +19,6 @@ The calculation is deterministic, uses all committed segment profiles, and rejec
 
 Selected alternative: **A — remove at migration**.
 
-The H6 camera no longer applies the legacy radial purchased-tile rule. Camera movement is constrained exclusively by the expanded Active Plot rectangle union. The legacy adapter only exposes canonical Active Plot records and does not apply the removed rule.
+The H6 camera no longer applies the legacy radial purchased-tile rule. Camera movement is constrained exclusively by the expanded Active Plot plus Progression-selected/unlocked Plot rectangle union. The legacy adapter exposes canonical Active Plot records while H6 reads selected/unlocked Plot IDs from Progression; neither applies the removed rule.
 
-These values are intentionally provisional and may be revised by a later architecture/design decision without changing H3 authority state.
+These approved presentation policies may change only through a later architecture/design decision and never change H3 authority state.

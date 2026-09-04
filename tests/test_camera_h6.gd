@@ -1,6 +1,33 @@
 ## H6 tests for Active Plot camera unions, H2 gateway pass-through, and eligibility.
 extends SceneTree
 
+class FakeEconomy extends DistrictRuntimePorts.DistrictEconomyPort:
+	func get_policy_snapshot() -> Dictionary:
+		return {"revision": 1, "schema_version": 1}
+
+	func quote(_transaction: Dictionary, _state: Dictionary) -> Dictionary:
+		return {"accepted": true, "value": 0, "economy_revision": 1, "diagnostics": []}
+
+	func reserve(_quote: Dictionary) -> Dictionary:
+		return {"accepted": true, "reservation_token": {"id": 1}, "diagnostics": []}
+
+	func guarantee_capture(reservation: Dictionary) -> Dictionary:
+		return {"accepted": true, "guaranteed_capture_token": reservation, "diagnostics": []}
+
+	func capture(_token: Dictionary) -> Dictionary:
+		return {"accepted": true, "diagnostics": []}
+
+	func cancel(_token: Dictionary) -> Dictionary:
+		return {"accepted": true, "diagnostics": []}
+
+
+class FakeProgression extends DistrictRuntimePorts.DistrictProgressionPort:
+	var selected_plot_ids: Array = []
+
+	func get_policy_snapshot() -> Dictionary:
+		return {"revision": 1, "elevation_eligibility": [0, 1, 2, -1, -2, -3], "selected_plot_ids": selected_plot_ids.duplicate(), "street_conversion_eligible": true}
+
+
 var _passed: int = 0
 var _failed: int = 0
 
@@ -39,6 +66,11 @@ func _test_fixture_projection() -> void:
 	_assert(bool(resolution.get("valid", false)), "H6 fixture resolves through H1/H2")
 	var snapshot: ResolvedDistrictSnapshot = resolution.get("snapshot") as ResolvedDistrictSnapshot
 	var runtime: DistrictRuntime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	var h3_ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
+	var progression_port: FakeProgression = FakeProgression.new()
+	progression_port.selected_plot_ids = [String(snapshot.get_data().get("plots", [])[1].get("id", ""))]
+	h3_ports.initialize(FakeEconomy.new(), DistrictRuntimePorts.DistrictZonePort.new(), progression_port)
+	runtime.configure_ports(h3_ports)
 	var session: Dictionary = runtime.create_session(snapshot)
 	_assert(bool(session.get("valid", false)), "H6 creates a committed H3 session")
 	var metrics: ProjectionMetrics = load("res://scripts/projection/projection_metrics.gd").new() as ProjectionMetrics
@@ -60,7 +92,7 @@ func _test_fixture_projection() -> void:
 	_assert(bool(built.get("valid", false)), "H6 builds camera and gateway snapshots")
 	var bounds: CameraBoundsSnapshot = built.get("camera_bounds") as CameraBoundsSnapshot
 	var gateways: GatewayEligibilitySnapshot = built.get("gateway_eligibility") as GatewayEligibilitySnapshot
-	_assert(bounds != null and not bounds.empty and bounds.active_plot_ids.size() >= 1, "H6 camera bounds use only committed Active Plot records")
+	_assert(bounds != null and not bounds.empty and bounds.active_plot_ids.size() >= 4, "H6 camera bounds include committed Active plus selected Plot records")
 	_assert(bounds.margin > 0.0 and bounds.margin_quarter > 0.0, "H6 uses a positive road-profile-relative margin")
 	_assert(gateways != null and gateways.entries.size() == 4, "H6 projects every H2 arrival source")
 	var eligible_count: int = 0

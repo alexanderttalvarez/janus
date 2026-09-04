@@ -5,7 +5,7 @@ var _passed: int = 0
 var _failed: int = 0
 const GOLDEN_FINGERPRINT_A: String = "9a8a657a4c5da09621650aafb2b2689e0e1572f4ca43f62c0a31c62f02f07126"
 const GOLDEN_FINGERPRINT_B: String = "0ca79ef020dd34dc807914a4c89cbdaf497452d456910f30cbbc7fc686f0f4d3"
-const GOLDEN_FINGERPRINT_C: String = "dff41f5028d7a6514cc16d8d9355e9ae21113790de7cca9065ca66b60969e470"
+const GOLDEN_FINGERPRINT_C: String = "83be5e720d216c205b05166cde998b7532f0f98cd2338769be59d39ccbd608c6"
 var _factory: RefCounted
 var _resolver: RefCounted
 
@@ -82,6 +82,12 @@ func _test_fixture_c() -> void:
 		return
 	var data: Dictionary = snapshot.get_data()
 	_assert(snapshot.get_fingerprint() == GOLDEN_FINGERPRINT_C, "fixture C fingerprint matches the frozen H1/H2 golden")
+	var initially_owned: Array[String] = []
+	for section: Dictionary in data["sections"]:
+		if bool(section.get("initially_owned", false)):
+			initially_owned.append(String(section.get("authored_id", "")))
+	initially_owned.sort()
+	_assert(initially_owned == ["garden_entry", "market_entry", "station_entry"], "fixture C initial ownership is exactly market_entry, station_entry, garden_entry")
 	_assert(data["district_rect_quarter"] == {"minimum_x4": 0, "minimum_z4": 0, "maximum_x4": 624, "maximum_z4": 576}, "fixture C district bounds are exact")
 	_assert(data["grid"]["horizontal_boundary_starts_quarter"] == [0, 144, 312, 504], "fixture C horizontal boundary starts are exact")
 	_assert(data["grid"]["vertical_boundary_starts_quarter"] == [0, 152, 336, 552], "fixture C vertical boundary starts are exact")

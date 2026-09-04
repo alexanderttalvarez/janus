@@ -87,7 +87,7 @@ func _build_c() -> Dictionary:
 		_section("market_court", "COURT", 2, market_court, false, true, false),
 	]
 	var station_sections: Array = [
-		_section("station_entry", "ENTRY", 0, station_entry, false, true, true),
+		_section("station_entry", "ENTRY", 0, station_entry, true, true, true),
 		_section("station_wing", "REAR", 1, station_wing, false, true, false),
 		_section("station_yard", "COURT", 2, station_yard, false, true, false),
 	]

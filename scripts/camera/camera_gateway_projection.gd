@@ -53,7 +53,7 @@ func rebuild() -> Dictionary:
 	var margin_result: Dictionary = _margin_policy.calculate(road_profile, _metrics.grid_unit_size)
 	if not bool(margin_result.get("valid", false)):
 		return {"valid": false, "diagnostics": margin_result.get("diagnostics", [])}
-	var active: Array[Dictionary] = _get_active_plot_records(snapshot, state)
+	var active: Array[Dictionary] = _get_camera_accessible_plot_records(snapshot, state)
 	var active_ids: Array[String] = []
 	var rectangles: Array[Dictionary] = []
 	for plot: Dictionary in active:
@@ -72,6 +72,10 @@ func rebuild() -> Dictionary:
 		_camera_manager.call("set_camera_bounds_snapshot", bounds)
 	rebuilt.emit(bounds.duplicate_value(), gateways.duplicate_value())
 	return {"valid": true, "camera_bounds": bounds, "gateway_eligibility": gateways, "diagnostics": []}
+
+
+func on_progression_changed(_progression_snapshot: Dictionary) -> Dictionary:
+	return rebuild()
 
 
 func get_camera_bounds_snapshot() -> CameraBoundsSnapshot:
@@ -113,10 +117,12 @@ func _on_session_replaced(_layout_id: String, _fingerprint: String) -> void:
 		push_error("H6 rebuild rejected replaced district session: %s" % result.get("diagnostics", []))
 
 
-func _get_active_plot_records(snapshot: ResolvedDistrictSnapshot, state: Dictionary) -> Array[Dictionary]:
+func _get_camera_accessible_plot_records(snapshot: ResolvedDistrictSnapshot, state: Dictionary) -> Array[Dictionary]:
 	var records: Array[Dictionary] = []
+	var selected_ids: Array = _district_runtime.get_progression_policy_snapshot().get("selected_plot_ids", [])
 	for plot: Dictionary in snapshot.get_data().get("plots", []):
-		if _is_plot_active(snapshot, state, String(plot.get("id", ""))):
+		var plot_id: String = String(plot.get("id", ""))
+		if _is_plot_active(snapshot, state, plot_id) or selected_ids.has(plot_id):
 			records.append(plot)
 	records.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left.get("id", "")) < String(right.get("id", "")))
 	return records

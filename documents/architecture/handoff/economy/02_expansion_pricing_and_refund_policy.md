@@ -1,6 +1,6 @@
 # Economy Handoff 02 — Expansion Pricing and Refund Policy
 
-**Status:** Draft — ready for architecture approval
+**Status:** Approved — 2026-09-03
 **Prepared:** 2026-09-03
 **Implementation order:** 2 of 2 — after Economy Handoff 01
 

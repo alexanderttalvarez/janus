@@ -33,7 +33,7 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 - A Block Slot has one role: player-capable Plot, fixed decorative/non-player block, public plaza, park, or unavailable.
 - Slot-role transitions may be supported later, but are disabled for MVP.
 - The District has a complete, permanent outer road ring.
-- The camera boundary is the union of all Active Plot rectangles plus an infrastructure margin.
+- The camera boundary is the union of all Active Plot rectangles and selected/unlocked Plot rectangles plus an infrastructure margin. An unlocked Plot is camera-accessible before any section is owned.
 
 ### Roads
 
@@ -54,9 +54,10 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 - A Plot contains one or more arbitrary Plot Sections. Sections must be four-directionally contiguous and may not overlap.
 - A Plot Section is the atomic ground-land purchase unit.
 - Entry-eligible Plot Sections activate orthogonally adjacent Plots when purchased.
+- A selected/unlocked Plot is a permanently player-chosen, camera-accessible Plot that may receive Plot Section purchases but has no owned land yet.
 - A Plot becomes **Active** when any one of its sections is owned.
 - A Plot becomes **Fully Owned** when every acquirable section is owned.
-- MVP uses one 25 x 25 Plot containing one full-plot section, initially owned. Multiple Plots and section purchases are not MVP requirements.
+- The initial 25 x 25 Plot contains one full-plot section and is initially owned. Up to eight additional Plot Access selections are granted by Mall Level; each selected Plot must be orthogonally adjacent to an Active or already unlocked Plot. Multiple Plot/section purchases remain post-MVP implementation work.
 - Purchasing a section does not remove an existing building. Ownership, availability, occupancy, buildability, and construction are separate states.
 
 ### Vertical Rights and Floor Space
@@ -92,9 +93,9 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 - An adjacent active Pedestrian Band may supply a topology-backed physical door/access edge for a Plot Section or tenant parcel without ownership transfer. The edge must be an active pedestrian graph edge with stable identity.
 - The player may fund curbside transport facilities on a Pedestrian Band adjacent to owned frontage without owning that land.
 - Converting a Street Segment removes affected curbside facilities after warning the player.
-- A bus stop requires an active road and an active route.
+- A bus stop requires the Bus Stop progression node, Small Market, an active road, and an active route.
 - Maximum bus stops are `ceil(Active Plot count / 3)`. Because any owned section makes a Plot Active, any owned section counts toward this limit.
-- Transport facilities are future systems, not MVP features.
+- Bus Stop is the sole approved first transport capability. Placement, facility ownership, prices/fees, and bus arrivals remain future handoffs. All other transport facilities are unavailable.
 
 ### Traffic and Crossings
 
@@ -134,7 +135,8 @@ The road profile, generated public-realm, conversion, frontage/access, and traff
 
 - Construction-cancellation refund policy.
 - Demolition timing and consequences for old buildings retained after Plot Section purchase; an eligible whole fixed-structure demolition costs the approved flat 20-Kred fee and creates no refund.
-- Exact progression gates for land expansion, vertical construction, street conversion, and transport facilities.
+- Future progression extension for `F3`–`F9` and `U4`–`U5`, beyond their current explicit unavailability.
+- Transport-facility progression gates beyond the current explicit unavailability.
 - Transport-facility prices and operating fees.
 - The final typed-resource schema, token-grid format, validation rules, and whether the provisional hybrid pipeline should be retained.
 - Presentation details for warnings and for future public-transport arrivals.

@@ -11,6 +11,9 @@ class FakeEconomy extends DistrictRuntimePorts.DistrictEconomyPort:
 	func get_revision() -> int:
 		return revision
 
+	func get_policy_snapshot() -> Dictionary:
+		return {"schema_version": 1, "revision": revision, "plot_section_cost_per_tile": 1000, "street_corridor_cost_per_tile": 3000, "demolition_cost": 20, "floor_tile_costs": {0: 1000, 1: 1200, 2: 1400, -1: 1200, -2: 1400, -3: 1600}}
+
 	func quote(_intent: Dictionary, _candidate_state: Dictionary) -> Dictionary:
 		calls.append("quote")
 		return {"accepted": true, "value": 0, "economy_revision": revision, "diagnostics": []}
@@ -71,9 +74,10 @@ class FakeProgression extends DistrictRuntimePorts.DistrictProgressionPort:
 	var revision: int = 1
 	var minimum_elevation: int = -5
 	var maximum_elevation: int = 9
+	var selected_plot_ids: Array = []
 
 	func get_policy_snapshot() -> Dictionary:
-		return {"revision": revision, "minimum_elevation": minimum_elevation, "maximum_elevation": maximum_elevation}
+		return {"schema_version": 1, "revision": revision, "minimum_elevation": minimum_elevation, "maximum_elevation": maximum_elevation, "elevation_eligibility": [0, 1, 2, -1, -2, -3], "selected_plot_ids": selected_plot_ids.duplicate(), "street_conversion_eligible": true}
 
 
 var _passed: int = 0
@@ -121,6 +125,13 @@ func _setup_runtime(fixture_id: String) -> void:
 	_economy = FakeEconomy.new()
 	_zone = FakeZone.new()
 	_progression = FakeProgression.new()
+	for plot: Dictionary in snapshot.get_data().get("plots", []):
+		var is_initial: bool = false
+		for section: Dictionary in snapshot.get_data().get("sections", []):
+			if String(section.get("plot_id", "")) == String(plot.get("id", "")) and bool(section.get("initially_owned", false)):
+				is_initial = true
+		if not is_initial:
+			_progression.selected_plot_ids.append(String(plot.get("id", "")))
 	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
 	ports.initialize(_economy, _zone, _progression)
 	_runtime.configure_ports(ports)
@@ -152,8 +163,8 @@ func _on_second_subscriber(_envelope: Dictionary) -> Dictionary:
 func _test_lifecycle_and_preview() -> void:
 	var before: Dictionary = _runtime.get_state()
 	var plot: Dictionary = _runtime.get_snapshot().get_data()["plots"][0]
-	var section: Dictionary = _runtime.get_snapshot().get_data()["sections"][3]
-	var preview: Dictionary = _runtime.preview_transaction({"operation": "ACQUIRE_SECTION", "runtime_section_id": section["id"], "expected_district_revision": 0, "approved_initial_entry_context": true})
+	var section: Dictionary = _runtime.get_snapshot().get_data()["sections"][6]
+	var preview: Dictionary = _runtime.preview_transaction({"operation": "ACQUIRE_SECTION", "runtime_section_id": section["id"], "expected_district_revision": 0})
 	_assert(bool(preview.get("valid", false)), "preview evaluates section acquisition")
 	_assert(_runtime.get_revision() == 0 and before == _runtime.get_state(), "preview leaves immutable authority state unchanged")
 	_assert(not plot.is_empty(), "snapshot exposes resolved Plot descriptors")
@@ -161,8 +172,8 @@ func _test_lifecycle_and_preview() -> void:
 
 func _test_section_activation_and_revision() -> void:
 	var sections: Array = _runtime.get_snapshot().get_data()["sections"]
-	var station_section: Dictionary = sections[3]
-	var intent: Dictionary = {"operation": "ACQUIRE_SECTION", "runtime_section_id": station_section["id"], "expected_district_revision": 0, "approved_initial_entry_context": true}
+	var station_section: Dictionary = sections[6]
+	var intent: Dictionary = {"operation": "ACQUIRE_SECTION", "runtime_section_id": station_section["id"], "expected_district_revision": 0}
 	var committed: Dictionary = _runtime.commit_transaction(intent)
 	_assert(bool(committed.get("valid", false)), "first section acquisition commits atomically")
 	_assert(_runtime.get_revision() == 1, "section acquisition advances the sole district revision")

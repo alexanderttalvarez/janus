@@ -9,6 +9,9 @@ class DistrictEconomyPort extends RefCounted:
 	func get_revision() -> int:
 		return 0
 
+	func get_policy_snapshot() -> Dictionary:
+		return {}
+
 	func quote(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
 		return {"accepted": false, "diagnostics": [{"code": "ECONOMY_PORT_UNIMPLEMENTED", "message": "Economy quote is not available"}]}
 
@@ -37,17 +40,16 @@ class EconomyManagerPort extends DistrictEconomyPort:
 	func get_revision() -> int:
 		return 0 if manager == null else int(manager.call("get_district_revision"))
 
-	func quote(intent: Dictionary, _candidate_state: Dictionary) -> Dictionary:
+	func get_policy_snapshot() -> Dictionary:
+		return {} if manager == null else manager.call("get_policy_snapshot")
+
+	func quote(transaction: Dictionary, _candidate_state: Dictionary) -> Dictionary:
 		if manager == null:
 			return {"accepted": false, "diagnostics": [{"code": "ECONOMY_MANAGER_REQUIRED", "message": "EconomyManager is required"}]}
-		var transaction_intent: Dictionary = intent.get("intent", {})
-		var value: int = int(transaction_intent.get("economy_value", 0))
-		if value < 0:
-			return {"accepted": false, "diagnostics": [{"code": "ECONOMY_VALUE_INVALID", "message": "district transaction value cannot be negative"}]}
-		return {"accepted": true, "value": value, "economy_revision": get_revision(), "diagnostics": []}
+		return manager.call("district_quote", transaction)
 
 	func reserve(quote_result: Dictionary) -> Dictionary:
-		return manager.call("district_reserve", int(quote_result.get("value", 0)) )
+		return manager.call("reserve_quote", quote_result)
 
 	func guarantee_capture(reservation: Dictionary) -> Dictionary:
 		return manager.call("district_guarantee_capture", reservation)
@@ -113,7 +115,7 @@ class ZoneManagerPort extends DistrictZonePort:
 
 class DistrictProgressionPort extends RefCounted:
 	func get_policy_snapshot() -> Dictionary:
-		return {"revision": 0, "minimum_elevation": -5, "maximum_elevation": 9}
+		return {}
 
 
 class ProgressionManagerPort extends DistrictProgressionPort:
@@ -125,14 +127,16 @@ class ProgressionManagerPort extends DistrictProgressionPort:
 	func initialize(prestige: Node, tech_tree: Node) -> void:
 		prestige_manager = prestige
 		tech_tree_manager = tech_tree
+		if tech_tree_manager != null and tech_tree_manager.has_method("set_prestige_manager"):
+			tech_tree_manager.call("set_prestige_manager", prestige_manager)
 
 	func get_policy_snapshot() -> Dictionary:
-		var revision: int = 0
-		if prestige_manager != null:
-			revision = int(prestige_manager.call("get_district_revision"))
-		if tech_tree_manager != null:
-			revision = maxi(revision, int(tech_tree_manager.call("get_district_revision")))
-		return {"revision": revision, "minimum_elevation": minimum_elevation, "maximum_elevation": maximum_elevation}
+		if tech_tree_manager == null:
+			return {}
+		var snapshot: Dictionary = tech_tree_manager.call("get_policy_snapshot")
+		if snapshot.is_empty():
+			return snapshot
+		return snapshot
 
 
 class DistrictRuntimePortsBundle extends RefCounted:

@@ -29,6 +29,21 @@ The tech tree gives the player agency over *how* their district evolves. The pac
 | **City Destination** (6,500) | +10 | 25 |
 | **Megacity Mall** (9,000) | +15 | 40 |
 
+### Plot Access Rewards
+
+The initial Plot is already owned. The district supports at most **9 Plots**: the initial Plot plus eight player-selected unlocked Plots.
+
+| Level reached | New Plot Access selections | Maximum unlocked Plots |
+|---|---:|---:|
+| Empty Lot | 0 | 1 initial Plot |
+| Small Market | 0 | 1 |
+| Neighborhood Center | 2 | 3 |
+| Regional Mall | 2 | 5 |
+| City Destination | 2 | 7 |
+| Megacity Mall | 2 | 9 |
+
+Each selection permanently unlocks one eligible Plot but grants no ownership. A selected Plot becomes available for camera access and later Plot Section purchases. It becomes Active only when the player purchases its first Plot Section. A selected Plot must be orthogonally adjacent to an Active or already unlocked Plot; diagonal selection is invalid.
+
 ---
 
 ## Tech Tree
@@ -52,13 +67,18 @@ With 40 total points available by Megacity Mall, the player can unlock the entir
 | **Advanced Zoning** | 1 pt | None | Entertainment, Services zone types |
 | **Anchor Tenants** | 2 pts | Advanced Zoning | Anchor zone type (large-format tenants) |
 | **Multi-Floor** | 2 pts | Stairs | 2nd and 3rd floors |
-| **Underground** | 3 pts | Multi-Floor | Underground floors U1–U3 |
+| **Underground** | 3 pts | Multi-Floor | Underground floors U1–U2 |
+| **Vertical Expansion I** | 1 pt | Multi-Floor | Floors F3–F5; requires Neighborhood Center |
+| **Vertical Expansion II** | 1 pt | Vertical Expansion I | Floors F6–F7; requires Regional Mall |
+| **Vertical Expansion III** | 1 pt | Vertical Expansion II | Floors F8–F9; requires City Destination |
+| **Deep Foundations** | 1 pt | Underground | Underground floors U3–U5; requires Regional Mall |
 
 ### Circulation Branch
 
 | Node | Cost | Prerequisites | Unlocks |
 |------|------|---------------|---------|
 | **Basic Corridors** | Free (start) | None | Standard corridor tile placement |
+| **Bus Stop** | 1 pt | Basic Corridors | Bus-stop eligibility; requires Small Market |
 | **Stairs** | 1 pt | None | Stair placement between floors |
 | **Elevators** | 2 pts | Stairs | Elevator placement |
 | **Escalators** | 2 pts | Elevators | Escalator placement |
@@ -173,6 +193,10 @@ The tech tree is not a checklist — it's a menu of possibilities. The player's 
 ### District Architecture Amendment
 
 - Physical plot caps are separate from tech-tree progression. The canonical physical elevation range is `0 = G`, `+1..+9 = F1..F9`, and `-1..-5 = U1..U5`: 10 above-ground levels including G plus 5 underground. Plot Templates and Block Slot overrides may impose stricter physical limits.
-- The approved **Multi-Floor** node still unlocks the 2nd and 3rd floors, and **Underground** still unlocks U1–U3 at their existing costs and prerequisites.
-- Progression access for F4–F9 and U4–U5 is an open extension. No costs or prerequisites are approved for that extension.
-- Progression gates for new Plot Section acquisition and Street Segment conversion, plus future transport unlocks, remain open; these additions do not alter the approved 23-point MVP tree.
+- **Multi-Floor** unlocks `F1` and `F2`: Ground (`G`) is the first building level, so these are the second and third floors. **Underground** unlocks `U1`–`U2` at its existing 3-point cost and prerequisite.
+- **Vertical Expansion I/II/III** unlock `F3`–`F5`, `F6`–`F7`, and `F8`–`F9` respectively. Each costs 1 Tech Point and requires both its listed prerequisite node and Mall Level.
+- **Deep Foundations** unlocks `U3`–`U5`, costs 1 Tech Point, and requires Underground plus Regional Mall.
+- Plot Section acquisition requires a selected/unlocked Plot. Plot Access selections are granted by the Mall Level table above.
+- Street Segment conversion is available from **Neighborhood Center** onward, subject to all non-progression District and Economy requirements.
+- **Bus Stop** is the sole currently approved non-pedestrian transport capability. It costs 1 Tech Point, requires Basic Corridors and Small Market, and grants eligibility only; placement still requires the separate District road/route/frontage/cap validation.
+- All other non-pedestrian transport facilities remain unavailable until a dedicated transport/progression handoff approves them; these additions expand the tech tree to 28 points while retaining 12 of the 40 total available points for later content.

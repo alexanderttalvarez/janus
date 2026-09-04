@@ -8,12 +8,12 @@ signal prestige_recalculated(new_prestige: int, scale: int, quality: int)
 
 
 ## Mall levels with evocative names.
-enum MallLevel { LOCAL_SHOPPING, NEIGHBORHOOD_CENTER, COMMUNITY_MALL, REGIONAL_MALL, MEGACITY_MALL }
+enum MallLevel { EMPTY_LOT, SMALL_MARKET, NEIGHBORHOOD_CENTER, REGIONAL_MALL, CITY_DESTINATION, MEGACITY_MALL }
 const MALL_LEVEL_NAMES: Array[String] = [
-	"Local Shopping Building", "Neighborhood Center", "Community Mall", "Regional Mall", "Megacity Mall"
+	"Empty Lot", "Small Market", "Neighborhood Center", "Regional Mall", "City Destination", "Megacity Mall"
 ]
-## Prestige thresholds for each mall level.
-const LEVEL_THRESHOLDS: Array[int] = [0, 500, 2000, 5000, 15000]
+## Approved prestige thresholds for each mall level.
+const LEVEL_THRESHOLDS: Array[int] = [0, 500, 1500, 3500, 6500, 9000]
 
 
 ## Current prestige score.
@@ -29,7 +29,7 @@ var scale: int = 0
 var quality: int = 0
 
 ## Current mall level tier.
-var current_level: MallLevel = MallLevel.LOCAL_SHOPPING
+var current_level: MallLevel = MallLevel.EMPTY_LOT
 
 ## Prestige trend: positive = growing, negative = declining.
 var trend: int = 0
@@ -55,6 +55,14 @@ func initialize(zm: ZoneManager, tm: TenantManager, vm: VisitorManager) -> void:
 ## Recalculate prestige on sim_month_passed.
 func get_district_revision() -> int:
 	return authority_revision
+
+
+func get_mall_level_index() -> int:
+	return int(current_level)
+
+
+func get_mall_level_name() -> String:
+	return MALL_LEVEL_NAMES[int(current_level)]
 
 
 func recalculate() -> void:
@@ -168,7 +176,7 @@ func _determine_level(p: int) -> MallLevel:
 	for i in range(LEVEL_THRESHOLDS.size() - 1, -1, -1):
 		if p >= LEVEL_THRESHOLDS[i]:
 			return i as MallLevel
-	return MallLevel.LOCAL_SHOPPING
+	return MallLevel.EMPTY_LOT
 
 
 func serialize() -> Dictionary:

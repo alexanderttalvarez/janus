@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors.** Immediate pedestrian realization is an approved MVP fact. MVP and H9 are not blocked by future durable cohort policy.
+**Approved — 2026-09-03.** Implementation requires H3 source state, H5 pedestrian graph, H6 gateway eligibility, and VisitorManager lifecycle output; MVP/H9 are not blocked by future durable cohort policy or H7 traffic topology.
 
 ## Purpose
 
@@ -12,6 +12,7 @@ Separate demand, deterministic source selection, immediate cross-authority reali
 
 - [H6](06_camera_and_pedestrian_gateways.md) structural eligibility and pass-through H2 attachment/pose.
 - H3 District Runtime source validation/state and H5 pedestrian graph.
+- Existing VisitorManager lifecycle and the approved global 200-active-visitor MVP population budget.
 
 ## Source-of-truth documents
 
@@ -42,7 +43,7 @@ Durable pending cohorts, new capacities/weights/rates/formulas, non-pedestrian m
 | Arrival Coordinator | Deterministic MVP selection and commit-gate orchestration. |
 | District Runtime | Sole `ArrivalSourceState` writer and ephemeral source validator. |
 | H6 | Structural eligibility input only. |
-| VisitorManager | Realized visitor records/lifecycle/Nodes after allocation. |
+| VisitorManager | Realized visitor records/lifecycle/Nodes after allocation and the global 200-active-visitor MVP population budget. It does not own source capacity. |
 
 ## Data contracts
 
@@ -84,11 +85,11 @@ Arrival Coordinator, shared Arrival Commit Gate/barrier, District Runtime source
 
 ## Acceptance criteria
 
-Demand is spatially independent; allocation captures demand snapshot identity, H2/H3 `district_revision`, and H5/H6 topology/eligibility revision; source-state changes advance `district_revision`; no source-specific concurrency revision exists; canonical selection is deterministic; District Runtime remains sole source writer without reservation mutation; immediate realization has no observable or durable pending window; every pre-append fault restores prior visitor state and invalidates its token; append commits exactly one envelope; subscriber faults cannot roll back or reorder it; source geometry is unsaved; legacy adapter has no persisted mapping.
+Demand is spatially independent; global active population caps at 200 through VisitorManager lifecycle policy, without introducing source capacity/weight/fairness; allocation captures demand snapshot identity, H2/H3 `district_revision`, and H5/H6 topology/eligibility revision; source-state changes advance `district_revision`; no source-specific concurrency revision exists; canonical selection is deterministic; District Runtime remains sole source writer without reservation mutation; immediate realization has no observable or durable pending window; every pre-append fault restores prior visitor state and invalidates its token; append commits exactly one envelope; subscriber faults cannot roll back or reorder it; source geometry is unsaved; legacy adapter has no persisted mapping.
 
 ## Required tests
 
-Demand-profile independence; captured demand snapshot identity; mode/enabled/H6 filtering; matching and stale `district_revision` and H5/H6 topology/eligibility revision cases; source-state changes advancing `district_revision`; rejection of any source-specific revision field or check; NFC UTF-8 bytewise ordering; first-source selection; rejection of unselected weighting/fairness/capacity behavior; sole-writer proof; token single-use/invalidation; exit ordering/invalidation; lifecycle/culling; save exclusion; adapter isolation. Inject every pre-append fault, append-capability rejection, and subscriber fault during synchronous flush; assert prior visitor-state restoration before append, no source/revision mutation, no save/input/observer visibility through the barrier, no intervening transaction/save, exactly one complete envelope after append, preserved event order, and no post-append rollback.
+Demand-profile independence; global 200-active-visitor lifecycle budget without source-capacity behavior; captured demand snapshot identity; mode/enabled/H6 filtering; matching and stale `district_revision` and H5/H6 topology/eligibility revision cases; source-state changes advancing `district_revision`; rejection of any source-specific revision field or check; NFC UTF-8 bytewise ordering; first-source selection; rejection of unselected weighting/fairness/capacity behavior; sole-writer proof; token single-use/invalidation; exit ordering/invalidation; lifecycle/culling; save exclusion; adapter isolation. Inject every pre-append fault, append-capability rejection, and subscriber fault during synchronous flush; assert prior visitor-state restoration before append, no source/revision mutation, no save/input/observer visibility through the barrier, no intervening transaction/save, exactly one complete envelope after append, preserved event order, and no post-append rollback.
 
 ## Performance/scalability checks
 

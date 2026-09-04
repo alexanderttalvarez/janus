@@ -74,12 +74,17 @@ func _ready() -> void:
 	# wall_mode) register in the RenderingServer before GameManager sets them.
 	_get_wall_material(Vector2(0.0, 1.0), 0.0, false)
 
-	# Walls adapt automatically to zone changes and tile purchases.
-	EventBus.zone_created.connect(func(_id: String, _t: String, _c: int): rebuild())
-	EventBus.zone_modified.connect(func(_id: String): rebuild())
-	EventBus.zone_deleted.connect(func(_id: String): rebuild())
-	EventBus.door_changed.connect(func(_from: Vector2i, _to: Vector2i, _enabled: bool): rebuild())
-	EventBus.tile_purchased.connect(func(_f: int, _x: int, _y: int): rebuild())
+	# Walls adapt automatically to zone changes and tile purchases. Resolve the
+	# registered autoload at runtime so standalone wall tests can load this
+	# script without requiring editor-only global-symbol resolution.
+	var event_bus: Node = get_tree().root.get_node_or_null("EventBus")
+	if event_bus == null:
+		return
+	event_bus.connect("zone_created", func(_id: String, _t: String, _c: int): rebuild())
+	event_bus.connect("zone_modified", func(_id: String): rebuild())
+	event_bus.connect("zone_deleted", func(_id: String): rebuild())
+	event_bus.connect("door_changed", func(_from: Vector2i, _to: Vector2i, _enabled: bool): rebuild())
+	event_bus.connect("tile_purchased", func(_f: int, _x: int, _y: int): rebuild())
 
 
 ## Regenerate all wall meshes from the current grid + zone state.

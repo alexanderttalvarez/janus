@@ -12,9 +12,7 @@
 [ext_resource type="PackedScene" path="res://scenes/camera/camera_rig.tscn" id="7_camera_rig"]
 [ext_resource type="Script" uid="uid://ch7h240hk8kpg" path="res://scripts/world/traffic_manager.gd" id="8_mwvdt"]
 [ext_resource type="Script" uid="uid://c5vqddles7fxg" path="res://scripts/simulation/tenant_manager.gd" id="8_tenant_manager"]
-[ext_resource type="PackedScene" uid="uid://bjgx2nrahet8x" path="res://scenes/world/roads/road_side.tscn" id="8_wg31f"]
 [ext_resource type="Script" uid="uid://cchqvwpgx2s14" path="res://scripts/simulation/economy_manager.gd" id="9_economy_manager"]
-[ext_resource type="PackedScene" uid="uid://lhbxtcqddpek" path="res://scenes/world/roads/road_corner.tscn" id="10_dt2l1"]
 [ext_resource type="Script" uid="uid://dtgul3jtl4brv" path="res://scripts/simulation/prestige_manager.gd" id="10_prestige_manager"]
 [ext_resource type="Script" uid="uid://bsr42lv6kkxsm" path="res://scripts/simulation/tech_tree_manager.gd" id="11_tech_tree_manager"]
 [ext_resource type="Script" uid="uid://b3ooxq3kwl8jb" path="res://scripts/simulation/staff_manager.gd" id="12_staff_manager"]
@@ -70,6 +68,7 @@ script = ExtResource("4_gpckr")
 [node name="Surroundings" type="Node3D" parent="World" unique_id=878440049]
 
 [node name="PedestrianAreas" type="Node3D" parent="World/Surroundings" unique_id=625773378]
+visible = false
 script = ExtResource("6_mwvdt")
 
 [node name="Pedestrian_North" type="MeshInstance3D" parent="World/Surroundings/PedestrianAreas" unique_id=221167936]
@@ -112,40 +111,17 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 27.5, 0, 27.5)
 material_override = ExtResource("6_8c1vm")
 mesh = SubResource("BoxMesh_qt8r4")
 
-[node name="Roads" type="Node3D" parent="World/Surroundings" unique_id=146749512]
-
-[node name="RoadCorner_NorthWest" parent="World/Surroundings/Roads" unique_id=1462758133 instance=ExtResource("10_dt2l1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, -8)
-
-[node name="RoadCorner_NorthEast" parent="World/Surroundings/Roads" unique_id=1869688405 instance=ExtResource("10_dt2l1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33, 0, -8)
-
-[node name="RoadCorner_SouthWest" parent="World/Surroundings/Roads" unique_id=1840336190 instance=ExtResource("10_dt2l1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -8, 0, 33)
-
-[node name="RoadCorner_SouthEast" parent="World/Surroundings/Roads" unique_id=1358720002 instance=ExtResource("10_dt2l1")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 33, 0, 33)
-
-[node name="RoadSide_North" parent="World/Surroundings/Roads" unique_id=712253612 instance=ExtResource("8_wg31f")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12.5, 0, -8)
-
-[node name="RoadSide_East" parent="World/Surroundings/Roads" unique_id=1242465763 instance=ExtResource("8_wg31f")]
-transform = Transform3D(3.1391647e-07, 0, -1, 0, 1, 0, 1, 0, 3.1391647e-07, 33, 0, 12.5)
-
-[node name="RoadSide_South" parent="World/Surroundings/Roads" unique_id=1280650436 instance=ExtResource("8_wg31f")]
-transform = Transform3D(-1, 0, -3.2584137e-07, 0, 1, 0, 3.2584137e-07, 0, -1, 12.5, 0, 33)
-
-[node name="RoadSide_West" parent="World/Surroundings/Roads" unique_id=70291349 instance=ExtResource("8_wg31f")]
-transform = Transform3D(3.1391647e-07, 0, 1, 0, 1, 0, -1, 0, 3.1391647e-07, -8, 0, 12.5)
-
 [node name="Visitors" type="Node3D" parent="World" unique_id=1205100646]
+visible = false
 
 [node name="TrafficManager" type="Node3D" parent="World" unique_id=1628288276]
 script = ExtResource("8_mwvdt")
 
 [node name="ActiveCars" type="Node3D" parent="World/TrafficManager" unique_id=1226467699]
+visible = false
 
 [node name="TrafficLayout" type="Node3D" parent="World" unique_id=1104771615]
+visible = false
 
 [node name="Lanes" type="Node3D" parent="World/TrafficLayout" unique_id=161689622]
 
