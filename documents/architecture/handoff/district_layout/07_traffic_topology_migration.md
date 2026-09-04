@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors.** Requires [H5](05_street_and_pedestrian_generation.md) public-realm and conversion inputs.
+**Approved — 2026-09-03.** Implementation requires implemented H3 committed state and [H5](05_street_and_pedestrian_generation.md) public-realm/conversion inputs.
 
 ## Purpose
 
@@ -11,6 +11,7 @@ Own immutable `RoadGraphSnapshot`, graph deltas, lane/control anchors, traffic-c
 ## Dependencies
 
 - H2 resolved road descriptors, H3 committed segment state, and [H5](05_street_and_pedestrian_generation.md) conversion/public-realm inputs.
+- H3 Active/owned Plot geometry; Progression-selected/unlocked but unowned Plots are excluded from controlled-area topology.
 
 ## Source-of-truth documents
 
@@ -45,7 +46,7 @@ Public-realm geometry, pedestrian graph, conversion eligibility/state writes, pe
 
 `RoadGraphSnapshot` carries layout/resolver/district/graph revisions and stable lanes, segments, intersections, crosswalks, stops, route attachments, control anchors, traffic-control descriptors, and outer ring. `RoadGraphDelta` carries ordered added/changed/removed IDs, invalid routes/reservations, attachments, and reason. Control kinds replace Spawn/StopLine/Exit/SourceClear/IntersectionHold/IntersectionClear Node-name contracts without preserving scene identity.
 
-Initial routes are straight-through only. Turn-capable extension points remain in the contract, but no turn route is active. Existing intersection reservation behavior remains authoritative for straight crossings; intersections have no traffic lights or pedestrian crossings. The controlled area is the connected union of Active Plot rectangles. District acquisition rules guarantee this invariant. H7 test fixture/load setup for Fixture C must use the approved initial ownership set `{market_entry,station_entry,garden_entry}`; TrafficTopology and TrafficManager must never compensate for a disconnected substitute setup.
+Initial routes are straight-through only. Turn-capable extension points remain in the contract, but no turn route is active. Existing intersection reservation behavior remains authoritative for straight crossings; intersections have no traffic lights or pedestrian crossings. The controlled area is the connected union of Active/owned Plot rectangles only. Progression-selected/unlocked but unowned Plots are camera-accessible and do not extend the controlled area, road perimeter, anchors, routes, or traffic-control state. District acquisition rules guarantee this invariant. H7 test fixture/load setup for Fixture C must use the approved initial ownership set `{market_entry,station_entry,garden_entry}`; TrafficTopology and TrafficManager must never compensate for a disconnected substitute setup.
 
 Every outward-facing lane at the controlled-area road perimeter has paired spawn and despawn anchors just outside the boundary intersection, oriented by lane direction. As the controlled area expands, topology moves active anchors outward. Converted or inactive roads have no active anchors. TrafficTopology owns anchors and graph state; TrafficManager owns only presentation and transient cars.
 
@@ -53,7 +54,7 @@ Each midpoint crosswalk has two traffic-light poles, one centered in each Pedest
 
 ## Communication and event flow
 
-`H5 inputs + committed segment state -> complete graph -> delta -> release invalid reservations -> deterministic transient response`.
+`H5 inputs + committed H3 Active/owned Plot and segment state -> complete graph -> delta -> release invalid reservations -> deterministic transient response`.
 
 ## Persistence impact
 
@@ -73,7 +74,7 @@ Traffic manager, graph modules, composition, authored traffic Nodes, conversion 
 
 ## Acceptance criteria
 
-Deterministic graph IDs; immutable ring; conversion connectivity never vetoes; stale routes/reservations clear; no Node-name/coordinate authority; H7 is sole road graph owner; straight-only initial routes; connected controlled-area invariant; perimeter anchors; and the shared-clock control contract. H4 remains projection lifecycle only, so H7 traffic semantics do not retroactively change completed H4 work.
+Deterministic graph IDs; immutable ring; selected/unowned Plots never extend the controlled area; conversion connectivity never vetoes; stale routes/reservations clear; no Node-name/coordinate authority; H7 is sole road graph owner; straight-only initial routes; connected controlled-area invariant; perimeter anchors; and the shared-clock control contract. H4 remains projection lifecycle only, so H7 traffic semantics do not retroactively change completed H4 work.
 
 ## Required tests
 

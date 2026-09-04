@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - ready for architecture approval.** H2 provisional resolver work may proceed with H1 proof work before KEEP. Production freeze and H3 production implementation require H1 KEEP and reviewed frozen H1/H2 goldens.
+**Approved and frozen — 2026-08-31.** H2's resolver contract is frozen with H1 KEEP for H3 production. The approved Fixture C initial-ownership correction requires its separately recorded explicit H1 golden addendum before the refreshed Fixture C fingerprint replaces the prior frozen value.
 
 ## Purpose
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors.** Requires implemented H1-H8 authority snapshots and MVP immediate realization. It is not blocked by future durable pending-cohort policy because MVP has no durable pending window.
+**Approved — 2026-09-03.** Implementation requires implemented H1-H8 authority snapshots, the recorded Fixture C H1 golden addendum, and MVP immediate realization. It is not blocked by future durable pending-cohort policy because MVP has no durable pending window.
 
 ## Purpose
 
@@ -53,7 +53,7 @@ The V2 root has exactly `save_schema_version`, `meta`, `layout_ref`, and `author
 - `layout_ref` has exactly string `layout_id`, integer `layout_definition_version`, and lowercase 64-character hexadecimal SHA-256 `definition_fingerprint`.
 - `authorities` has exactly the keys `district`, `zone_parcel`, `tenant`, `visitor`, `economy`, `progression`, `prestige`, `staff`, `synergy`, and `time`; no unknown or missing key is allowed.
 
-Each authority value is a detached snapshot owned, versioned, and validated by that named authority. `authorities.district` is exactly H2's complete `DistrictState` schema and its identity values must equal `layout_ref`. Derived geometry, graphs, transforms, Nodes, indexes, presentation, reservations, pending cohorts, and caches are excluded.
+Each authority value is a detached snapshot owned, versioned, and validated by that named authority. `authorities.district` is exactly H2's complete `DistrictState` schema and its identity values must equal `layout_ref`. `authorities.economy` persists committed balance, loans, revision, and required recurring-settlement markers only; quotes, reservations, and capture tokens are excluded. `authorities.progression` persists committed Tech/point facts, milestone grants, selected/unlocked stable Plot IDs, and revision only; eligibility snapshots are derived after load and District must not duplicate selected Plot IDs. `authorities.visitor` persists realized visitor lifecycle state only; MVP persists no pending-arrival/cohort or source-capacity state. Derived geometry, graphs, transforms, Nodes, indexes, presentation, reservations, pending cohorts, and caches are excluded.
 
 ### Schema absence and incompatibility result
 
@@ -73,7 +73,7 @@ Metadata reads, parsing, migration, staging, and failures emit no `game_loaded`.
 
 ## Persistence impact
 
-V1 and other schema-absent payloads are rejected with no slot mutation. Save writes stage and validate the complete V2 envelope, flush a temporary file, then atomically replace the slot; failure preserves the prior slot. MVP persists no pending arrival records. Future durable cohorts must define persistence before shipping.
+V1 and other schema-absent payloads are rejected with no slot mutation. Save writes stage and validate the complete V2 envelope, flush a temporary file, then atomically replace the slot; failure preserves the prior slot. MVP retains no automatic rolling backup copies: the five player-controlled slots are the retention model. MVP persists no pending arrival records. Future durable cohorts must define persistence before shipping.
 
 ## Editor/runtime behavior
 
@@ -89,11 +89,11 @@ SaveManager, V2 DTOs, session staging, all authority snapshot boundaries, projec
 
 ## Acceptance criteria
 
-Exact-key V2 sparse round trip; schema-absent/V1 rejection before staging with a structured incompatibility result and preserved slot; V2 malformed, unknown-layout, and fingerprint rejection; staged atomic save/load; all failures retain the old session; one post-commit `game_loaded`; generated data absent; no pending-MVP blocker.
+Exact-key V2 sparse round trip, including Economy committed-only state and Progression-selected Plot ownership without District duplication; schema-absent/V1 rejection before staging with a structured incompatibility result and preserved slot; V2 malformed, unknown-layout, and fingerprint rejection; staged atomic save/load; all failures retain the old session; one post-commit `game_loaded`; generated data absent; no pending-MVP blocker.
 
 ## Required tests
 
-V2 exact root/meta/layout/authority key and type tests; H2 district-schema invariants; schema-absent payload (including current V1) rejection before staging/live mutation with structured incompatibility diagnostic and unchanged slot; V2 missing/unknown keys, unknown layout IDs, definition-version mismatch, and fingerprint mismatch rejection; detached authority validation; fault injection at every staged load/save step; event order; safe temporary-file atomic replacement; round trip. Verify that no V1 shape classifier, converter, source/floor mapper, fixture conversion, baseline/derivation policy, compatibility adapter, or migration registry is reachable or required.
+V2 exact root/meta/layout/authority key and type tests; H2 district-schema invariants; Economy reservation/token exclusion and recurring-settlement marker round trip; Progression selected-Plot/milestone round trip with derived eligibility reconstruction and no District duplication; realized-visitor-only MVP persistence; schema-absent payload (including current V1) rejection before staging/live mutation with structured incompatibility diagnostic and unchanged slot; V2 missing/unknown keys, unknown layout IDs, definition-version mismatch, and fingerprint mismatch rejection; detached authority validation; fault injection at every staged load/save step; event order; safe temporary-file atomic replacement; round trip. Verify that no V1 shape classifier, converter, source/floor mapper, fixture conversion, baseline/derivation policy, compatibility adapter, or migration registry is reachable or required.
 
 ## Performance/scalability checks
 
@@ -119,7 +119,7 @@ JSON number coercion, accidental live singleton mutation, staging registration, 
 
 ## OPEN QUESTIONS
 
-- Save support/backup window and concrete performance budgets.
+- Concrete performance budgets.
 - Future V2 schema migration rules remain open and require explicit approval and release before implementation.
 - Future durable cohort policy before those cohorts ship.
 

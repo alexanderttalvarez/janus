@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - implementation blocked by predecessors.** Requires implemented H3 state, explicit addresses, revisions, and lifecycle.
+**Runtime projection approved and complete; editor-preview extension pending acceptance.** H4 runtime projection remains available to successor handoffs. Full H4 completion requires the opt-in editor-plugin capability and acceptance evidence in the 2026-08-31 addendum.
 
 ## Purpose
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-**Draft - ready for architecture approval.** H1 and H2 may be approved and implemented together for proof only. Production use requires A-C evidence and H1 **KEEP**; **REVISE** or **REJECT** regenerates H1/H2 goldens and blocks H3 production implementation.
+**Approved and frozen — 2026-08-31.** H1 records **KEEP** after A-C evidence; the H1/H2 proof contract is approved for H3 production. The approved Fixture C initial-ownership correction requires its separately recorded explicit H1 golden addendum before the refreshed Fixture C fingerprint replaces the prior frozen value.
 
 ## Purpose
 
