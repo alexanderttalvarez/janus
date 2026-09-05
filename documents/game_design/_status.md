@@ -27,5 +27,8 @@
 | 17 | UI / HUD system | agreed | `17_ui_hud_system.md` |
 | 18 | Notifications system | agreed | `18_notifications_system.md` |
 | 19 | District layout & land expansion | agreed | `19_district_layout_land_expansion.md` |
+| 20 | Tenant interiors & visitor interactions | in-discussion | — |
 
-## Phase: 4
+## Current discussion
+
+Tenant interiors & visitor interactions — discovery and MVP direction selection. No implementation or architecture handoff is approved.

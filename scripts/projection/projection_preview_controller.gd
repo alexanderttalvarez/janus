@@ -3,6 +3,7 @@ class_name ProjectionPreviewController
 extends Node3D
 
 ## Editor-only lifecycle controller. It owns a preview shell under a transient,
+## Handoff controller reload marker.
 ## ownerless scene-tree node and never writes authored or district authority data.
 
 signal preview_committed(manifest: Dictionary)

@@ -32,6 +32,9 @@ var last_split_result: SplitResult
 var _district_notifications_deferred: bool = false
 var _deferred_district_notifications: Array[Dictionary] = []
 
+signal zone_rent_initialized(zone_id: String, rate_centi_kreds: int, rate_revision: int)
+signal zone_rent_changed(zone_id: String, rate_centi_kreds: int, rate_revision: int, request_reference: String)
+
 ## Most recent committed debug subtype assignment result.
 var last_assignment_result: BusinessAssignmentResult
 
@@ -931,6 +934,100 @@ func is_tile_in_zone(
 # ── Serialization ──────────────────────────────────────────────────────
 
 
+## Initialize a newly committed zone with a validated detached recommendation.
+func initialize_zone_rate(zone_id: String, recommendation: Dictionary) -> Dictionary:
+	var zone_variant: Variant = zones.get(zone_id)
+	if not zone_variant is ZoneData:
+		return {"committed": false, "diagnostics": [{"code": "ZONE_NOT_FOUND", "zone_id": zone_id}]}
+	var zone: ZoneData = zone_variant
+	if not bool(recommendation.get("valid", false)) or int(recommendation.get("recommended_rent_centi_kreds", -1)) < 0:
+		zone.daily_rent_rate_centi_kreds = -1
+		zone.rate_state = "PENDING_RECOMMENDATION"
+		return {"committed": false, "diagnostics": [{"code": "ZONE_RATE_PENDING"}]}
+	zone.daily_rent_rate_centi_kreds = int(recommendation["recommended_rent_centi_kreds"])
+	zone.rate_revision = 0
+	zone.rate_state = "READY"
+	zone.rate_recommendation_provenance = recommendation.duplicate(true)
+	zone_rent_initialized.emit(zone_id, zone.daily_rent_rate_centi_kreds, zone.rate_revision)
+	return {"committed": true, "rate_centi_kreds": zone.daily_rent_rate_centi_kreds, "rate_revision": zone.rate_revision, "diagnostics": []}
+
+
+## Commit a player rate intent through the ZoneManager authority boundary.
+func commit_zone_rate_intent(intent: Dictionary) -> Dictionary:
+	var zone_id := String(intent.get("zone_id", ""))
+	var desired_rate := int(intent.get("desired_rate_centi_kreds", -1))
+	var expected_revision := int(intent.get("expected_rate_revision", -1))
+	var request_reference := String(intent.get("request_reference", ""))
+	if zone_id.is_empty() or desired_rate < 0 or expected_revision < 0:
+		return {"committed": false, "diagnostics": [{"code": "RATE_REPRESENTATION_INVALID"}]}
+	var zone_variant: Variant = zones.get(zone_id)
+	if not zone_variant is ZoneData:
+		return {"committed": false, "diagnostics": [{"code": "ZONE_NOT_FOUND", "zone_id": zone_id}]}
+	var zone: ZoneData = zone_variant
+	if zone.rate_revision != expected_revision:
+		return {"committed": false, "diagnostics": [{"code": "RATE_REVISION_STALE", "zone_id": zone_id}]}
+	zone.daily_rent_rate_centi_kreds = desired_rate
+	zone.rate_revision += 1
+	zone.rate_state = "READY"
+	zone_rent_changed.emit(zone_id, desired_rate, zone.rate_revision, request_reference)
+	return {"committed": true, "rate_centi_kreds": desired_rate, "rate_revision": zone.rate_revision, "diagnostics": []}
+
+
+func zone_rate_snapshot(zone_id: String) -> Dictionary:
+	var zone_variant: Variant = zones.get(zone_id)
+	if not zone_variant is ZoneData:
+		return {"valid": false, "diagnostics": [{"code": "ZONE_NOT_FOUND", "zone_id": zone_id}]}
+	var zone: ZoneData = zone_variant
+	return {"valid": true, "zone_id": zone_id, "daily_rent_rate_centi_kreds": zone.daily_rent_rate_centi_kreds, "rate_revision": zone.rate_revision, "rate_state": zone.rate_state, "recommendation": zone.rate_recommendation_provenance.duplicate(true), "diagnostics": []}
+
+
+## Bind a tenant through the ZoneManager authority boundary.
+func bind_tenant_to_parcel(zone_id: String, parcel_id: String, tenant_id: String) -> Dictionary:
+	if tenant_id.is_empty() or zone_id.is_empty() or parcel_id.is_empty():
+		return {"committed": false, "diagnostics": [{"code": "TENANT_BIND_INVALID_ID"}]}
+	var zone_variant: Variant = zones.get(zone_id)
+	if not zone_variant is ZoneData:
+		return {"committed": false, "diagnostics": [{"code": "TENANT_BIND_ZONE_NOT_FOUND", "zone_id": zone_id}]}
+	var zone: ZoneData = zone_variant
+	for parcel: Parcel in zone.parcels:
+		if parcel.id != parcel_id:
+			continue
+		if parcel.has_tenant and parcel.tenant_id != tenant_id:
+			return {"committed": false, "diagnostics": [{"code": "TENANT_BIND_PARCEL_OCCUPIED", "zone_id": zone_id, "parcel_id": parcel_id}]}
+		parcel.has_tenant = true
+		parcel.tenant_id = tenant_id
+		return {"committed": true, "diagnostics": []}
+	return {"committed": false, "diagnostics": [{"code": "TENANT_BIND_PARCEL_NOT_FOUND", "zone_id": zone_id, "parcel_id": parcel_id}]}
+
+
+## Release a tenant through the ZoneManager authority boundary.
+func release_tenant_from_parcel(zone_id: String, parcel_id: String, tenant_id: String) -> Dictionary:
+	var zone_variant: Variant = zones.get(zone_id)
+	if not zone_variant is ZoneData:
+		return {"committed": false, "diagnostics": [{"code": "TENANT_RELEASE_ZONE_NOT_FOUND", "zone_id": zone_id}]}
+	var zone: ZoneData = zone_variant
+	for parcel: Parcel in zone.parcels:
+		if parcel.id != parcel_id:
+			continue
+		if not parcel.has_tenant or parcel.tenant_id != tenant_id:
+			return {"committed": false, "diagnostics": [{"code": "TENANT_RELEASE_OWNERSHIP_MISMATCH", "zone_id": zone_id, "parcel_id": parcel_id}]}
+		parcel.has_tenant = false
+		parcel.tenant_id = ""
+		return {"committed": true, "diagnostics": []}
+	return {"committed": false, "diagnostics": [{"code": "TENANT_RELEASE_PARCEL_NOT_FOUND", "zone_id": zone_id, "parcel_id": parcel_id}]}
+
+
+func parcel_snapshot(zone_id: String, parcel_id: String) -> Dictionary:
+	var zone_variant: Variant = zones.get(zone_id)
+	if not zone_variant is ZoneData:
+		return {}
+	var zone: ZoneData = zone_variant
+	for parcel: Parcel in zone.parcels:
+		if parcel.id == parcel_id:
+			return {"zone_id": zone_id, "parcel_id": parcel_id, "tile_count": parcel.tiles.size(), "has_tenant": parcel.has_tenant, "tenant_id": parcel.tenant_id}
+	return {}
+
+
 func serialize() -> Dictionary:
 	var data: Dictionary = {}
 	for zone_id: String in zones:
@@ -948,6 +1045,10 @@ func serialize() -> Dictionary:
 			"parcel_layout_seed": zone.parcel_layout_seed,
 			"typologies": _serialize_typologies(zone.typologies),
 			"zone_name": zone.zone_name,
+			"daily_rent_rate_centi_kreds": zone.daily_rent_rate_centi_kreds,
+			"rate_revision": zone.rate_revision,
+			"rate_state": zone.rate_state,
+			"rate_recommendation_provenance": zone.rate_recommendation_provenance.duplicate(true),
 			"parcels": serialized_parcels,
 		}
 	return {
@@ -981,6 +1082,10 @@ func deserialize(data: Dictionary) -> void:
 			zone.parcel_layout_seed = _generate_parcel_layout_seed(zone.id)
 		zone.typologies = _deserialize_typologies(zone_data.get("typologies", []))
 		zone.zone_name = zone_data.get("zone_name", "")
+		zone.daily_rent_rate_centi_kreds = int(zone_data.get("daily_rent_rate_centi_kreds", -1))
+		zone.rate_revision = int(zone_data.get("rate_revision", 0))
+		zone.rate_state = String(zone_data.get("rate_state", "PENDING_RECOMMENDATION"))
+		zone.rate_recommendation_provenance = zone_data.get("rate_recommendation_provenance", {}).duplicate(true)
 		for parcel_data: Dictionary in zone_data.get("parcels", []):
 			var parcel := Parcel.deserialize(parcel_data)
 			zone.parcels.append(parcel)
@@ -1539,6 +1644,10 @@ func _copy_zone(source: ZoneData) -> ZoneData:
 	copy.parcel_layout_seed = source.parcel_layout_seed
 	copy.typologies = source.typologies.duplicate()
 	copy.zone_name = source.zone_name
+	copy.daily_rent_rate_centi_kreds = source.daily_rent_rate_centi_kreds
+	copy.rate_revision = source.rate_revision
+	copy.rate_state = source.rate_state
+	copy.rate_recommendation_provenance = source.rate_recommendation_provenance.duplicate(true)
 	copy.parcels = source.parcels.duplicate()
 	return copy
 
@@ -1552,6 +1661,10 @@ func _copy_zone_state(source: ZoneData, destination: ZoneData) -> void:
 	destination.parcel_layout_seed = source.parcel_layout_seed
 	destination.typologies = source.typologies.duplicate()
 	destination.zone_name = source.zone_name
+	destination.daily_rent_rate_centi_kreds = source.daily_rent_rate_centi_kreds
+	destination.rate_revision = source.rate_revision
+	destination.rate_state = source.rate_state
+	destination.rate_recommendation_provenance = source.rate_recommendation_provenance.duplicate(true)
 	destination.parcels = source.parcels.duplicate()
 
 

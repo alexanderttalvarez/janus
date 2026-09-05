@@ -1,192 +1,189 @@
-## PrestigeManager — Core progression metric: Scale × Quality.
-## Recalculated monthly. Drives mall level advancement and tech points.
+## PrestigeManager — authoritative committed H1 tier and rent-ceiling state.
+## Full Prestige calculation is intentionally unavailable until a later handoff.
 class_name PrestigeManager
 extends Node
 
 
-signal prestige_recalculated(new_prestige: int, scale: int, quality: int)
+signal official_prestige_snapshot_changed(snapshot: OfficialPrestigeSnapshot)
+signal official_tier_changed(previous_snapshot: OfficialPrestigeSnapshot, snapshot: OfficialPrestigeSnapshot)
 
 
-## Mall levels with evocative names.
-enum MallLevel { EMPTY_LOT, SMALL_MARKET, NEIGHBORHOOD_CENTER, REGIONAL_MALL, CITY_DESTINATION, MEGACITY_MALL }
-const MALL_LEVEL_NAMES: Array[String] = [
-	"Empty Lot", "Small Market", "Neighborhood Center", "Regional Mall", "City Destination", "Megacity Mall"
-]
-## Approved prestige thresholds for each mall level.
-const LEVEL_THRESHOLDS: Array[int] = [0, 500, 1500, 3500, 6500, 9000]
+var _policy: PrestigePolicy
+var _committed_snapshot: OfficialPrestigeSnapshot
 
 
-## Current prestige score.
-var prestige: int = 0
-
-## Monotonic authority revision used by coordinated district transactions.
-var authority_revision: int = 0
-
-## Scale score (0-100) — based on zone count, floor count, tile count.
-var scale: int = 0
-
-## Quality score (0-100) — weighted average of 6 factors.
-var quality: int = 0
-
-## Current mall level tier.
-var current_level: MallLevel = MallLevel.EMPTY_LOT
-
-## Prestige trend: positive = growing, negative = declining.
-var trend: int = 0
-
-## Tech points earned.
-var tech_points: int = 0
-
-## Loan default multiplier (0.0-1.0, reduces quality).
-var loan_default_multiplier: float = 1.0
-
-## References for data queries.
-var _zone_manager: ZoneManager
-var _tenant_manager: TenantManager
-var _visitor_manager: VisitorManager
+func initialize(calendar_identity: String, policy: PrestigePolicy) -> Dictionary:
+	if policy == null:
+		return _failure("PRESTIGE_POLICY_REQUIRED", "PrestigeManager requires immutable approved policy content")
+	var content_validation: Dictionary = policy.validate_content()
+	if not bool(content_validation.get("valid", false)):
+		return content_validation
+	_policy = policy
+	if _committed_snapshot == null:
+		if calendar_identity.is_empty():
+			return _failure("PRESTIGE_CALENDAR_IDENTITY_REQUIRED", "initial Prestige state requires a calendar identity")
+		_committed_snapshot = _policy.create_initial_snapshot(calendar_identity)
+	return {"valid": true, "snapshot": get_committed_snapshot(), "diagnostics": []}
 
 
-func initialize(zm: ZoneManager, tm: TenantManager, vm: VisitorManager) -> void:
-	_zone_manager = zm
-	_tenant_manager = tm
-	_visitor_manager = vm
+func is_initialized() -> bool:
+	return _policy != null and _committed_snapshot != null
 
 
-## Recalculate prestige on sim_month_passed.
 func get_district_revision() -> int:
-	return authority_revision
+	return 0 if _committed_snapshot == null else _committed_snapshot.get_authority_revision()
+
+
+func get_committed_snapshot() -> OfficialPrestigeSnapshot:
+	if _committed_snapshot == null:
+		return null
+	return _copy_snapshot(_committed_snapshot)
 
 
 func get_mall_level_index() -> int:
-	return int(current_level)
+	if _policy == null or _committed_snapshot == null:
+		return -1
+	return _policy.get_tier_index(_committed_snapshot.get_tier_id())
 
 
 func get_mall_level_name() -> String:
-	return MALL_LEVEL_NAMES[int(current_level)]
+	if _policy == null or _committed_snapshot == null:
+		return ""
+	return String(_policy.get_tier_definition(_committed_snapshot.get_tier_id()).get("name", ""))
 
 
-func recalculate() -> void:
-	var old_prestige: int = prestige
-	scale = _calculate_scale()
-	quality = int(float(_calculate_quality()) * loan_default_multiplier)
-	prestige = scale * quality
-
-	# Check mall level advancement.
-	var new_level := _determine_level(prestige)
-	var previous_level := current_level
-	current_level = new_level
-
-	trend = prestige - old_prestige
-	authority_revision += 1
-
-	# Award tech points on level up.
-	if new_level > previous_level:
-		var points := (new_level - previous_level) * 3
-		tech_points += points
-		EventBus.mall_level_up.emit(MALL_LEVEL_NAMES[new_level], points)
-
-	prestige_recalculated.emit(prestige, scale, quality)
-	EventBus.prestige_recalculated.emit(prestige, scale, quality)
+## Validate a detached future official result without changing committed state.
+func stage_candidate(candidate: OfficialPrestigeSnapshot) -> Dictionary:
+	if not is_initialized():
+		return _failure("PRESTIGE_NOT_INITIALIZED", "PrestigeManager must be initialized before staging")
+	if candidate == null:
+		return _failure("PRESTIGE_CANDIDATE_REQUIRED", "official Prestige candidate is required")
+	var validation: Dictionary = _policy.validate_snapshot_data(candidate.to_dictionary(), get_district_revision())
+	if not bool(validation.get("valid", false)):
+		return validation
+	return {"valid": true, "snapshot": _snapshot_from_dictionary(validation["snapshot"]), "diagnostics": []}
 
 
-func _calculate_scale() -> int:
-	var score: int = 0
-	# Zone count: up to 40 points.
-	if _zone_manager:
-		score += mini(_zone_manager.zones.size() * 4, 40)
-	# Tenant count: up to 30 points.
-	if _tenant_manager:
-		var active := 0
-		for t: TenantData in _tenant_manager.all_tenants:
-			if t.is_active:
-				active += 1
-		score += mini(active * 5, 30)
-	# Visitor count: up to 30 points.
-	if _visitor_manager:
-		score += mini(_visitor_manager.all_visitors.size() / 2, 30)
-	return clampi(score, 0, 100)
+## Atomically replace the committed result. Only this method assigns revisions.
+func commit_candidate(candidate: OfficialPrestigeSnapshot) -> Dictionary:
+	var staged: Dictionary = stage_candidate(candidate)
+	if not bool(staged.get("valid", false)):
+		return staged
+	var previous: OfficialPrestigeSnapshot = _committed_snapshot
+	var committed_data: Dictionary = staged["snapshot"].to_dictionary()
+	committed_data["authority_revision"] = previous.get_authority_revision() + 1
+	var committed: OfficialPrestigeSnapshot = _snapshot_from_dictionary(committed_data)
+	_committed_snapshot = committed
+	var previous_copy: OfficialPrestigeSnapshot = _copy_snapshot(previous)
+	var committed_copy: OfficialPrestigeSnapshot = _copy_snapshot(committed)
+	official_prestige_snapshot_changed.emit(committed_copy)
+	if previous.get_tier_id() != committed.get_tier_id():
+		official_tier_changed.emit(previous_copy, committed_copy)
+	_emit_event_bus(previous_copy, committed_copy)
+	return {"valid": true, "snapshot": committed_copy, "diagnostics": []}
 
 
-func _calculate_quality() -> int:
-	var factors: Array[int] = [
-		_q_tenant_quality(),   # max 25
-		_q_satisfaction(),     # max 15
-		_q_visitor_volume(),   # max 15
-		_q_design(),           # max 20
-		_q_accessibility(),    # max 15
-		_q_loan(),             # max 10
-	]
-	var total: int = 0
-	for f: int in factors:
-		total += f
-	return clampi(total, 0, 100)
+## Build a detached H2 candidate from an authoritative developed-tile snapshot.
+func create_monthly_candidate(source: DevelopedTileSnapshot, calendar_identity: String) -> OfficialPrestigeCandidate:
+	var candidate_script: Script = load("res://scripts/simulation/official_prestige_candidate.gd")
+	var candidate: OfficialPrestigeCandidate = candidate_script.new() as OfficialPrestigeCandidate
+	if source == null or not is_initialized() or calendar_identity.is_empty():
+		return candidate
+	var source_validation: Dictionary = source.validate()
+	if not bool(source_validation.get("valid", false)):
+		return candidate
+	return OfficialPrestigeCandidate.calculate(source, calendar_identity, PrestigePolicy.POLICY_REVISION)
 
 
-func _q_tenant_quality() -> int:
-	if _tenant_manager == null:
-		return 0
-	var active := 0
-	var tier_sum: int = 0
-	for t: TenantData in _tenant_manager.all_tenants:
-		if t.is_active:
-			active += 1
-			tier_sum += t.tier
-	if active == 0:
-		return 0
-	var avg := float(tier_sum) / float(active)
-	return mini(int(avg * 5), 25)
+## Validate and commit one monthly candidate through the H1 authority boundary.
+func commit_monthly_candidate(candidate: OfficialPrestigeCandidate, current_source_revision: int = -1) -> Dictionary:
+	if not is_initialized():
+		return _failure("PRESTIGE_NOT_INITIALIZED", "PrestigeManager must be initialized before monthly commits")
+	if candidate == null:
+		return _failure("PRESTIGE_CANDIDATE_REQUIRED", "monthly Prestige candidate is required")
+	var candidate_validation: Dictionary = candidate.validate()
+	if not bool(candidate_validation.get("valid", false)):
+		return candidate_validation
+	if candidate.get_policy_revision() != PrestigePolicy.POLICY_REVISION:
+		return _failure("PRESTIGE_CANDIDATE_POLICY_STALE", "monthly candidate policy revision is stale")
+	if current_source_revision >= 0 and candidate.get_source_revision() != current_source_revision:
+		return _failure("PRESTIGE_CANDIDATE_SOURCE_STALE", "developed-tile source revision is stale")
+	var tier_definition: Dictionary = _policy.get_tier_for_numeric_prestige(candidate.get_numeric_prestige())
+	if tier_definition.is_empty():
+		return _failure("PRESTIGE_CANDIDATE_TIER_INVALID", "numeric Prestige did not resolve to an official tier")
+	var snapshot_data: Dictionary = {
+		"schema_version": PrestigePolicy.SNAPSHOT_SCHEMA_VERSION,
+		"authority_revision": get_district_revision(),
+		"official_tier_id": tier_definition["tier_id"],
+		"supported_tenant_tier": tier_definition["supported_tenant_tier"],
+		"exclusive_eligible": tier_definition["exclusive_eligible"],
+		"rent_ceiling_centi_kreds": tier_definition["rent_ceiling_centi_kreds"],
+		"policy_revision": candidate.get_policy_revision(),
+		"calendar_identity": candidate.get_calendar_identity(),
+		"numeric_prestige_present": true,
+		"numeric_prestige": candidate.get_numeric_prestige(),
+		"numeric_prestige_provenance": OfficialPrestigeCandidate.PROVENANCE,
+	}
+	var snapshot: OfficialPrestigeSnapshot = _snapshot_from_dictionary(snapshot_data)
+	return commit_candidate(snapshot)
 
 
-func _q_satisfaction() -> int:
-	if _visitor_manager == null:
-		return 0
-	var total := _visitor_manager.all_visitors.size()
-	if total == 0:
-		return 5
-	var sat_sum: int = 0
-	for v: VisitorData in _visitor_manager.all_visitors:
-		sat_sum += v.satisfaction
-	return mini(sat_sum / (total * 5), 15)
+## H2 cadence hook. With no authoritative source supplied, do nothing rather
+## than fabricate a source snapshot, daily trend, or numeric Prestige value.
+func recalculate(source: DevelopedTileSnapshot = null, calendar_identity: String = "") -> Dictionary:
+	if source == null or calendar_identity.is_empty():
+		return _failure("PRESTIGE_SOURCE_UNAVAILABLE", "monthly developed-tile source is unavailable")
+	var candidate: OfficialPrestigeCandidate = create_monthly_candidate(source, calendar_identity)
+	return commit_monthly_candidate(candidate, source.get_source_revision())
 
 
-func _q_visitor_volume() -> int:
-	if _visitor_manager == null:
-		return 0
-	return mini(_visitor_manager.all_visitors.size() / 4, 15)
+## Restore exact committed V2 state without emitting business events.
+func deserialize(data: Dictionary) -> Dictionary:
+	var staged: Dictionary = stage_serialized_state(data)
+	if not bool(staged.get("valid", false)):
+		return staged
+	_committed_snapshot = staged["snapshot"]
+	return {"valid": true, "snapshot": get_committed_snapshot(), "diagnostics": []}
 
 
-func _q_design() -> int:
-	if _zone_manager == null:
-		return 0
-	var zones := _zone_manager.zones.size()
-	return mini(zones * 3, 20)
+func stage_serialized_state(data: Variant) -> Dictionary:
+	if _policy == null:
+		return _failure("PRESTIGE_POLICY_REQUIRED", "Prestige policy must be available before restore staging")
+	var validation: Dictionary = _policy.validate_snapshot_data(data)
+	if not bool(validation.get("valid", false)):
+		return validation
+	return {"valid": true, "snapshot": _snapshot_from_dictionary(validation["snapshot"]), "diagnostics": []}
 
 
-func _q_accessibility() -> int:
-	return 10  # Placeholder: floor connectivity score (stairs, elevators) — Post-MVP.
-
-
-func _q_loan() -> int:
-	if loan_default_multiplier >= 1.0:
-		return 10
-	return mini(int(10.0 * loan_default_multiplier), 10)
-
-
-func _determine_level(p: int) -> MallLevel:
-	for i in range(LEVEL_THRESHOLDS.size() - 1, -1, -1):
-		if p >= LEVEL_THRESHOLDS[i]:
-			return i as MallLevel
-	return MallLevel.EMPTY_LOT
+func validate_serialized_state(data: Variant) -> Dictionary:
+	return stage_serialized_state(data)
 
 
 func serialize() -> Dictionary:
-	return {"prestige": prestige, "scale": scale, "quality": quality, "tech_points": tech_points,
-		"loan_multiplier": loan_default_multiplier}
+	return {} if _committed_snapshot == null else _committed_snapshot.to_dictionary()
 
 
-func deserialize(data: Dictionary) -> void:
-	prestige = data.get("prestige", 0); scale = data.get("scale", 0)
-	authority_revision += 1
-	quality = data.get("quality", 0); tech_points = data.get("tech_points", 0)
-	loan_default_multiplier = data.get("loan_multiplier", 1.0)
-	current_level = _determine_level(prestige)
+func _snapshot_from_dictionary(data: Dictionary) -> OfficialPrestigeSnapshot:
+	var snapshot_script: Script = load("res://scripts/simulation/official_prestige_snapshot.gd")
+	var snapshot: OfficialPrestigeSnapshot = snapshot_script.new() as OfficialPrestigeSnapshot
+	snapshot.configure(data)
+	return snapshot
+
+
+func _copy_snapshot(snapshot: OfficialPrestigeSnapshot) -> OfficialPrestigeSnapshot:
+	return _snapshot_from_dictionary(snapshot.to_dictionary())
+
+
+func _emit_event_bus(previous: OfficialPrestigeSnapshot, current: OfficialPrestigeSnapshot) -> void:
+	if not is_inside_tree():
+		return
+	var event_bus: Node = get_tree().root.get_node_or_null("EventBus")
+	if event_bus == null:
+		return
+	event_bus.official_prestige_snapshot_changed.emit(current.to_dictionary())
+	if previous.get_tier_id() != current.get_tier_id():
+		event_bus.official_tier_changed.emit(previous.to_dictionary(), current.to_dictionary())
+
+
+func _failure(code: String, message: String) -> Dictionary:
+	return {"valid": false, "snapshot": {}, "diagnostics": [{"code": code, "message": message}]}

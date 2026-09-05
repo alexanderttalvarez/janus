@@ -3,6 +3,7 @@ class_name ProjectionPreview
 extends Node3D
 
 ## Editor/runtime preview shell. It delegates build and generated-root ownership
+## Handoff preview shell reload marker.
 ## to ProjectionCoordinator and removes all generated nodes on disable/close.
 
 signal preview_shown(manifest: Dictionary)

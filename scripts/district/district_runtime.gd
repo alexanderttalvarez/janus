@@ -11,6 +11,7 @@ signal session_disposed(layout_id: String)
 signal transaction_rejected(diagnostics: Array[Dictionary])
 signal district_delta_committed(envelope: Dictionary)
 signal subscriber_diagnostics(diagnostics: Array[Dictionary])
+signal construction_topology_published(topology: Dictionary)
 
 const OP_ACQUIRE_SECTION: String = "ACQUIRE_SECTION"
 const OP_ACQUIRE_SPACE: String = "ACQUIRE_SPACE"
@@ -35,10 +36,50 @@ var _arrival_commit_gate: ArrivalCommitGate = ArrivalCommitGate.new()
 var _arrival_token_counter: int = 0
 var _arrival_topology_revision: int = -1
 var _arrival_eligibility_revision: int = -1
+var _construction_policy: ConstructionPolicy
+var _construction_authority: ConstructionAuthority
+var _construction_topology: Dictionary = {}
+
+
+func _init() -> void:
+	_construction_policy = load("res://scripts/construction/construction_policy.gd").new() as ConstructionPolicy
+	_construction_authority = load("res://scripts/construction/construction_authority.gd").new() as ConstructionAuthority
 
 
 func configure_ports(ports: DistrictRuntimePorts.DistrictRuntimePortsBundle) -> void:
 	_ports = ports
+
+
+func configure_construction_policy(policy: ConstructionPolicy) -> void:
+	_construction_policy = policy
+
+
+func get_construction_policy_snapshot() -> Dictionary:
+	return {} if _construction_policy == null else _construction_policy.duplicate_value()
+
+
+func get_construction_topology() -> Dictionary:
+	return _construction_topology.duplicate(true)
+
+
+func get_operations_room_facts() -> Array[Dictionary]:
+	var facts: Array[Dictionary] = []
+	for fact: Variant in _construction_topology.get("operations_room_facts", []):
+		if fact is Dictionary:
+			facts.append(fact.duplicate(true))
+	return facts
+
+
+func preview_construction(intent: Dictionary) -> Dictionary:
+	var normalized: Dictionary = intent.duplicate(true)
+	normalized["operation"] = OP_CONSTRUCT
+	return preview_transaction(normalized)
+
+
+func commit_construction(intent: Dictionary) -> Dictionary:
+	var normalized: Dictionary = intent.duplicate(true)
+	normalized["operation"] = OP_CONSTRUCT
+	return commit_transaction(normalized)
 
 
 func configure_components(
@@ -69,6 +110,7 @@ func create_session(snapshot: ResolvedDistrictSnapshot, initial_state: Variant =
 	_snapshot = snapshot
 	_state = candidate_state.duplicate(true)
 	_traversal_view = _make_empty_traversal_view(snapshot, get_revision(), 0)
+	_rebuild_construction_topology("session_created")
 	session_created.emit(snapshot.get_layout_id(), snapshot.get_fingerprint())
 	return {"valid": true, "snapshot": snapshot, "state": get_state(), "diagnostics": []}
 
@@ -84,6 +126,7 @@ func replace_session(snapshot: ResolvedDistrictSnapshot, state: Variant = null) 
 	_snapshot = snapshot
 	_state = candidate_state.duplicate(true)
 	_traversal_view = _make_empty_traversal_view(snapshot, get_revision(), 0)
+	_rebuild_construction_topology("session_replaced")
 	session_replaced.emit(snapshot.get_layout_id(), snapshot.get_fingerprint())
 	return {"valid": true, "previous_layout_id": previous_layout_id, "state": get_state(), "diagnostics": []}
 
@@ -95,6 +138,7 @@ func dispose_session() -> Dictionary:
 	_snapshot = null
 	_state = {}
 	_traversal_view = null
+	_construction_topology = {}
 	session_disposed.emit(layout_id)
 	return {"valid": true, "diagnostics": []}
 
@@ -213,6 +257,7 @@ func validate_arrival_source(
 	var token := ArrivalSourceValidationToken.new()
 	token.initialize("arrival_token_%d" % _arrival_token_counter, arrival_source_id, demand_snapshot_id, district_revision, topology_revision, eligibility_revision)
 	token.bind_gate(_arrival_commit_gate)
+	token.bind_revision_probe(Callable(self, "_get_arrival_revision_context"))
 	return {"valid": true, "token": token, "diagnostics": []}
 
 
@@ -239,6 +284,14 @@ func consume_arrival_source_token(token: ArrivalSourceValidationToken) -> bool:
 	if _arrival_commit_gate == null or not _arrival_commit_gate.is_held() or token == null or not token.is_valid():
 		return false
 	return token.consume()
+
+
+func _get_arrival_revision_context() -> Dictionary:
+	return {
+		"district_revision": get_revision(),
+		"topology_revision": _arrival_topology_revision,
+		"eligibility_revision": _arrival_eligibility_revision,
+	}
 
 
 func _arrival_source_diagnostics(
@@ -292,6 +345,7 @@ func preview_transaction(intent: Dictionary) -> Dictionary:
 		"policy_snapshot": evaluation["policy_snapshot"].duplicate(true),
 		"revisions": evaluation["revisions"].duplicate(true),
 		"zone_preview": zone_preview.get("preview", null),
+		"construction_preview": evaluation.get("construction_preview", {}).duplicate(true),
 		"diagnostics": [],
 	}
 
@@ -357,7 +411,6 @@ func commit_transaction(intent: Dictionary) -> Dictionary:
 										result = _abort(owner_token, reservation, prepare_token, capture.get("diagnostics", []))
 									else:
 										_state = current_evaluation["state"].duplicate(true)
-										_refresh_traversal_revision()
 										envelope["state"] = get_state()
 										if not _journal.append(envelope):
 											_state = previous_state
@@ -365,6 +418,7 @@ func commit_transaction(intent: Dictionary) -> Dictionary:
 											result = _abort(owner_token, reservation, prepare_token, [{"code": "JOURNAL_APPEND_FAILED", "message": "journal append failed before commit point"}])
 										else:
 											committed = true
+											_publish_committed_topology(envelope.get("construction_topology", {}))
 											result = {"valid": true, "envelope": envelope, "state": get_state(), "diagnostics": []}
 		if committed:
 			_gate.release_barrier(owner_token)
@@ -395,6 +449,25 @@ func _evaluate_intent(intent: Dictionary, base_state: Dictionary) -> Dictionary:
 	var normalized_intent: Dictionary = intent.duplicate(true)
 	_normalize_economy_intent(normalized_intent)
 	var revisions: Dictionary = _capture_revisions(policy)
+	if operation == OP_CONSTRUCT and normalized_intent.has("construction_kind"):
+		var construction_result: Dictionary = _construction_authority.resolve(normalized_intent, base_state, _snapshot, policy, _construction_policy)
+		if not bool(construction_result.get("valid", false)):
+			return _evaluation_failure_diagnostics(construction_result.get("diagnostics", []))
+		var construction_candidate: Dictionary = construction_result.get("state", {}).duplicate(true)
+		construction_candidate["district_revision"] = int(base_state.get("district_revision", 0)) + 1
+		var construction_validation: Dictionary = _state_records.validate(construction_candidate, _snapshot)
+		if not bool(construction_validation.get("valid", false)):
+			return _evaluation_failure_diagnostics(construction_validation.get("diagnostics", []))
+		return {
+			"valid": true,
+			"state": construction_candidate,
+			"delta": construction_result.get("delta", {}).duplicate(true),
+			"policy_snapshot": policy,
+			"revisions": revisions,
+			"intent": construction_result.get("intent", normalized_intent).duplicate(true),
+			"construction_preview": construction_result.get("construction_preview", {}).duplicate(true),
+			"diagnostics": [],
+		}
 	var candidate: Dictionary = base_state.duplicate(true)
 	var delta: Dictionary = {"operation": operation, "affected_ids": []}
 	match operation:
@@ -672,6 +745,7 @@ func _quote(evaluation: Dictionary) -> Dictionary:
 		"candidate_state": evaluation.get("state", {}).duplicate(true),
 		"economy_policy_snapshot": _ports.economy.get_policy_snapshot(),
 		"progression_policy_snapshot": evaluation.get("policy_snapshot", {}).duplicate(true),
+		"construction_policy_snapshot": get_construction_policy_snapshot(),
 	}
 	return _ports.economy.quote(transaction, evaluation.get("state", {}))
 
@@ -744,6 +818,7 @@ func _capture_revisions(policy: Dictionary) -> Dictionary:
 		"economy_policy_revision": -1 if _ports == null or _ports.economy == null else int(_ports.economy.get_policy_snapshot().get("revision", -1)),
 		"zone_revision": 0 if _ports == null or _ports.zone == null else _ports.zone.get_revision(),
 		"progression_revision": int(policy.get("revision", -1)),
+		"construction_policy_revision": -1 if _construction_policy == null else _construction_policy.get_revision(),
 	}
 
 
@@ -759,6 +834,8 @@ func _revalidate(revisions: Dictionary) -> Array[Dictionary]:
 		diagnostics.append({"code": "STALE_ZONE_REVISION", "message": "ZoneManager changed while transaction was preparing"})
 	if _ports != null and _ports.progression != null and int(_ports.progression.get_policy_snapshot().get("revision", -1)) != int(revisions.get("progression_revision", -2)):
 		diagnostics.append({"code": "STALE_PROGRESSION_REVISION", "message": "progression policy changed while transaction was preparing"})
+	if _construction_policy == null or _construction_policy.get_revision() != int(revisions.get("construction_policy_revision", -2)):
+		diagnostics.append({"code": "STALE_CONSTRUCTION_INTENT", "message": "construction policy changed while transaction was preparing"})
 	return diagnostics
 
 
@@ -769,6 +846,7 @@ func _build_envelope(candidate_state: Dictionary, delta: Dictionary, revisions: 
 		"district_revision": int(candidate_state.get("district_revision", 0)),
 		"delta": delta.duplicate(true),
 		"revisions": revisions.duplicate(true),
+		"construction_topology": _build_construction_topology(candidate_state, "district_commit_%d" % (_transaction_counter)),
 		"guaranteed_capture": guaranteed.duplicate(true),
 		"state": candidate_state.duplicate(true),
 	}
@@ -796,6 +874,44 @@ func _refresh_traversal_revision() -> void:
 	_traversal_view = refreshed
 
 
+func _build_construction_topology(state: Dictionary, commit_id: String) -> Dictionary:
+	var projection: ConstructionTopologyProjection = load("res://scripts/construction/construction_topology_projection.gd").new() as ConstructionTopologyProjection
+	var zone_revision: int = 0 if _traversal_view == null else _traversal_view.zone_revision
+	return projection.build(_snapshot, state, zone_revision, commit_id)
+
+
+func _publish_committed_topology(topology: Dictionary) -> void:
+	if not bool(topology.get("valid", false)):
+		return
+	var prior_construction_topology: Dictionary = _construction_topology.duplicate(true)
+	if _traversal_view != null and _snapshot != null:
+		var prior_floor_edge_ids: Dictionary = {}
+		for edge: Dictionary in prior_construction_topology.get("floor_circulation_edges", []):
+			prior_floor_edge_ids[String(edge.get("edge_id", ""))] = true
+		var floor_edges: Array = _traversal_view.floor_circulation_edges.duplicate(true)
+		for edge: Dictionary in topology.get("floor_circulation_edges", []):
+			if not prior_floor_edge_ids.has(String(edge.get("edge_id", ""))):
+				floor_edges.append(edge.duplicate(true))
+		var prior_vertical_link_ids: Dictionary = {}
+		for link: Dictionary in prior_construction_topology.get("vertical_links", []):
+			prior_vertical_link_ids[String(link.get("link_id", ""))] = true
+		var vertical_links: Array = _traversal_view.vertical_links.duplicate(true)
+		for link: Dictionary in topology.get("vertical_links", []):
+			if not prior_vertical_link_ids.has(String(link.get("link_id", ""))):
+				vertical_links.append(link.duplicate(true))
+		var refreshed: DistrictTraversalReadView = load("res://scripts/district/district_traversal_read_view.gd").new() as DistrictTraversalReadView
+		refreshed.initialize(_snapshot.get_fingerprint(), get_revision(), _traversal_view.zone_revision, floor_edges, _traversal_view.door_access_edges, vertical_links)
+		_traversal_view = refreshed
+	_construction_topology = topology.duplicate(true)
+	construction_topology_published.emit(_construction_topology.duplicate(true))
+
+
+func _rebuild_construction_topology(commit_id: String) -> void:
+	if _snapshot == null or _state.is_empty():
+		return
+	_publish_committed_topology(_build_construction_topology(_state, commit_id))
+
+
 func _reject(code: String, message: String) -> Dictionary:
 	return _reject_diagnostics([{"code": code, "message": message}])
 
@@ -811,6 +927,14 @@ func _reject_diagnostics(diagnostics: Array) -> Dictionary:
 
 func _evaluation_failure(code: String, message: String) -> Dictionary:
 	return {"valid": false, "diagnostics": [{"code": code, "message": message}]}
+
+
+func _evaluation_failure_diagnostics(values: Array) -> Dictionary:
+	var diagnostics: Array[Dictionary] = []
+	for value: Variant in values:
+		if value is Dictionary:
+			diagnostics.append(value.duplicate(true))
+	return {"valid": false, "diagnostics": diagnostics}
 
 
 func _record_by_id(records: Array, id: String) -> Dictionary:

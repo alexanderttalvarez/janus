@@ -30,11 +30,11 @@ signal loan_repaid(loan_id: String)
 
 # ── Prestige & Progression ───────────────────────────────────────────
 
-## Prestige score recalculated (monthly).
-signal prestige_recalculated(new_prestige: int, scale: int, quality: int)
+## Detached committed official Prestige snapshot changed.
+signal official_prestige_snapshot_changed(snapshot: Dictionary)
 
-## Mall level advanced.
-signal mall_level_up(new_level: String, tech_points_earned: int)
+## Detached committed official tier changed after authoritative consumers run.
+signal official_tier_changed(previous_snapshot: Dictionary, snapshot: Dictionary)
 
 ## Tech point spent in the tech tree.
 signal tech_point_spent(node_id: String)

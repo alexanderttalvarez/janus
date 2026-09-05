@@ -16,6 +16,7 @@ Staff are the employees who maintain and secure the district. They are a recurri
 |----------|-------|
 | **Purpose** | Base of operations for staff. Where they spawn, store equipment, and receive assignments. |
 | **Placement Cost** | 2,000 Kreds (one-time) |
+| **MVP Footprint** | One contiguous 2×2 tile room on a single acquired, buildable floor |
 | **Capacity** | Max 2 Cleaners + Max 2 Security staff per room |
 | **Coverage** | Floor where placed + 1 floor above + 1 floor below (same building only) |
 | **Skybridge/Passage Coverage** | Staff cover connected skybridges/underground passages but do NOT enter the other building. |

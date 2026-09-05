@@ -63,7 +63,9 @@ func _refresh_prestige() -> void:
 		var pm := root.get_node_or_null("Simulation/PrestigeManager")
 		if pm and pm is PrestigeManager:
 			var pmgr := pm as PrestigeManager
-			_prestige_label.text = "%d - %s" % [pmgr.prestige, PrestigeManager.MALL_LEVEL_NAMES[pmgr.current_level]]
+			var snapshot: OfficialPrestigeSnapshot = pmgr.get_committed_snapshot()
+			if snapshot != null:
+				_prestige_label.text = "%s | T%d | %d cK cap" % [pmgr.get_mall_level_name(), snapshot.get_supported_tenant_tier(), snapshot.get_rent_ceiling_centi_kreds()]
 
 func _refresh_speed() -> void:
 	var names := ["||", "1x", "2x", "3x"]

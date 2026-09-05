@@ -39,6 +39,10 @@ var _tenant_manager: TenantManager
 
 ## Accumulated staff wages (paid monthly).
 var _staff_wages: int = 0
+var _active_tenant_rent_snapshot: Dictionary = {}
+var _last_rent_settlement_day: int = -1
+var _staff_manager: StaffManager
+var _settled_staff_weeks: Dictionary = {}
 
 ## Whether infinite money debug flag is active.
 var _infinite_money: bool = false
@@ -48,9 +52,12 @@ func _init() -> void:
 	_policy_snapshot = load("res://scripts/simulation/economy_policy_snapshot.gd").new()
 
 
-func initialize(zone_manager: ZoneManager, tenant_manager: TenantManager) -> void:
+func initialize(zone_manager: ZoneManager, tenant_manager: TenantManager, staff_manager: StaffManager = null) -> void:
 	_zone_manager = zone_manager
 	_tenant_manager = tenant_manager
+	_staff_manager = staff_manager
+	if _tenant_manager != null and not _tenant_manager.rent_snapshot_published.is_connected(_on_tenant_rent_snapshot):
+		_tenant_manager.rent_snapshot_published.connect(_on_tenant_rent_snapshot)
 
 
 # ── Balance Operations ─────────────────────────────────────────────────
@@ -62,7 +69,7 @@ func add(amount: int, _reason: String = "") -> void:
 	balance += amount
 	authority_revision += 1
 	balance_changed.emit(balance, balance - old)
-	var event_bus: Node = get_node_or_null("/root/EventBus")
+	var event_bus: Node = _event_bus()
 	if event_bus != null:
 		event_bus.money_changed.emit(balance, balance - old)
 
@@ -76,7 +83,7 @@ func subtract(amount: int, _reason: String = "") -> bool:
 	balance -= amount
 	authority_revision += 1
 	balance_changed.emit(balance, balance - old)
-	var event_bus: Node = get_node_or_null("/root/EventBus")
+	var event_bus: Node = _event_bus()
 	if event_bus != null:
 		event_bus.money_changed.emit(balance, balance - old)
 	return true
@@ -112,7 +119,7 @@ func district_quote(transaction: Dictionary) -> Dictionary:
 	if policy_revision != int(get_policy_snapshot().get("revision", -2)):
 		return _diagnostic_result("STALE_QUOTE", "Economy policy revision is stale")
 	var category: String = String(intent.get("charge_category", _category_for_intent(intent)))
-	var quote_result: Dictionary = _policy_snapshot.call("quote", category, intent)
+	var quote_result: Dictionary = _quote_construction(transaction, category, intent) if category.begins_with("CONSTRUCTION_") else _policy_snapshot.call("quote", category, intent)
 	if not bool(quote_result.get("accepted", false)):
 		return quote_result
 	var progression: Dictionary = transaction.get("progression_policy_snapshot", {})
@@ -233,6 +240,36 @@ func _category_for_intent(intent: Dictionary) -> String:
 			return "NO_CHARGE"
 
 
+func _quote_construction(transaction: Dictionary, category: String, intent: Dictionary) -> Dictionary:
+	var construction_policy: Dictionary = intent.get("construction_policy_snapshot", {})
+	if construction_policy.is_empty() or typeof(construction_policy.get("revision", null)) != TYPE_INT:
+		return _diagnostic_result("POLICY_UNAVAILABLE", "construction policy snapshot is required")
+	var entries: Dictionary = construction_policy.get("entries", {})
+	var kind: String = String(intent.get("construction_kind", ""))
+	var entry: Dictionary = entries.get(kind, {})
+	if entry.is_empty() or not bool(entry.get("geometry_available", false)):
+		return _diagnostic_result("POLICY_UNAVAILABLE", "construction policy does not approve this quote")
+	var expected: Array[Dictionary] = []
+	for line: Dictionary in entry.get("charge_lines", []):
+		expected.append({"category": String(line.get("category", "")), "value": int(line.get("value", -1))})
+	if kind == "elevator":
+		var lobby_count: int = int(intent.get("lobby_cells", []).size())
+		for index: int in range(lobby_count):
+			expected.append({"category": String(entry.get("lobby_charge_category", "")), "value": int(entry.get("lobby_charge_value", -1))})
+	var submitted: Array = intent.get("construction_charge_lines", [])
+	if submitted.size() != expected.size():
+		return _diagnostic_result("POLICY_UNAVAILABLE", "construction charge lines do not match the immutable catalog")
+	var total: int = 0
+	for index: int in range(expected.size()):
+		var actual: Dictionary = submitted[index]
+		if String(actual.get("category", "")) != String(expected[index].get("category", "")) or int(actual.get("value", -1)) != int(expected[index].get("value", -1)):
+			return _diagnostic_result("POLICY_UNAVAILABLE", "construction charge lines do not match the immutable catalog")
+		total += int(expected[index].get("value", 0))
+	if category != "CONSTRUCTION_%s" % kind.to_upper():
+		return _diagnostic_result("POLICY_UNAVAILABLE", "construction charge category is invalid")
+	return {"accepted": true, "value": total, "charge_category": category, "economy_policy_revision": int(get_policy_snapshot().get("revision", -1)), "diagnostics": []}
+
+
 func _debug_cost_bypass_active() -> bool:
 	if _infinite_money:
 		return true
@@ -242,6 +279,10 @@ func _debug_cost_bypass_active() -> bool:
 		return false
 	var debug_manager: Node = get_tree().root.get_node_or_null("DebugManager")
 	return debug_manager != null and (bool(debug_manager.get("god_mode")) or bool(debug_manager.get("infinite_money")))
+
+
+func _event_bus() -> Node:
+	return get_node_or_null("/root/EventBus") if is_inside_tree() else null
 
 
 func _diagnostic_result(code: String, message: String) -> Dictionary:
@@ -255,28 +296,48 @@ func flush_district_notifications() -> Array[Dictionary]:
 	var delta: int = _pending_district_balance_delta
 	_pending_district_balance_delta = 0
 	balance_changed.emit(balance, delta)
-	var event_bus: Node = get_node_or_null("/root/EventBus")
+	var event_bus: Node = _event_bus()
 	if event_bus != null:
 		event_bus.money_changed.emit(balance, delta)
 	return []
 
 
-# ── Rent Collection (Weekly) ───────────────────────────────────────────
+# ── Rent Collection (Daily) ────────────────────────────────────────────
 
-func _on_sim_week_passed(_week: int) -> void:
-	_collect_rent()
+func _on_tenant_rent_snapshot(snapshot: Dictionary) -> void:
+	var detached := snapshot.duplicate(true)
+	var validation := ActiveTenantRentSnapshot.new()
+	validation.configure(detached)
+	var result := validation.validate()
+	if bool(result.get("valid", false)):
+		_active_tenant_rent_snapshot = detached
 
 
-func _collect_rent() -> void:
-	if _tenant_manager == null:
-		return
-	for tenant: TenantData in _tenant_manager.all_tenants:
-		if tenant.is_active and tenant.current_state == TenantData.TenantState.OPERATING:
-			var rent := tenant.monthly_rent / 4  # Weekly portion.
-			add(rent, "Rent from %s" % tenant.name)
-			var event_bus: Node = get_node_or_null("/root/EventBus")
-			if event_bus != null:
-				event_bus.rent_collected.emit(rent)
+func settle_daily_rent(sim_day: int) -> Dictionary:
+	if _last_rent_settlement_day == sim_day:
+		return {"committed": false, "already_settled": true, "diagnostics": []}
+	if _active_tenant_rent_snapshot.is_empty() or int(_active_tenant_rent_snapshot.get("simulation_day", -1)) != sim_day:
+		return {"committed": false, "diagnostics": [{"code": "ACTIVE_RENT_SNAPSHOT_UNAVAILABLE"}]}
+	var total_rent: int = 0
+	for entry: Dictionary in _active_tenant_rent_snapshot.get("entries", []):
+		total_rent += int(entry.get("rent_amount_kreds", -1))
+	if total_rent < 0:
+		return {"committed": false, "diagnostics": [{"code": "ACTIVE_RENT_SNAPSHOT_INVALID"}]}
+	if total_rent > 0:
+		add(total_rent, "Daily open-tenant rent")
+	_last_rent_settlement_day = sim_day
+	var event_bus: Node = _event_bus()
+	if event_bus != null and total_rent > 0:
+		event_bus.rent_collected.emit(total_rent)
+	return {"committed": true, "amount_kreds": total_rent, "simulation_day": sim_day, "diagnostics": []}
+
+
+func on_sim_week_passed(week: int) -> void:
+	_settle_staff_wages(week)
+
+
+func _on_sim_week_passed(week: int) -> void:
+	on_sim_week_passed(week)
 
 
 # ── Staff Wages (Monthly) ──────────────────────────────────────────────
@@ -286,9 +347,33 @@ func _on_sim_month_passed(_month: int) -> void:
 	_process_loan_payments()
 
 
+func _settle_staff_wages(week: int) -> Dictionary:
+	if _staff_manager == null:
+		return {"committed": false, "diagnostics": [{"code": "PAID_STAFF_SNAPSHOT_INVALID"}]}
+	var raw_snapshot: Dictionary = _staff_manager.paid_staff_weekly_snapshot(week)
+	var snapshot := PaidStaffWeeklySnapshot.new()
+	snapshot.configure(raw_snapshot)
+	var validation := snapshot.validate()
+	if not bool(validation.get("valid", false)):
+		return {"committed": false, "diagnostics": validation.get("diagnostics", [])}
+	var total: int = 0
+	var pending_ids: Array[String] = []
+	for entry: Dictionary in raw_snapshot["entries"]:
+		var staff_id := String(entry["staff_id"])
+		var marker := "%d|%s" % [week, staff_id]
+		if _settled_staff_weeks.has(marker):
+			continue
+		total += int(entry["wage_kreds"])
+		pending_ids.append(marker)
+	if total > 0 and not subtract(total, "Weekly staff wages"):
+		return {"committed": false, "diagnostics": [{"code": "INSUFFICIENT_FUNDS", "message": "weekly staff payroll cannot be debited"}]}
+	for marker: String in pending_ids:
+		_settled_staff_weeks[marker] = true
+	return {"committed": true, "amount_kreds": total, "simulation_week": week, "diagnostics": []}
+
+
 func _pay_staff_wages() -> void:
-	if _staff_wages > 0:
-		subtract(_staff_wages, "Staff wages")
+	# Legacy hook intentionally has no financial behavior; payroll is weekly and snapshot-backed.
 	_staff_wages = 0
 
 
@@ -301,7 +386,7 @@ func take_loan(amount: int, rate: float = 0.05, term: int = 12) -> String:
 	loan.initialize(loan_id, amount, rate, term)
 	loans[loan_id] = loan
 	add(amount, "Loan taken")
-	var event_bus: Node = get_node_or_null("/root/EventBus")
+	var event_bus: Node = _event_bus()
 	if event_bus != null:
 		event_bus.loan_taken.emit(loan_id, amount, rate)
 	return loan_id
@@ -317,14 +402,14 @@ func repay_loan(loan_id: String, amount: int) -> bool:
 	if loan.remaining <= 0:
 		loan.remaining = 0
 		loan.is_active = false
-		var event_bus: Node = get_node_or_null("/root/EventBus")
+		var event_bus: Node = _event_bus()
 		if event_bus != null:
 			event_bus.loan_repaid.emit(loan_id)
 	return true
 
 
 func _process_loan_payments() -> void:
-	var event_bus: Node = get_node_or_null("/root/EventBus")
+	var event_bus: Node = _event_bus()
 	for loan_id: String in loans:
 		var loan: LoanData = loans[loan_id]
 		if not loan.is_active:
@@ -358,6 +443,7 @@ func set_infinite_money(enabled: bool) -> void:
 var _days_since_week: int = 0
 
 func on_sim_day_passed(day: int) -> void:
+	settle_daily_rent(day)
 	_days_since_week += 1
 	if _days_since_week >= 7:
 		_days_since_week = 0
@@ -383,6 +469,7 @@ func serialize() -> Dictionary:
 		"loan_counter": _loan_counter,
 		"authority_revision": authority_revision,
 		"economy_policy_revision": int(get_policy_snapshot().get("revision", -1)),
+		"settled_staff_weeks": _settled_staff_weeks.duplicate(true),
 	}
 
 
@@ -390,6 +477,7 @@ func deserialize(data: Dictionary) -> void:
 	balance = data.get("balance", STARTING_BALANCE)
 	authority_revision += 1
 	_loan_counter = data.get("loan_counter", 0)
+	_settled_staff_weeks = data.get("settled_staff_weeks", {}).duplicate(true)
 	loans.clear()
 	for lid: String in data.get("loans", {}):
 		var ld: Dictionary = data["loans"][lid]

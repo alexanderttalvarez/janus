@@ -13,6 +13,12 @@ Architecture handoffs are organized into focused implementation programs. Each p
 | Tenant | Tenant occupancy lifecycle, legal seeded candidate selection, rent-input snapshots, and later business-performance handoffs. | [Tenant Handoff Index](tenant/_index.md) |
 | Prestige | Official tier/rent-ceiling publication, future calculation inputs, and consumers across Tenant and Progression. | [Prestige Handoff Index](prestige/_index.md) |
 | Spatial Evaluation Inputs | Revisioned topology and zone-relationship facts plus pure rent recommendation for tenant evaluation. | [Spatial Evaluation Inputs Handoff Index](spatial_evaluation/_index.md) |
+| Session | Gameplay composition, authoritative calendar/content bootstrap, full atomic V2 restore, and MVP acceptance gate. | [Session Handoff Index](session/_index.md) |
+| Visitor | Corridor-door proxy service behavior, realized-visitor lifecycle, and operational visitor metrics. | [Visitor Handoff Index](visitor/_index.md) |
+| Presentation | Read models, player intent gateway, diagnostics, source-gated panels/heatmaps, and notifications. | [Presentation Handoff Index](presentation/_index.md) |
+| Staff | MVP Operations Room, cleaner/security records, coverage/task facts, and weekly payroll inputs. | [Staff Handoff Index](staff/_index.md) |
+| Construction | MVP interior circulation, vertical links, Operations Rooms, placement transactions, and topology publication. | [Construction Handoff Index](construction/_index.md) |
+| MVP Scope | Cross-program implementation order, testable player loop, exclusions, and end-to-end acceptance gate. | [MVP Scope Handoff Index](mvp/_index.md) |
 
 ## Repository-wide rule
 

@@ -101,18 +101,29 @@ func _update_preview_validation() -> void:
 		var pending_tiles: Array[Vector2i] = _combined_pending_tiles()
 		var runtime := _get_district_runtime()
 		var intent: Dictionary = _make_district_paint_intent()
-		if runtime == null or intent.is_empty():
-			preview_split_result = SplitResult.failure(
-				SplitResult.Status.INVALID_ZONE_GEOMETRY,
-				"DISTRICT_RUNTIME_UNAVAILABLE"
-			)
-		else:
+		if runtime != null and not intent.is_empty():
 			var preview: Dictionary = runtime.preview_transaction(intent)
 			preview_split_result = preview.get("zone_preview", null) as SplitResult
 			if preview_split_result == null:
 				preview_split_result = SplitResult.failure(
 					SplitResult.Status.INVALID_ZONE_GEOMETRY,
 					"DISTRICT_ZONE_PREVIEW_REJECTED"
+				)
+		else:
+			var zone_manager := _get_zone_manager()
+			if zone_manager == null:
+				preview_split_result = SplitResult.failure(
+					SplitResult.Status.INVALID_ZONE_GEOMETRY,
+					"ZONE_MANAGER_UNAVAILABLE"
+				)
+			else:
+				preview_split_result = zone_manager.preview_split(
+					_preview_zone_type(),
+					pending_tiles,
+					_preview_floor(),
+					_preview_plot_id(),
+					_combined_pending_typologies(),
+					_editing_zone_id
 				)
 		can_finish = preview_split_result != null and preview_split_result.is_success()
 		if can_finish:
@@ -175,12 +186,16 @@ func _preview_zone_type() -> String:
 
 func _preview_floor() -> String:
 	var existing := _editing_zone()
-	return existing.floor if existing != null else _source_floor_label
+	if existing != null:
+		return existing.floor
+	return _source_floor_label if not _source_floor_label.is_empty() else GridManager.GROUND_FLOOR
 
 
 func _preview_plot_id() -> String:
 	var existing := _editing_zone()
-	return existing.plot_id if existing != null else _source_plot_id
+	if existing != null:
+		return existing.plot_id
+	return _source_plot_id if not _source_plot_id.is_empty() else GridManager.DEFAULT_PLOT
 
 
 func _show_invalid_perimeter(tiles: Array[Vector2i]) -> void:
@@ -374,7 +389,7 @@ static func rectangle_tiles(start_tile: Vector2i, end_tile: Vector2i) -> Array[V
 
 
 func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
-	if tile_pos.x < 0 or tile_pos.y < 0 or _projection_coordinator == null or _active_floor_address.is_empty():
+	if tile_pos.x < 0 or tile_pos.y < 0:
 		return false
 	var zm := _get_zone_manager()
 	if zm == null:
@@ -651,6 +666,12 @@ func _get_district_runtime() -> DistrictRuntime:
 
 
 func _get_zone_manager() -> ZoneManager:
-	var root := get_tree().current_scene
-	if root: return root.get_node_or_null("World/ZoneManager") as ZoneManager
-	return null
+	var root: Node = get_tree().current_scene
+	if root != null:
+		var manager := root.get_node_or_null("World/ZoneManager") as ZoneManager
+		if manager != null:
+			return manager
+	var sibling_manager := get_node_or_null("../World/ZoneManager") as ZoneManager
+	if sibling_manager != null:
+		return sibling_manager
+	return get_tree().root.get_node_or_null("World/ZoneManager") as ZoneManager

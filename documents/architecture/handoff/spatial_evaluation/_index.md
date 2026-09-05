@@ -8,7 +8,7 @@ This program supplies detached spatial facts and pure policy calculations to ten
 
 ## Rules
 
-- H1 requires the committed H3/H5 district topology authority, ZoneManager geometry revisions, Prestige H1, and Tenant H2 contracts.
+- H1 requires the committed H3/H5 district topology authority, ZoneManager geometry revisions, Prestige H1, and frozen Tenant H2 contract types. Tenant H2 production implementation follows Spatial H1; missing or stale inputs must remain unavailable without fallback values.
 - No legacy navigation fallback or live-visitor data may substitute for committed spatial context.
 - Policy is typed immutable Resource content; derived outputs are recomputed, not independently saved.
 - Any change to an approved handoff requires architecture review and user approval before implementation.

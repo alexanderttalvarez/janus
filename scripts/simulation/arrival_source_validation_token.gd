@@ -13,6 +13,7 @@ var eligibility_revision: int = -1
 var _invalidated: bool = false
 var _consumed: bool = false
 var _gate: ArrivalCommitGate
+var _revision_probe: Callable
 
 
 func initialize(
@@ -37,6 +38,10 @@ func bind_gate(gate: ArrivalCommitGate) -> void:
 	_gate = gate
 
 
+func bind_revision_probe(probe: Callable) -> void:
+	_revision_probe = probe
+
+
 func matches(
 	p_arrival_source_id: String,
 	p_demand_snapshot_id: String,
@@ -49,7 +54,15 @@ func matches(
 
 func is_valid() -> bool:
 	var gate_valid: bool = _gate == null or _gate.is_held()
-	return not token_id.is_empty() and not arrival_source_id.is_empty() and not demand_snapshot_id.is_empty() and not _invalidated and not _consumed and gate_valid
+	if token_id.is_empty() or arrival_source_id.is_empty() or demand_snapshot_id.is_empty() or _invalidated or _consumed or not gate_valid:
+		return false
+	if _revision_probe.is_valid():
+		var current: Variant = _revision_probe.call()
+		if not current is Dictionary:
+			return false
+		if int(current.get("district_revision", -1)) != district_revision or int(current.get("topology_revision", -1)) != topology_revision or int(current.get("eligibility_revision", -1)) != eligibility_revision:
+			return false
+	return true
 
 
 func invalidate() -> void:

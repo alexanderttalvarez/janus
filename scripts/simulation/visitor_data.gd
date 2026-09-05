@@ -57,6 +57,15 @@ var waypoint_index: int = 0
 ## Queue of goals to visit (zone_ids).
 var goal_queue: Array[String] = []
 
+## Stable proxy target selected from a detached service snapshot.
+var target_proxy_id: String = ""
+var target_proxy_policy_revision: int = -1
+var target_topology_revision: int = -1
+var target_tenant_revision: int = -1
+var route_request_id: String = ""
+var route_repath_attempts: int = 0
+var queued_proxy_id: String = ""
+
 ## Satisfaction score (0-100, reported on exit).
 var satisfaction: int = 50
 
@@ -79,6 +88,13 @@ func initialize(p_id: String, p_floor: String, p_position: Vector3) -> void:
 	location_type = "pedestrian_area"
 	entry_door_side = 0
 	waypoint_index = 0
+	target_proxy_id = ""
+	target_proxy_policy_revision = -1
+	target_topology_revision = -1
+	target_tenant_revision = -1
+	route_request_id = ""
+	route_repath_attempts = 0
+	queued_proxy_id = ""
 	position = p_position
 	target_position = p_position
 

@@ -19,6 +19,9 @@ var _delta_handler: Callable
 func initialize(p_runtime: DistrictRuntime, p_public_realm: PublicRealmProjection, p_metrics: ProjectionMetrics) -> Dictionary:
 	if p_runtime == null or p_public_realm == null or p_metrics == null:
 		return {"valid": false, "diagnostics": [{"code": "H7_DEPENDENCY_REQUIRED", "message": "District Runtime, H5 public realm, and metrics are required"}]}
+	var metrics_validation: Dictionary = p_metrics.validate()
+	if not bool(metrics_validation.get("valid", false)):
+		return {"valid": false, "diagnostics": metrics_validation.get("diagnostics", [])}
 	_district_runtime = p_runtime
 	_public_realm_projection = p_public_realm
 	_metrics = p_metrics
@@ -80,12 +83,16 @@ func _build_graph(snapshot: ResolvedDistrictSnapshot, state: Dictionary, h5_grap
 	var profile_segments: Array = road_profile.get("segments", [])
 	if profile_segments.is_empty():
 		return _failure("H5_ROAD_PROFILE_REQUIRED", "H7 requires committed H5 road-profile descriptors")
+	var controlled: Dictionary = _controlled_area(snapshot, state, profile_segments)
+	if not bool(controlled.get("connected", false)):
+		return {"valid": false, "snapshot": null, "delta": null, "diagnostics": controlled.get("diagnostics", [])}
 	var descriptors: Dictionary = {}
 	for descriptor: Dictionary in profile_segments:
 		descriptors[String(descriptor.get("id", ""))] = descriptor
 	var intersections: Array[Dictionary] = []
 	for intersection: Dictionary in road_profile.get("intersections", []):
-		intersections.append({"id": String(intersection.get("id", "")), "rect_quarter": intersection.get("rect_quarter", {}).duplicate(true), "incident_segment_ids": intersection.get("incident_segment_ids", []).duplicate(true), "surface": String(intersection.get("surface", "")), "owned": bool(intersection.get("owned", false))})
+		var incident_ids: Array = intersection.get("incident_segment_ids", []).duplicate(true)
+		intersections.append({"id": String(intersection.get("id", "")), "rect_quarter": intersection.get("rect_quarter", {}).duplicate(true), "incident_segment_ids": incident_ids, "surface": String(intersection.get("surface", "")), "owned": bool(intersection.get("owned", false)), "controlled": _intersection_controlled(incident_ids, controlled.get("active_segment_ids", {}))})
 	var lanes: Array[Dictionary] = []
 	var segments: Array[Dictionary] = []
 	var crosswalks: Array[Dictionary] = []
@@ -96,21 +103,24 @@ func _build_graph(snapshot: ResolvedDistrictSnapshot, state: Dictionary, h5_grap
 	var segment_active: Dictionary = {}
 	for segment: Dictionary in profile_segments:
 		var segment_id: String = String(segment.get("id", ""))
-		var active: bool = not bool(segment.get("converted", false)) and String(segment.get("geometry_state", "road")) == "road"
+		var active: bool = bool(controlled.get("active_segment_ids", {}).get(segment_id, false)) and not bool(segment.get("converted", false)) and String(segment.get("geometry_state", "road")) == "road"
 		segment_active[segment_id] = active
-		segments.append({"id": segment_id, "orientation": String(segment.get("orientation", "")), "rect_quarter": segment.get("rect_quarter", {}).duplicate(true), "outer_ring": bool(segment.get("outer_ring", false)), "converted": bool(segment.get("converted", false)), "active": active, "track_id": String(segment.get("track_id", ""))})
+		segments.append({"id": segment_id, "orientation": String(segment.get("orientation", "")), "rect_quarter": segment.get("rect_quarter", {}).duplicate(true), "outer_ring": bool(segment.get("outer_ring", false)), "converted": bool(segment.get("converted", false)), "active": active, "controlled": bool(controlled.get("active_segment_ids", {}).get(segment_id, false)), "track_id": String(segment.get("track_id", ""))})
 		var crosswalk: Dictionary = segment.get("crosswalk", {})
 		if active and bool(crosswalk.get("active", false)):
 			var crosswalk_id: String = "%s/midpoint_crosswalk" % segment_id
 			var bands: Array = segment.get("pedestrian_bands", [])
 			var pole_positions: Array = []
 			for band: Dictionary in bands:
-				pole_positions.append(_world_pose(band.get("pose", {})))
-			crosswalks.append({"id": crosswalk_id, "segment_id": segment_id, "rect_quarter": crosswalk.get("stripes", []).front().get("rect_quarter", {}) if not crosswalk.get("stripes", []).is_empty() else segment.get("rect_quarter", {}), "outer_ring": bool(segment.get("outer_ring", false)), "traffic_functional": true, "pedestrian_graph_crossing": not bool(segment.get("outer_ring", false)), "pole_positions": pole_positions})
-			var offset: float = 0.0 if String(segment.get("orientation", "")) == "HORIZONTAL" else 5.0
-			traffic_controls.append({"id": "%s/control" % crosswalk_id, "crosswalk_id": crosswalk_id, "vehicle_cycle_t": 10.0, "vehicle_green_t": 5.0, "vehicle_yellow_t": 1.0, "vehicle_red_t": 4.0, "pedestrian_red_t": 6.0, "pedestrian_green_t": 4.0, "offset_t": offset, "signal_height_tiles": 2.5, "pole_positions": pole_positions})
-		for stop: Dictionary in segment.get("stop_lines", []):
-			stops.append({"id": String(stop.get("id", "")), "segment_id": segment_id, "approach": String(stop.get("approach", "")), "rect_quarter": stop.get("rect_quarter", {}).duplicate(true), "approach_only": bool(stop.get("approach_only", false)), "distance_before_boundary_tiles": float(stop.get("distance_before_boundary_tiles", 0.0))})
+				pole_positions.append(_band_world_center(band.get("rect_quarter", {}), 2.5))
+			var carriageway: Dictionary = segment.get("carriageway", {})
+			var crossing_depth: float = _crossing_depth_tiles(carriageway, String(segment.get("orientation", "")))
+			crosswalks.append({"id": crosswalk_id, "segment_id": segment_id, "rect_quarter": crosswalk.get("stripes", []).front().get("rect_quarter", {}) if not crosswalk.get("stripes", []).is_empty() else segment.get("rect_quarter", {}), "outer_ring": bool(segment.get("outer_ring", false)), "traffic_functional": true, "pedestrian_graph_crossing": not bool(segment.get("outer_ring", false)), "pole_positions": pole_positions, "pole_count": pole_positions.size()})
+			var offset: float = TrafficControlClock.EAST_WEST_OFFSET_T if String(segment.get("orientation", "")) == "HORIZONTAL" else 0.0
+			traffic_controls.append({"id": "%s/control" % crosswalk_id, "crosswalk_id": crosswalk_id, "orientation": String(segment.get("orientation", "")), "outer_ring": bool(segment.get("outer_ring", false)), "pedestrian_graph_crossing": not bool(segment.get("outer_ring", false)), "vehicle_cycle_t": 10.0, "vehicle_green_t": 5.0, "vehicle_yellow_t": 1.0, "vehicle_red_t": 4.0, "pedestrian_red_t": 6.0, "pedestrian_green_t": 4.0, "offset_t": offset, "signal_height_tiles": 2.5, "pole_positions": pole_positions, "pole_count": pole_positions.size(), "canonical_crosswalk_speed_tiles_per_second": TrafficControlClock.CANONICAL_CROSSWALK_SPEED_TILES_PER_SECOND, "crossing_distance_tiles": crossing_depth, "canonical_crossing_time_t": crossing_depth / TrafficControlClock.CANONICAL_CROSSWALK_SPEED_TILES_PER_SECOND})
+		if active:
+			for stop: Dictionary in segment.get("stop_lines", []):
+				stops.append({"id": String(stop.get("id", "")), "segment_id": segment_id, "approach": String(stop.get("approach", "")), "rect_quarter": stop.get("rect_quarter", {}).duplicate(true), "approach_only": bool(stop.get("approach_only", false)), "distance_before_boundary_tiles": float(stop.get("distance_before_boundary_tiles", 0.0))})
 	for lane: Dictionary in snapshot.get_data().get("lanes", []):
 		var carriageway_id: String = String(lane.get("carriageway_id", ""))
 		var carriageway: Dictionary = _record_by_id(snapshot.get_data().get("carriageways", []), carriageway_id)
@@ -124,17 +134,21 @@ func _build_graph(snapshot: ResolvedDistrictSnapshot, state: Dictionary, h5_grap
 		var direction: Vector3 = (finish - start).normalized()
 		var length: float = start.distance_to(finish)
 		var lane_id: String = String(lane.get("id", ""))
-		var source_zone: String = _nearest_boundary_id(start, intersections, lane_id + "/source")
-		var destination_zone: String = _nearest_boundary_id(finish, intersections, lane_id + "/destination")
-		var lane_record: Dictionary = {"id": lane_id, "segment_id": segment_id, "direction": String(lane.get("direction", "")), "rect_quarter": lane.get("rect_quarter", {}).duplicate(true), "start_position": start, "finish_position": finish, "direction_vector": direction, "length": length, "source_zone_id": source_zone, "destination_zone_id": destination_zone, "outer_ring": bool(descriptors.get(segment_id, {}).get("outer_ring", false))}
+		var source_zone: String = _endpoint_intersection_id(endpoints.get("start", Vector2.ZERO), intersections, lane_id + "/source")
+		var destination_zone: String = _endpoint_intersection_id(endpoints.get("finish", Vector2.ZERO), intersections, lane_id + "/destination")
+		var lane_record: Dictionary = {"id": lane_id, "segment_id": segment_id, "direction": String(lane.get("direction", "")), "rect_quarter": lane.get("rect_quarter", {}).duplicate(true), "start_position": start, "finish_position": finish, "direction_vector": direction, "length": length, "stop_distance": _lane_stop_distance(descriptors.get(segment_id, {}), endpoints.get("start", Vector2.ZERO), String(lane.get("direction", "FORWARD")), length), "source_zone_id": source_zone, "destination_zone_id": destination_zone, "outer_ring": bool(descriptors.get(segment_id, {}).get("outer_ring", false))}
 		lanes.append(lane_record)
 		var route_id: String = "route/straight/%s" % lane_id
 		route_attachments.append({"id": route_id, "kind": "straight_through", "lane_id": lane_id, "segment_id": segment_id, "turn_capable": false, "from_position": start, "to_position": finish, "active": true})
-		if lane_record["outer_ring"]:
-			control_anchors.append({"id": "%s/spawn" % lane_id, "kind": "spawn", "lane_id": lane_id, "position": start - direction, "direction": direction, "outside_controlled_area": true})
-			control_anchors.append({"id": "%s/despawn" % lane_id, "kind": "despawn", "lane_id": lane_id, "position": finish + direction, "direction": direction, "outside_controlled_area": true})
-	var controlled: Dictionary = _controlled_area(snapshot, state)
-	return {"valid": bool(controlled.get("connected", false)), "lanes": lanes, "segments": segments, "intersections": intersections, "crosswalks": crosswalks, "stops": stops, "route_attachments": route_attachments, "control_anchors": control_anchors, "traffic_controls": traffic_controls, "outer_ring": {"segments": _outer_segment_ids(segments), "active_plot_ids": controlled.get("active_plot_ids", []), "rectangles": controlled.get("rectangles", []), "connected_controlled_area": controlled.get("connected", false)}, "diagnostics": controlled.get("diagnostics", [])}
+		if lane_record["outer_ring"] or controlled.get("perimeter_segment_ids", {}).has(segment_id) or _is_controlled_perimeter_lane(source_zone, destination_zone, segment_id, controlled.get("active_segment_ids", {}), intersections):
+			var anchor_offset: Vector3 = direction * _metrics.grid_unit_size
+			control_anchors.append({"id": "%s/spawn" % lane_id, "kind": "spawn", "lane_id": lane_id, "position": start - anchor_offset, "direction": direction, "outside_controlled_area": true})
+			control_anchors.append({"id": "%s/despawn" % lane_id, "kind": "despawn", "lane_id": lane_id, "position": finish + anchor_offset, "direction": direction, "outside_controlled_area": true})
+	var active_segment_ids: Array[String] = []
+	for active_segment_id: String in controlled.get("active_segment_ids", {}).keys():
+		active_segment_ids.append(active_segment_id)
+	active_segment_ids.sort()
+	return {"valid": true, "lanes": lanes, "segments": segments, "intersections": intersections, "crosswalks": crosswalks, "stops": stops, "route_attachments": route_attachments, "control_anchors": control_anchors, "traffic_controls": traffic_controls, "outer_ring": {"segments": _outer_segment_ids(segments), "active_plot_ids": controlled.get("active_plot_ids", []), "rectangles": controlled.get("rectangles", []), "active_segments": active_segment_ids, "connected_controlled_area": controlled.get("connected", false)}, "diagnostics": []}
 
 
 func _build_delta(previous: RoadGraphSnapshot, current: RoadGraphSnapshot, reason: String) -> RoadGraphDelta:
@@ -165,15 +179,16 @@ func _build_delta(previous: RoadGraphSnapshot, current: RoadGraphSnapshot, reaso
 			invalid_routes.append(String(id))
 			invalid_reservations.append(String(id))
 	var attachments: Array[String] = []
-	attachments.append_array(added.get("control_anchors", []))
-	attachments.append_array(changed.get("control_anchors", []))
-	attachments.append_array(removed.get("control_anchors", []))
+	for category: String in ["route_attachments", "control_anchors", "crosswalks", "stops", "traffic_controls"]:
+		attachments.append_array(added.get(category, []))
+		attachments.append_array(changed.get(category, []))
+		attachments.append_array(removed.get(category, []))
 	var delta: RoadGraphDelta = load("res://scripts/traffic/road_graph_delta.gd").new() as RoadGraphDelta
 	delta.initialize(-1 if previous == null else previous.graph_revision, current.graph_revision, current.district_revision, current.topology_revision, added, changed, removed, invalid_routes, invalid_reservations, attachments, reason)
 	return delta
 
 
-func _controlled_area(snapshot: ResolvedDistrictSnapshot, state: Dictionary) -> Dictionary:
+func _controlled_area(snapshot: ResolvedDistrictSnapshot, state: Dictionary, profile_segments: Array) -> Dictionary:
 	var rectangles: Array[Dictionary] = []
 	var active_ids: Array[String] = []
 	for plot: Dictionary in snapshot.get_data().get("plots", []):
@@ -185,25 +200,19 @@ func _controlled_area(snapshot: ResolvedDistrictSnapshot, state: Dictionary) -> 
 		active_ids.append(String(plot.get("id", "")))
 		rectangles.append(rect.duplicate(true))
 	active_ids.sort()
+	var active_segment_ids: Dictionary = {}
+	var perimeter_segment_ids: Dictionary = {}
+	for descriptor: Dictionary in profile_segments:
+		if _has_active_frontage(descriptor.get("frontage", {})):
+			var segment_id: String = String(descriptor.get("id", ""))
+			active_segment_ids[segment_id] = true
+			if _has_inactive_frontage(descriptor.get("frontage", {})):
+				perimeter_segment_ids[segment_id] = true
+	# H3 owns Plot activation and its orthogonal adjacency gate. H7 consumes
+	# that committed result; it does not turn road connectivity into a second
+	# acquisition veto (conversion connectivity is explicitly non-blocking).
 	var connected: bool = true
-	if rectangles.size() > 1:
-		var reached: Array[int] = [0]
-		while reached.size() < rectangles.size():
-			var grew: bool = false
-			for index: int in range(rectangles.size()):
-				if reached.has(index):
-					continue
-				for known: int in reached:
-					if _rects_touch(rectangles[index], rectangles[known]):
-						reached.append(index)
-						grew = true
-						break
-				if grew:
-					break
-			if not grew:
-				connected = false
-				break
-	return {"connected": connected, "active_plot_ids": active_ids, "rectangles": rectangles, "diagnostics": [] if connected else [{"code": "CONTROLLED_AREA_DISCONNECTED", "message": "Active Plot rectangles must form a connected controlled area"}]}
+	return {"connected": connected, "active_plot_ids": active_ids, "rectangles": rectangles, "active_segment_ids": active_segment_ids, "perimeter_segment_ids": perimeter_segment_ids, "diagnostics": [] if connected else [{"code": "CONTROLLED_AREA_DISCONNECTED", "message": "Active Plot controlled topology must be connected"}]}
 
 
 func _plot_active(snapshot: ResolvedDistrictSnapshot, state: Dictionary, plot_id: String) -> bool:
@@ -220,8 +229,41 @@ func _plot_active(snapshot: ResolvedDistrictSnapshot, state: Dictionary, plot_id
 	return false
 
 
-func _rects_touch(left: Dictionary, right: Dictionary) -> bool:
-	return float(left.get("minimum_x4", 0.0)) <= float(right.get("maximum_x4", 0.0)) and float(right.get("minimum_x4", 0.0)) <= float(left.get("maximum_x4", 0.0)) and float(left.get("minimum_z4", 0.0)) <= float(right.get("maximum_z4", 0.0)) and float(right.get("minimum_z4", 0.0)) <= float(left.get("maximum_z4", 0.0))
+func _has_active_frontage(frontage: Dictionary) -> bool:
+	for side: String in ["negative", "positive"]:
+		for contact: Dictionary in frontage.get(side, {}).get("contacts", []):
+			if bool(contact.get("active", false)) and int(contact.get("length_quarter", 0)) > 0:
+				return true
+	return false
+
+
+func _has_inactive_frontage(frontage: Dictionary) -> bool:
+	for side: String in ["negative", "positive"]:
+		for contact: Dictionary in frontage.get(side, {}).get("contacts", []):
+			if not bool(contact.get("active", false)) and int(contact.get("length_quarter", 0)) > 0:
+				return true
+	return false
+
+
+func _intersection_controlled(incident_ids: Array, active_segment_ids: Dictionary) -> bool:
+	for segment_id: String in incident_ids:
+		if active_segment_ids.has(segment_id):
+			return true
+	return false
+
+
+func _is_controlled_perimeter_lane(source_zone: String, destination_zone: String, segment_id: String, active_segment_ids: Dictionary, intersections: Array[Dictionary]) -> bool:
+	for intersection: Dictionary in intersections:
+		var intersection_id: String = String(intersection.get("id", ""))
+		if intersection_id != source_zone and intersection_id != destination_zone:
+			continue
+		var active_incident_count: int = 0
+		for incident_id: String in intersection.get("incident_segment_ids", []):
+			if active_segment_ids.has(incident_id):
+				active_incident_count += 1
+		if active_incident_count <= 1 and active_segment_ids.has(segment_id):
+			return true
+	return false
 
 
 func _lane_endpoints(rectangle: Dictionary, orientation: String, direction: String) -> Dictionary:
@@ -248,22 +290,38 @@ func _world_point(quarter: Vector2, elevation: int) -> Vector3:
 	return Vector3(_metrics.origin.x + quarter.x * _metrics.grid_unit_size / 4.0, _metrics.origin.y + elevation * _metrics.floor_height, _metrics.origin.z + quarter.y * _metrics.grid_unit_size / 4.0)
 
 
-func _world_pose(pose: Dictionary) -> Vector3:
-	return _world_point(Vector2(float(pose.get("x4", 0.0)), float(pose.get("z4", 0.0))), int(pose.get("elevation", 0)))
+func _band_world_center(rectangle: Dictionary, height_tiles: float) -> Vector3:
+	var center: Vector2 = Vector2((float(rectangle.get("minimum_x4", 0.0)) + float(rectangle.get("maximum_x4", 0.0))) * 0.5, (float(rectangle.get("minimum_z4", 0.0)) + float(rectangle.get("maximum_z4", 0.0))) * 0.5)
+	var result: Vector3 = _world_point(center, 0)
+	result.y += height_tiles * _metrics.grid_unit_size
+	return result
 
 
-func _nearest_boundary_id(position: Vector3, intersections: Array[Dictionary], fallback: String) -> String:
+func _endpoint_intersection_id(position: Vector2, intersections: Array[Dictionary], fallback: String) -> String:
 	var best_id: String = fallback
-	var best_distance: float = INF
 	for intersection: Dictionary in intersections:
 		var rect: Dictionary = intersection.get("rect_quarter", {})
-		var center: Vector2 = Vector2((float(rect.get("minimum_x4", 0.0)) + float(rect.get("maximum_x4", 0.0))) * 0.5, (float(rect.get("minimum_z4", 0.0)) + float(rect.get("maximum_z4", 0.0))) * 0.5)
-		var world_center: Vector3 = _world_point(center, 0)
-		var distance: float = position.distance_squared_to(world_center)
-		if distance < best_distance or (is_equal_approx(distance, best_distance) and String(intersection.get("id", "")) < best_id):
-			best_id = String(intersection.get("id", ""))
-			best_distance = distance
+		if position.x >= float(rect.get("minimum_x4", 0.0)) and position.x <= float(rect.get("maximum_x4", 0.0)) and position.y >= float(rect.get("minimum_z4", 0.0)) and position.y <= float(rect.get("maximum_z4", 0.0)):
+			return String(intersection.get("id", ""))
 	return best_id
+
+
+func _crossing_depth_tiles(carriageway: Dictionary, orientation: String) -> float:
+	var rect: Dictionary = carriageway.get("rect_quarter", {})
+	var depth_quarter: float = float(rect.get("maximum_z4", 0.0)) - float(rect.get("minimum_z4", 0.0)) if orientation == "HORIZONTAL" else float(rect.get("maximum_x4", 0.0)) - float(rect.get("minimum_x4", 0.0))
+	return depth_quarter / 4.0
+
+
+func _lane_stop_distance(segment: Dictionary, start_quarter: Vector2, direction: String, fallback: float) -> float:
+	var stop_name: String = "NEGATIVE_APPROACH" if direction == "FORWARD" else "POSITIVE_APPROACH"
+	for stop: Dictionary in segment.get("stop_lines", []):
+		if String(stop.get("approach", "")) != stop_name:
+			continue
+		var rect: Dictionary = stop.get("rect_quarter", {})
+		var stop_quarter: Vector2 = Vector2((float(rect.get("minimum_x4", 0.0)) + float(rect.get("maximum_x4", 0.0))) * 0.5, (float(rect.get("minimum_z4", 0.0)) + float(rect.get("maximum_z4", 0.0))) * 0.5)
+		var along_quarter: float = stop_quarter.x - start_quarter.x if String(segment.get("orientation", "")) == "HORIZONTAL" else stop_quarter.y - start_quarter.y
+		return absf(along_quarter) * _metrics.grid_unit_size / 4.0
+	return fallback * 0.45
 
 
 func _record_by_id(records: Array, record_id: String) -> Dictionary:

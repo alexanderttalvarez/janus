@@ -53,6 +53,7 @@ ambient_light_energy = 0.8
 
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
+bootstrap_layout_id = "fixture.legacy_25_single"
 
 [node name="World" type="Node3D" parent="." unique_id=754628474]
 

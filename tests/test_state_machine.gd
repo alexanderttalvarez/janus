@@ -3,7 +3,7 @@
 ##
 ## Tests create StateMachine instances without adding them to the tree
 ## to avoid async _ready() timing issues. _ready() is called manually.
-extends Node
+extends SceneTree
 
 
 var _passed := 0
@@ -11,7 +11,7 @@ var _failed := 0
 var _current_test := ""
 
 
-func _ready() -> void:
+func _init() -> void:
 	print("\n=== StateMachine Unit Tests ===\n")
 	_test_state_creation()
 	_test_state_signals()
@@ -25,10 +25,10 @@ func _ready() -> void:
 	print("\n=== Results: %d passed, %d failed ===\n" % [_passed, _failed])
 	if _failed == 0:
 		print("ALL TESTS PASSED!")
-		get_tree().quit(0)
+		quit(0)
 	else:
 		print("SOME TESTS FAILED!")
-		get_tree().quit(1)
+		quit(1)
 
 
 func _assert(condition: bool, message: String) -> void:

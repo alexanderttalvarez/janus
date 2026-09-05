@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://pl1osty0uvk3"]
+
+[ext_resource type="Script" uid="uid://t1n2qqgx8484" path="res://tests/test_zone_label_renderer.gd" id="1_md4l4"]
+
+[node name="ZoneLabelRendererTest" type="Node" unique_id=1366935195]
+script = ExtResource("1_md4l4")

@@ -119,16 +119,12 @@ class DistrictProgressionPort extends RefCounted:
 
 
 class ProgressionManagerPort extends DistrictProgressionPort:
-	var prestige_manager: Node
 	var tech_tree_manager: Node
 	var minimum_elevation: int = -5
 	var maximum_elevation: int = 9
 
-	func initialize(prestige: Node, tech_tree: Node) -> void:
-		prestige_manager = prestige
+	func initialize(tech_tree: Node) -> void:
 		tech_tree_manager = tech_tree
-		if tech_tree_manager != null and tech_tree_manager.has_method("set_prestige_manager"):
-			tech_tree_manager.call("set_prestige_manager", prestige_manager)
 
 	func get_policy_snapshot() -> Dictionary:
 		if tech_tree_manager == null:

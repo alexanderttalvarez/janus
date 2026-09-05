@@ -5,11 +5,13 @@ extends Control
 
 
 const MAX_PANELS: int = 3
+const PRIMARY_PANELS: Array[String] = ["finances", "prestige", "tenants", "visitors", "metrics"]
 const PANEL_WIDTH: int = 320
 const PANEL_GAP: int = 8
 
 var _open_panels: Array[Control] = []
 var _panel_registry: Dictionary = {}
+var _primary_panel_name: String = ""
 
 
 func _ready() -> void:
@@ -22,8 +24,10 @@ func register_panel(panel_name: String, panel_scene: PackedScene) -> void:
 
 
 func open_panel(panel_name: String) -> bool:
-	if _panel_registry.has(panel_name):
+	if not _panel_registry.has(panel_name):
 		return false
+	if PRIMARY_PANELS.has(panel_name) and not _primary_panel_name.is_empty() and _primary_panel_name != panel_name:
+		close_panel(_primary_panel_name)
 	if _open_panels.size() >= MAX_PANELS:
 		return false
 	var scene: PackedScene = _panel_registry.get(panel_name, null)
@@ -34,6 +38,8 @@ func open_panel(panel_name: String) -> bool:
 	panel.size = Vector2(PANEL_WIDTH, 600)
 	add_child(panel)
 	_open_panels.append(panel)
+	if PRIMARY_PANELS.has(panel_name):
+		_primary_panel_name = panel_name
 	_reposition_panels()
 	EventBus.panel_opened.emit(panel_name)
 	return true
@@ -44,6 +50,8 @@ func close_panel(panel_name: String) -> void:
 		if _open_panels[i].name == panel_name:
 			_open_panels[i].queue_free()
 			_open_panels.remove_at(i)
+			if _primary_panel_name == panel_name:
+				_primary_panel_name = ""
 			EventBus.panel_closed.emit(panel_name)
 			break
 	_reposition_panels()
@@ -53,6 +61,7 @@ func close_all() -> void:
 	for p: Control in _open_panels:
 		p.queue_free()
 	_open_panels.clear()
+	_primary_panel_name = ""
 
 
 func _reposition_panels() -> void:

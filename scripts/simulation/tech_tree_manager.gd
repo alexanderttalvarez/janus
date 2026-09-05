@@ -54,7 +54,9 @@ var selected_plot_ids: Array[String] = []
 var plot_access_grants_earned: int = 0
 var plot_access_grants_consumed: int = 0
 var awarded_milestone_ids: Array[String] = []
-var _prestige_manager: Node
+var _official_tier_id: String = ""
+var _official_tier_name: String = ""
+var _official_policy_revision: int = 0
 
 
 func _ready() -> void:
@@ -91,8 +93,15 @@ func get_district_revision() -> int:
 	return authority_revision
 
 
-func set_prestige_manager(manager: Node) -> void:
-	_prestige_manager = manager
+## Capture the committed tier facts supplied by PrestigeManager's typed event.
+func sync_official_tier(tier_id: String, tier_name: String, tier_index: int, policy_revision: int) -> void:
+	var source_changed: bool = _official_tier_id != tier_id or _official_policy_revision != policy_revision or _official_tier_name != tier_name
+	_official_tier_id = tier_id
+	_official_tier_name = tier_name
+	_official_policy_revision = policy_revision
+	if source_changed:
+		sync_mall_level(tier_index)
+		progression_changed.emit(get_policy_snapshot())
 
 
 func sync_mall_level(level_index: int) -> void:
@@ -109,12 +118,7 @@ func sync_mall_level(level_index: int) -> void:
 
 func get_policy_snapshot() -> Dictionary:
 	var level_index: int = 0
-	var level_name: String = "Empty Lot"
-	if _prestige_manager != null:
-		if _prestige_manager.has_method("get_mall_level_index"):
-			level_index = int(_prestige_manager.call("get_mall_level_index"))
-		if _prestige_manager.has_method("get_mall_level_name"):
-			level_name = String(_prestige_manager.call("get_mall_level_name"))
+	var level_name: String = _official_tier_name
 	var god_mode: bool = _debug_god_mode_active()
 	var eligible_elevations: Array[int] = DEBUG_ELEVATIONS.duplicate() if god_mode else _normal_eligible_elevations()
 	var selected: Array[String] = selected_plot_ids.duplicate()
@@ -125,6 +129,8 @@ func get_policy_snapshot() -> Dictionary:
 		"revision": authority_revision,
 		"mall_level_index": level_index,
 		"mall_level": level_name,
+		"official_tier_id": _official_tier_id,
+		"official_policy_revision": _official_policy_revision,
 		"unlocked_node_ids": unlocked.duplicate(),
 		"available_points": available_points,
 		"total_earned": total_earned,
@@ -338,7 +344,7 @@ func validate_serialized_state(data: Variant) -> Dictionary:
 	return {"valid": diagnostics.is_empty(), "diagnostics": diagnostics}
 
 
-func deserialize(data: Dictionary) -> void:
+func deserialize(data: Dictionary, emit_change: bool = true) -> void:
 	_suppress_progression_notifications = true
 	var loaded_unlocked: Variant = data.get("unlocked", [])
 	unlocked.clear()
@@ -368,4 +374,5 @@ func deserialize(data: Dictionary) -> void:
 				awarded_milestone_ids.append(String(entry))
 	awarded_milestone_ids.sort()
 	_suppress_progression_notifications = false
-	progression_changed.emit(get_policy_snapshot())
+	if emit_change:
+		progression_changed.emit(get_policy_snapshot())

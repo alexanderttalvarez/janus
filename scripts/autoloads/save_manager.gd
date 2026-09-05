@@ -16,6 +16,10 @@ signal game_loaded(slot: int)
 ## Emitted when save data is deleted.
 signal save_deleted(slot: int)
 
+## Optional diagnostics emitted only after a staged restore is discarded.
+signal restore_failed(result: Dictionary)
+signal restore_requested(slot: int)
+
 
 const SAVE_DIR: String = "user://saves/"
 const SETTINGS_PATH: String = "user://settings.cfg"
@@ -27,14 +31,19 @@ const V2_ROOT_FIELDS: Array[String] = ["save_schema_version", "meta", "layout_re
 const V2_META_FIELDS: Array[String] = ["slot", "timestamp", "application_version"]
 const V2_LAYOUT_FIELDS: Array[String] = ["layout_id", "layout_definition_version", "definition_fingerprint"]
 const V2_AUTHORITY_FIELDS: Array[String] = [
-	"district", "zone_parcel", "tenant", "visitor", "economy",
-	"progression", "prestige", "staff", "synergy", "time",
+	"district", "zone_parcel", "economy", "progression", "prestige",
+	"staff", "synergy", "tenant", "visitor", "time",
 ]
 
 var _authority_provider: Callable
 var _layout_provider: Callable
 var _staged_validator: Callable
 var _session_commit: Callable
+var _arrival_commit_gate: ArrivalCommitGate
+var _restore_in_progress: bool = false
+var _restore_barrier_active: bool = false
+var _restore_trace: Array[String] = []
+var _restore_fault_stage: String = ""
 
 
 func _ready() -> void:
@@ -55,9 +64,34 @@ func configure_runtime(
 	_session_commit = session_commit
 
 
+## Share the H8 gate with every save entry point, including UI callers that
+## bypass MainGame.save_game().
+func set_arrival_commit_gate(gate: ArrivalCommitGate) -> void:
+	_arrival_commit_gate = gate
+
+
 ## Return the exact authority key order required by the V2 envelope.
 func get_v2_authority_fields() -> Array[String]:
 	return V2_AUTHORITY_FIELDS.duplicate()
+
+
+func get_v2_authority_registry() -> Array[Dictionary]:
+	var registry: Array[Dictionary] = []
+	for authority_name: String in V2_AUTHORITY_FIELDS:
+		registry.append({"key": authority_name, "order": registry.size()})
+	return registry
+
+
+func set_restore_fault_stage(stage: String) -> void:
+	_restore_fault_stage = stage
+
+
+func get_restore_trace() -> Array[String]:
+	return _restore_trace.duplicate()
+
+
+func is_restore_barrier_active() -> bool:
+	return _restore_barrier_active
 
 
 ## Build a detached V2 envelope without writing a slot or emitting events.
@@ -160,6 +194,8 @@ func save_game(slot: int, data: Dictionary = {}) -> Error:
 	if not _valid_slot(slot):
 		push_error("SaveManager: Invalid slot %d (1-%d)." % [slot, MAX_SLOTS])
 		return ERR_INVALID_PARAMETER
+	if _arrival_commit_gate != null and _arrival_commit_gate.is_held():
+		return ERR_BUSY
 	var envelope: Dictionary
 	if data.is_empty():
 		if not _authority_provider.is_valid() or not _layout_provider.is_valid():
@@ -189,24 +225,50 @@ func save_game(slot: int, data: Dictionary = {}) -> Error:
 
 ## Load, stage, validate, and atomically commit one V2 slot.
 func load_game(slot: int) -> Dictionary:
+	if _restore_in_progress:
+		return _failure("RESTORE_ALREADY_IN_PROGRESS", "another session restore is already staging")
 	if not _valid_slot(slot):
 		return _failure("INVALID_SLOT", "requested slot is outside the supported range")
+	if _arrival_commit_gate != null and _arrival_commit_gate.is_held():
+		return _failure("ARRIVAL_TRANSACTION_BUSY", "save/load is blocked while an arrival transaction is flushing")
+	_restore_in_progress = true
+	_restore_barrier_active = false
+	_restore_trace = ["restore_requested"]
+	restore_requested.emit(slot)
+	if _restore_fault_stage == "parse":
+		return _restore_failure(slot, "RESTORE_PARSE_INJECTED", "restore parse failure injected")
 	var path: String = _slot_path(slot)
 	if not FileAccess.file_exists(path):
-		return _failure("SAVE_NOT_FOUND", "no save exists in the requested slot")
+		return _restore_failure(slot, "SAVE_NOT_FOUND", "no save exists in the requested slot")
 	var parsed: Dictionary = _read_payload(slot)
+	_restore_trace.append("parse")
 	if not bool(parsed.get("valid", false)):
-		return parsed
+		return _restore_failure(slot, String(parsed.get("reason_code", "SAVE_READ_FAILED")), String(parsed.get("diagnostics", [{"message": "save read failed"}])[0].get("message", "save read failed")), parsed.get("diagnostics", []))
 	var validation: Dictionary = validate_v2_envelope(parsed["data"], slot)
+	_restore_trace.append("detached_validation")
+	if _restore_fault_stage == "authority_validation":
+		return _restore_failure(slot, "RESTORE_AUTHORITY_VALIDATION_INJECTED", "restore authority validation failure injected")
 	if not bool(validation.get("valid", false)):
-		return {"valid": false, "slot": slot, "reason_code": String(validation["diagnostics"][0].get("code", "V2_REJECTED")), "slot_preserved": true, "staged": {}, "diagnostics": validation["diagnostics"]}
+		return _restore_failure(slot, String(validation["diagnostics"][0].get("code", "V2_REJECTED")), "V2 restore validation rejected the candidate", validation.get("diagnostics", []))
 	var staged: Dictionary = validation["staged"]
+	_restore_trace.append("candidate_staged")
+	if _restore_fault_stage == "projection_preparation":
+		return _restore_failure(slot, "RESTORE_PROJECTION_PREPARATION_INJECTED", "restore projection preparation failure injected")
+	_restore_barrier_active = true
+	_restore_trace.append("commit_barrier")
+	if _restore_fault_stage == "commit":
+		_restore_barrier_active = false
+		return _restore_failure(slot, "RESTORE_COMMIT_INJECTED", "restore commit failure injected")
 	var commit_result: Variant = _session_commit.call(staged["authorities"], staged["layout_ref"])
+	_restore_barrier_active = false
 	if commit_result is Dictionary and not bool(commit_result.get("valid", false)):
-		return {"valid": false, "slot": slot, "reason_code": "SESSION_COMMIT_REJECTED", "slot_preserved": true, "staged": {}, "diagnostics": _typed_diagnostics(commit_result.get("diagnostics", []))}
+		return _restore_failure(slot, "SESSION_COMMIT_REJECTED", "session owner rejected the staged V2 state", commit_result.get("diagnostics", []))
 	if commit_result is bool and not bool(commit_result):
-		return {"valid": false, "slot": slot, "reason_code": "SESSION_COMMIT_REJECTED", "slot_preserved": true, "staged": {}, "diagnostics": [_diagnostic("SESSION_COMMIT_REJECTED", "$.authorities", "session owner rejected the staged V2 state")]}
+		return _restore_failure(slot, "SESSION_COMMIT_REJECTED", "session owner rejected the staged V2 state")
+	_restore_trace.append("committed")
+	_restore_in_progress = false
 	game_loaded.emit(slot)
+	_restore_trace.append("game_loaded")
 	return {"valid": true, "slot": slot, "envelope": parsed["data"].duplicate(true), "staged": staged, "diagnostics": []}
 
 
@@ -364,3 +426,15 @@ func _diagnostic(code: String, path: String, message: String) -> Dictionary:
 
 func _failure(code: String, message: String) -> Dictionary:
 	return {"valid": false, "reason_code": code, "slot_preserved": true, "staged": {}, "diagnostics": [_diagnostic(code, "$", message)]}
+
+
+func _restore_failure(slot: int, code: String, message: String, details: Array = []) -> Dictionary:
+	_restore_barrier_active = false
+	_restore_in_progress = false
+	_restore_trace.append("discarded")
+	var diagnostics: Array[Dictionary] = _typed_diagnostics(details)
+	if diagnostics.is_empty():
+		diagnostics.append(_diagnostic(code, "$.authorities", message))
+	var result: Dictionary = {"valid": false, "slot": slot, "reason_code": code, "slot_preserved": true, "old_session_preserved": true, "staged": {}, "diagnostics": diagnostics}
+	restore_failed.emit(result.duplicate(true))
+	return result

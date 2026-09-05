@@ -12,6 +12,7 @@ var _pedestrian_graph: PedestrianGraphSnapshot
 var _gateway_eligibility: GatewayEligibilitySnapshot
 var _visitor_manager: VisitorManager
 var _demand_authority: VisitorDemandAuthority
+var _legacy_spawn_adapter: LegacyVisitorSpawnAdapter
 var _gate: ArrivalCommitGate = ArrivalCommitGate.new()
 var _dispatcher: ArrivalCommitDispatcher = ArrivalCommitDispatcher.new()
 var _transaction_counter: int = 0
@@ -30,6 +31,7 @@ func initialize(
 	_gateway_eligibility = p_gateway_eligibility.duplicate_value()
 	_district_runtime.set_arrival_revision_context(_pedestrian_graph.zone_revision, _gateway_eligibility.topology_revision)
 	_visitor_manager = p_visitor_manager
+	_legacy_spawn_adapter = load("res://scripts/simulation/legacy_visitor_spawn_adapter.gd").new() as LegacyVisitorSpawnAdapter
 	_visitor_manager.configure_arrival_coordinator(self)
 	_district_runtime.set_arrival_commit_gate(_gate)
 	_visitor_manager.set_arrival_commit_gate(_gate)
@@ -68,7 +70,8 @@ func on_visitor_tick() -> Dictionary:
 	if _demand_authority == null:
 		return {"valid": true, "skipped": true, "diagnostics": []}
 	var demand: ArrivalDemandSnapshot = _demand_authority.capture_snapshot()
-	if demand == null or _visitor_manager.get_active_visitor_count() >= demand.desired_count:
+	var target_count: int = mini(demand.desired_count, VisitorManager.MAX_VISITORS) if demand != null else 0
+	if demand == null or _visitor_manager.get_active_visitor_count() >= target_count:
 		return {"valid": true, "skipped": true, "diagnostics": []}
 	return realize_arrival(demand)
 
@@ -90,6 +93,8 @@ func allocate_source(demand: ArrivalDemandSnapshot) -> Dictionary:
 func realize_arrival(demand: ArrivalDemandSnapshot) -> Dictionary:
 	if demand == null or demand.snapshot_id.is_empty():
 		return _reject("DEMAND_SNAPSHOT_REQUIRED", "arrival realization requires a demand snapshot identity")
+	if _visitor_manager != null and _visitor_manager.get_active_visitor_count() >= VisitorManager.MAX_VISITORS:
+		return _reject("MAX_ACTIVE_VISITORS_REACHED", "the global active visitor budget is full")
 	var initial: Dictionary = allocate_source(demand)
 	if not bool(initial.get("valid", false)):
 		return initial
@@ -115,7 +120,10 @@ func realize_arrival(demand: ArrivalDemandSnapshot) -> Dictionary:
 	if not bool(validation.get("valid", false)):
 		return _abort(owner_token, token, prepared, validation.get("diagnostics", []))
 	token = validation.get("token", null) as ArrivalSourceValidationToken
-	prepared = _visitor_manager.prepare_detached_visitor(source_id, source, demand)
+	var bridged_source: Dictionary = _legacy_spawn_adapter.bridge_selected_source(source_id, source)
+	if not bool(bridged_source.get("valid", false)):
+		return _abort(owner_token, token, prepared, bridged_source.get("diagnostics", []))
+	prepared = _visitor_manager.prepare_detached_visitor(String(bridged_source.get("arrival_source_id", "")), bridged_source.get("source", {}), demand)
 	if not bool(prepared.get("valid", false)):
 		return _abort(owner_token, token, prepared, prepared.get("diagnostics", []))
 	var current: Dictionary = _capture_context()
@@ -151,13 +159,25 @@ func realize_arrival(demand: ArrivalDemandSnapshot) -> Dictionary:
 
 ## Select an exit source using the same canonical ordering as entry.
 func select_exit_source() -> Dictionary:
+	return revalidate_exit_source("")
+
+
+## Revalidate an in-flight exit against current H3/H5/H6 facts. If the
+## selected source is no longer eligible, the first current canonical source
+## is returned; no coordinate-based fallback is permitted.
+func revalidate_exit_source(current_source_id: String) -> Dictionary:
 	var context: Dictionary = _capture_context()
 	if not bool(context.get("valid", false)):
 		return _reject_diagnostics(context.get("diagnostics", []))
 	var candidates: Array[Dictionary] = context.get("candidates", [])
 	if candidates.is_empty():
 		return _reject("NO_ELIGIBLE_EXIT_SOURCE", "no eligible source is available for visitor exit")
-	return {"valid": true, "source": candidates[0].duplicate(true), "revisions": context["revisions"].duplicate(true), "diagnostics": []}
+	var selected: Dictionary = candidates[0]
+	if not current_source_id.is_empty():
+		var current: Dictionary = _source_by_id(candidates, current_source_id)
+		if not current.is_empty():
+			selected = current
+	return {"valid": true, "source": selected.duplicate(true), "revisions": context["revisions"].duplicate(true), "diagnostics": []}
 
 
 func _capture_context() -> Dictionary:
@@ -187,7 +207,7 @@ func _capture_context() -> Dictionary:
 	var candidates: Array[Dictionary] = []
 	for entry: Dictionary in _gateway_eligibility.entries:
 		var source_id: String = String(entry.get("arrival_source_id", ""))
-		if not bool(entry.get("eligible", false)) or not attachments.has(source_id):
+		if not bool(entry.get("structurally_eligible", false)) or not attachments.has(source_id):
 			continue
 		var attachment: Dictionary = attachments[source_id]
 		if String(attachment.get("mode", "")) != "PEDESTRIAN":

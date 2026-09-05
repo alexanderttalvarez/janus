@@ -1,9 +1,12 @@
 ## VisitorManager — Centralized visitor lifecycle, tick handling, and culling.
 ##
 ## Visitors are prepared and committed through ArrivalCoordinator, then advance
-## through the pedestrian ring into the building. The manager owns lifecycle and culling.
+## through the public pedestrian ring to parcel-door service proxies. The manager owns lifecycle and culling.
 class_name VisitorManager
 extends Node
+
+signal visitor_purchase_result_committed(result: Dictionary)
+signal visitor_metrics_snapshot_changed(snapshot: Dictionary)
 
 
 ## All visitors, visible or not.
@@ -11,6 +14,18 @@ var all_visitors: Array[VisitorData] = []
 
 ## Visitor ID counter.
 var _visitor_counter: int = 0
+
+var _service_proxies: Dictionary = {}
+var _proxy_queues: Dictionary = {}
+var _purchase_results: Dictionary = {}
+var _metric_revision: int = 0
+var _metric_day: int = 0
+var _daily_arrivals: int = 0
+var _finalized_arrival_total: int = 0
+var _finalized_day_count: int = 0
+var _metrics_initialized: bool = true
+var _route_counter: int = 0
+const MAX_REPATH_ATTEMPTS: int = 3
 
 ## Current floor for culling.
 var _current_floor: String = "G"
@@ -22,7 +37,7 @@ var _current_zoom: float = 20.0
 const ZOOM_HIDE_THRESHOLD: float = 35.0
 
 ## Maximum active visitors for the current MVP.
-const MAX_VISITORS: int = 20
+const MAX_VISITORS: int = 200
 
 ## Maximum visible visitor Node3Ds supported by the architecture.
 const MAX_VISIBLE_VISITORS: int = 60
@@ -59,6 +74,192 @@ func get_active_visitor_count() -> int:
 	return all_visitors.size()
 
 
+func publish_service_proxies(proxies: Array[Dictionary]) -> Dictionary:
+	var next_proxies: Dictionary = {}
+	for proxy_data: Dictionary in proxies:
+		var proxy := VisitorServiceProxy.new()
+		proxy.configure(proxy_data)
+		if not bool(proxy.validate().get("valid", false)):
+			continue
+		if not bool(proxy_data.get("tenant_active", false)) or not bool(proxy_data.get("public_corridor_reachable", false)) or not bool(proxy_data.get("proxy_enabled", false)):
+			continue
+		next_proxies[String(proxy_data["parcel_door_proxy_id"])] = proxy_data.duplicate(true)
+	_service_proxies = next_proxies
+	return {"valid": true, "proxy_count": _service_proxies.size(), "diagnostics": []}
+
+
+func select_service_proxy(_visitor_id: String) -> Dictionary:
+	var candidates: Array[Dictionary] = []
+	for proxy: Dictionary in _service_proxies.values():
+		candidates.append(proxy)
+	return VisitorServiceProxy.select_canonical(candidates)
+
+
+## Capture one detached, eligible proxy snapshot for a visitor behavior decision.
+func capture_service_proxy_snapshot(visitor_id: String) -> Dictionary:
+	var selected: Dictionary = select_service_proxy(visitor_id)
+	if not bool(selected.get("valid", false)):
+		return selected
+	var proxy: Dictionary = selected["proxy"].duplicate(true)
+	if not proxy.get("corridor_anchor_position", null) is Vector3:
+		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	return {"valid": true, "visitor_id": visitor_id, "proxy": proxy, "proxy_revision": int(proxy["proxy_policy_revision"]), "topology_revision": int(proxy["topology_revision"]), "tenant_revision": int(proxy["tenant_revision"]), "diagnostics": []}
+
+
+## Revalidate a proxy against its captured immutable revisions before queue/use.
+func revalidate_service_proxy(proxy_id: String, proxy_revision: int, topology_revision: int, tenant_revision: int) -> Dictionary:
+	if not _service_proxies.has(proxy_id):
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_STALE"}]}
+	var proxy: Dictionary = _service_proxies[proxy_id]
+	if int(proxy.get("proxy_policy_revision", -1)) != proxy_revision or int(proxy.get("topology_revision", -1)) != topology_revision or int(proxy.get("tenant_revision", -1)) != tenant_revision:
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_STALE"}]}
+	if not bool(proxy.get("tenant_active", false)) or not bool(proxy.get("public_corridor_reachable", false)) or not bool(proxy.get("proxy_enabled", false)):
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_UNAVAILABLE"}]}
+	return {"valid": true, "proxy": proxy.duplicate(true), "diagnostics": []}
+
+
+## Request a route to a public-side proxy anchor. Route geometry is transient.
+func request_proxy_route(visitor_id: String, snapshot: Dictionary) -> Dictionary:
+	var visitor: VisitorData = _find_visitor(visitor_id)
+	if visitor == null or not bool(snapshot.get("valid", false)):
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_ROUTE_REQUEST_INVALID"}]}
+	var proxy: Dictionary = snapshot.get("proxy", {})
+	var proxy_id: String = String(proxy.get("parcel_door_proxy_id", ""))
+	if proxy_id.is_empty():
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_INVALID"}]}
+	var anchor_variant: Variant = proxy.get("corridor_anchor_position", null)
+	if not anchor_variant is Vector3:
+		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	var anchor_position: Vector3 = anchor_variant
+	_route_counter += 1
+	visitor.target_proxy_id = proxy_id
+	visitor.target_proxy_policy_revision = int(snapshot.get("proxy_revision", -1))
+	visitor.target_topology_revision = int(snapshot.get("topology_revision", -1))
+	visitor.target_tenant_revision = int(snapshot.get("tenant_revision", -1))
+	visitor.route_request_id = "visitor_route_%d" % _route_counter
+	visitor.route_repath_attempts = 0
+	visitor.current_state = "moving_to_proxy"
+	visitor.target_position = anchor_position
+	if visitor.is_visible and is_instance_valid(visitor.visual_node):
+		var visual := visitor.visual_node as Visitor
+		var route_variant: Variant = proxy.get("public_corridor_path", [])
+		if route_variant is Array and not route_variant.is_empty():
+			var route: Array[Vector3] = []
+			for point: Variant in route_variant:
+				if point is Vector3:
+					route.append(point)
+			if not route.is_empty():
+				visual.set_path(route)
+			else:
+				visual.set_target(anchor_position)
+		else:
+			visual.set_target(anchor_position)
+	return {"valid": true, "route_request_id": visitor.route_request_id, "target_proxy_id": proxy_id, "diagnostics": []}
+
+
+func cancel_proxy_target(visitor_id: String) -> Dictionary:
+	var visitor: VisitorData = _find_visitor(visitor_id)
+	if visitor == null:
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_NOT_FOUND"}]}
+	_clear_proxy_target(visitor)
+	if visitor.current_state == "moving_to_proxy" or visitor.current_state == "queued":
+		visitor.current_state = "moving"
+	return {"valid": true, "diagnostics": []}
+
+
+func _find_visitor(visitor_id: String) -> VisitorData:
+	for visitor: VisitorData in all_visitors:
+		if visitor.id == visitor_id:
+			return visitor
+	return null
+
+
+func enqueue_service_proxy(visitor_id: String, proxy_id: String) -> Dictionary:
+	if not _service_proxies.has(proxy_id):
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_UNAVAILABLE"}]}
+	var proxy: Dictionary = _service_proxies[proxy_id]
+	if not bool(proxy.get("queue_accepting", false)):
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_QUEUE_UNAVAILABLE"}]}
+	var queue: Array[String] = []
+	for queued_id: Variant in _proxy_queues.get(proxy_id, []):
+		if queued_id is String:
+			queue.append(queued_id)
+	if queue.has(visitor_id):
+		return {"valid": true, "already_queued": true, "diagnostics": []}
+	queue.append(visitor_id)
+	_proxy_queues[proxy_id] = queue
+	return {"valid": true, "diagnostics": []}
+
+
+func cancel_service_proxy(visitor_id: String, proxy_id: String) -> void:
+	if not _proxy_queues.has(proxy_id):
+		return
+	var queue: Array[String] = []
+	for queued_id: Variant in _proxy_queues[proxy_id]:
+		if queued_id is String:
+			queue.append(queued_id)
+	queue.erase(visitor_id)
+	if queue.is_empty():
+		_proxy_queues.erase(proxy_id)
+	else:
+		_proxy_queues[proxy_id] = queue
+
+
+func complete_service_proxy(visitor_id: String, proxy_id: String, simulation_day: int) -> Dictionary:
+	if _purchase_results.has(visitor_id):
+		return {"valid": false, "diagnostics": [{"code": "VISITOR_PURCHASE_ALREADY_COMMITTED"}]}
+	var queue: Array[String] = []
+	for queued_id: Variant in _proxy_queues.get(proxy_id, []):
+		if queued_id is String:
+			queue.append(queued_id)
+	if not queue.has(visitor_id) or not _service_proxies.has(proxy_id):
+		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_UNAVAILABLE"}]}
+	var proxy: Dictionary = _service_proxies[proxy_id]
+	queue.erase(visitor_id)
+	if queue.is_empty():
+		_proxy_queues.erase(proxy_id)
+	else:
+		_proxy_queues[proxy_id] = queue
+	var result := {"visitor_id": visitor_id, "parcel_door_proxy_id": proxy_id, "tenant_id": String(proxy["tenant_id"]), "parcel_id": String(proxy["parcel_id"]), "door_id": String(proxy["door_id"]), "result_kind": "proxy_interaction_completed", "simulation_day": simulation_day, "proxy_policy_revision": int(proxy["proxy_policy_revision"])}
+	_purchase_results[visitor_id] = result.duplicate(true)
+	visitor_purchase_result_committed.emit(result.duplicate(true))
+	return {"valid": true, "result": result, "diagnostics": []}
+
+
+func get_metrics_snapshot() -> Dictionary:
+	var average_available := _finalized_day_count > 0
+	var average: float = float(_finalized_arrival_total) / float(_finalized_day_count) if average_available else 0.0
+	return {"schema_version": VisitorMetricsSnapshot.SCHEMA_VERSION, "simulation_day": _metric_day, "metric_revision": _metric_revision, "current_visitors": all_visitors.size(), "daily_arrivals": _daily_arrivals, "daily_average_arrivals": average, "finalized_arrival_total": _finalized_arrival_total, "finalized_day_count": _finalized_day_count, "average_available": average_available, "provenance": "visitor_metrics_revision_%d" % _metric_revision}
+
+
+func on_sim_day_passed(simulation_day: int) -> void:
+	if simulation_day != _metric_day:
+		if _metrics_initialized:
+			_finalized_arrival_total += _daily_arrivals
+			_finalized_day_count += 1
+		_metrics_initialized = true
+		_metric_day = simulation_day
+		_daily_arrivals = 0
+		_metric_revision += 1
+		visitor_metrics_snapshot_changed.emit(get_metrics_snapshot())
+
+
+func _clear_proxy_target(visitor: VisitorData) -> void:
+	if visitor.queued_proxy_id != "":
+		cancel_service_proxy(visitor.id, visitor.queued_proxy_id)
+	visitor.target_proxy_id = ""
+	visitor.target_proxy_policy_revision = -1
+	visitor.target_topology_revision = -1
+	visitor.target_tenant_revision = -1
+	visitor.route_request_id = ""
+	visitor.route_repath_attempts = 0
+	visitor.queued_proxy_id = ""
+	if visitor.is_visible and is_instance_valid(visitor.visual_node):
+		var visual := visitor.visual_node as Visitor
+		if visual:
+			visual.clear_target()
+
+
 func _ready() -> void:
 	_pedestrian_area = get_tree().get_first_node_in_group("pedestrian_walkable") as PedestrianArea
 	_visual_container = get_tree().current_scene.get_node_or_null("World/Visitors") as Node3D
@@ -83,9 +284,10 @@ func _ready() -> void:
 
 
 ## Called by TimeManager on each visitor_tick.
-func on_visitor_tick() -> void:
+func on_visitor_tick(_tick: int = 0) -> void:
 	if _arrival_coordinator != null:
 		_arrival_coordinator.on_visitor_tick()
+	_revalidate_leaving_visitors()
 	_decay_visitor_needs()
 	_sync_data_positions()
 	_apply_culling()
@@ -119,28 +321,16 @@ func _set_next_pedestrian_target(visitor: VisitorData) -> void:
 			visual.set_target(visitor.target_position)
 
 
-## Send a visitor through the next fixed exterior door into the building.
-func _begin_visitor_entry(visitor: VisitorData, side: int) -> void:
-	if _grid_manager == null:
+## Select a public-corridor parcel-door proxy without entering the tenant parcel.
+func _begin_visitor_entry(visitor: VisitorData, _side: int) -> void:
+	var snapshot: Dictionary = capture_service_proxy_snapshot(visitor.id)
+	if not bool(snapshot.get("valid", false)):
 		_set_next_pedestrian_target(visitor)
 		return
-
-	var interior_pos := _get_door_interior_position(side)
-	var exterior_pos := _get_door_exterior_position(side)
-	if not _grid_manager.has_door_between(interior_pos, exterior_pos):
+	var route_result: Dictionary = request_proxy_route(visitor.id, snapshot)
+	if not bool(route_result.get("valid", false)):
+		_clear_proxy_target(visitor)
 		_set_next_pedestrian_target(visitor)
-		return
-	if not _grid_manager.is_walkable(interior_pos.x, interior_pos.y):
-		_set_next_pedestrian_target(visitor)
-		return
-
-	visitor.entry_door_side = int(side)
-	visitor.current_state = "entering"
-	visitor.target_position = _grid_manager.grid_to_world(interior_pos.x, interior_pos.y, GridManager.GROUND_FLOOR)
-	if visitor.is_visible and is_instance_valid(visitor.visual_node):
-		var visual := visitor.visual_node as Visitor
-		if visual:
-			visual.set_target(visitor.target_position)
 
 
 func _on_visitor_target_reached(visitor: VisitorData) -> void:
@@ -150,15 +340,28 @@ func _on_visitor_target_reached(visitor: VisitorData) -> void:
 	# serialized position synchronized before choosing the next grid path.
 	visitor.position = visitor.target_position
 	if visitor.current_state == "leaving":
+		if _arrival_coordinator == null:
+			remove_visitor(visitor.id)
+			return
+		var exit_result: Dictionary = _arrival_coordinator.revalidate_exit_source(visitor.arrival_source_id)
+		if not bool(exit_result.get("valid", false)):
+			visitor.current_state = "leaving_waiting"
+			if visitor.is_visible and is_instance_valid(visitor.visual_node):
+				var waiting_visual := visitor.visual_node as Visitor
+				if waiting_visual:
+					waiting_visual.clear_target()
+			return
+		var exit_source: Dictionary = exit_result.get("source", {})
+		if String(exit_source.get("arrival_source_id", "")) != visitor.arrival_source_id or visitor.target_position != _source_position(exit_source):
+			_set_exit_target(visitor, exit_source)
+			return
 		remove_visitor(visitor.id)
 		return
-	if visitor.current_state == "entering":
-		visitor.location_type = "building"
-		visitor.current_state = "inside_wandering"
-		_set_interior_target(visitor)
+	if visitor.current_state == "moving_to_proxy":
+		_complete_proxy_interaction(visitor)
 		return
-	if visitor.location_type == "building":
-		_set_interior_target(visitor)
+	if visitor.current_state == "queued":
+		_complete_proxy_interaction(visitor)
 		return
 
 	var door_side := _get_door_side_for_waypoint(visitor.waypoint_index)
@@ -171,64 +374,37 @@ func _on_visitor_target_reached(visitor: VisitorData) -> void:
 		_set_next_pedestrian_target(visitor)
 
 
-func _set_interior_target(visitor: VisitorData) -> void:
-	if _grid_manager == null:
+func _complete_proxy_interaction(visitor: VisitorData) -> void:
+	var validation: Dictionary = revalidate_service_proxy(
+		visitor.target_proxy_id,
+		visitor.target_proxy_policy_revision,
+		visitor.target_topology_revision,
+		visitor.target_tenant_revision
+	)
+	if not bool(validation.get("valid", false)):
+		var repath_attempts: int = visitor.route_repath_attempts + 1
+		_clear_proxy_target(visitor)
+		if repath_attempts <= MAX_REPATH_ATTEMPTS:
+			var fresh_snapshot: Dictionary = capture_service_proxy_snapshot(visitor.id)
+			if bool(fresh_snapshot.get("valid", false)) and bool(request_proxy_route(visitor.id, fresh_snapshot).get("valid", false)):
+				visitor.route_repath_attempts = repath_attempts
+				return
+		visitor.current_state = "moving"
 		return
-	var floor_grid := _grid_manager.get_floor_grid(GridManager.DEFAULT_PLOT, GridManager.GROUND_FLOOR)
-	if floor_grid == null:
+	var queue_result: Dictionary = enqueue_service_proxy(visitor.id, visitor.target_proxy_id)
+	if not bool(queue_result.get("valid", false)):
+		_clear_proxy_target(visitor)
+		visitor.current_state = "moving"
 		return
-
-	var start_pos := _grid_manager.world_to_grid(visitor.position)
-	for _attempt in range(24):
-		var target_pos := Vector2i(
-			randi_range(1, maxi(1, floor_grid.width - 2)),
-			randi_range(1, maxi(1, floor_grid.height - 2))
-		)
-		var target_tile := floor_grid.get_tile(target_pos.x, target_pos.y)
-		if target_tile == null or not floor_grid.is_walkable(target_pos.x, target_pos.y) or not target_tile.zone_id.is_empty():
-			continue
-		var grid_path := _find_floor_path(floor_grid, start_pos, target_pos)
-		if grid_path.size() < 2:
-			continue
-		var world_path: Array[Vector3] = []
-		for index in range(1, grid_path.size()):
-			var grid_pos: Vector2i = grid_path[index]
-			world_path.append(_grid_manager.grid_to_world(grid_pos.x, grid_pos.y, GridManager.GROUND_FLOOR))
-		visitor.current_state = "inside_wandering"
-		visitor.target_position = world_path[world_path.size() - 1]
-		if visitor.is_visible and is_instance_valid(visitor.visual_node):
-			var visual := visitor.visual_node as Visitor
-			if visual:
-				visual.set_path(world_path)
-		return
-
-
-func _find_floor_path(floor_grid: FloorGrid, start: Vector2i, goal: Vector2i) -> Array[Vector2i]:
-	if not floor_grid.is_walkable(start.x, start.y) or not floor_grid.is_walkable(goal.x, goal.y):
-		return []
-	var queue: Array[Vector2i] = [start]
-	var queue_index: int = 0
-	var visited: Dictionary = {start: true}
-	var came_from: Dictionary = {}
-	while queue_index < queue.size():
-		var current: Vector2i = queue[queue_index]
-		queue_index += 1
-		if current == goal:
-			break
-		for neighbor: Vector2i in floor_grid.get_walkable_neighbors(current.x, current.y):
-			if visited.has(neighbor):
-				continue
-			visited[neighbor] = true
-			came_from[neighbor] = current
-			queue.append(neighbor)
-	if not visited.has(goal):
-		return []
-	var path: Array[Vector2i] = [goal]
-	var current_pos := goal
-	while current_pos != start:
-		current_pos = came_from[current_pos]
-		path.push_front(current_pos)
-	return path
+	visitor.queued_proxy_id = visitor.target_proxy_id
+	visitor.current_state = "queued"
+	var result: Dictionary = complete_service_proxy(visitor.id, visitor.target_proxy_id, _metric_day)
+	if bool(result.get("valid", false)):
+		_clear_proxy_target(visitor)
+		visitor.current_state = "moving"
+	else:
+		_clear_proxy_target(visitor)
+		visitor.current_state = "moving"
 
 
 func _on_zone_created(zone_id: String, _zone_type: String, _tile_count: int) -> void:
@@ -279,8 +455,12 @@ func _repath_visitors_after_door_change() -> void:
 				visual.clear_target()
 		if visitor.current_state == "entering":
 			_set_next_pedestrian_target(visitor)
-		elif visitor.location_type == "building":
-			_set_interior_target(visitor)
+		elif visitor.current_state == "moving_to_proxy":
+			var snapshot: Dictionary = capture_service_proxy_snapshot(visitor.id)
+			if bool(snapshot.get("valid", false)):
+				request_proxy_route(visitor.id, snapshot)
+			else:
+				cancel_proxy_target(visitor.id)
 
 
 func _on_zone_changed(zone_id: String) -> void:
@@ -301,8 +481,6 @@ func _on_zone_changed(zone_id: String) -> void:
 		var target_tile := _grid_manager.world_to_grid(visitor.target_position)
 		if zone.tiles.has(current_tile) or zone.tiles.has(target_tile):
 			remove_ids.append(visitor.id)
-		elif visitor.location_type == "building":
-			_set_interior_target(visitor)
 	for visitor_id: String in remove_ids:
 		remove_visitor(visitor_id)
 
@@ -459,18 +637,15 @@ func request_visitor_leave(visitor_id: String) -> void:
 	if _arrival_coordinator != null:
 		var selected: Dictionary = _arrival_coordinator.select_exit_source()
 		if not bool(selected.get("valid", false)):
+			for waiting_visitor: VisitorData in all_visitors:
+				if waiting_visitor.id == visitor_id:
+					waiting_visitor.current_state = "leaving_waiting"
 			return
 		var source: Dictionary = selected.get("source", {})
 		for visitor: VisitorData in all_visitors:
 			if visitor.id != visitor_id or visitor.current_state == "leaving":
 				continue
-			visitor.arrival_source_id = String(source.get("arrival_source_id", ""))
-			visitor.current_state = "leaving"
-			visitor.target_position = _source_position(source)
-			if visitor.is_visible and is_instance_valid(visitor.visual_node):
-				var visual := visitor.visual_node as Visitor
-				if visual:
-					visual.set_target(visitor.target_position)
+			_set_exit_target(visitor, source)
 			return
 		return
 
@@ -507,12 +682,17 @@ func prepare_detached_visitor(arrival_source_id: String, source_record: Dictiona
 func commit_prepared_visitor(prepared: Dictionary) -> Dictionary:
 	if not commit_arrival_enabled:
 		return {"valid": false, "diagnostics": [{"code": "VISITOR_COMMIT_FAILED", "message": "visitor commit was rejected"}]}
+	if all_visitors.size() >= MAX_VISITORS:
+		return {"valid": false, "diagnostics": [{"code": "MAX_ACTIVE_VISITORS_REACHED", "message": "the global active visitor budget is full"}]}
 	if _arrival_commit_gate != null and not _arrival_commit_gate.is_held():
 		return {"valid": false, "diagnostics": [{"code": "ARRIVAL_GATE_REQUIRED", "message": "visitor state may only commit while the arrival gate is held"}]}
 	var visitor: VisitorData = prepared.get("visitor", null) as VisitorData
 	if visitor == null or String(prepared.get("visitor_id", "")) != visitor.id:
 		return {"valid": false, "diagnostics": [{"code": "VISITOR_RECORD_INVALID", "message": "prepared visitor record is invalid"}]}
 	all_visitors.append(visitor)
+	_daily_arrivals += 1
+	_metric_revision += 1
+	visitor_metrics_snapshot_changed.emit(get_metrics_snapshot())
 	return {"valid": true, "visitor": visitor, "diagnostics": []}
 
 
@@ -521,10 +701,40 @@ func rollback_prepared_visitor(prepared: Dictionary) -> void:
 	var visitor_id: String = String(prepared.get("visitor_id", ""))
 	for index: int in range(all_visitors.size() - 1, -1, -1):
 		if all_visitors[index].id == visitor_id:
+			_clear_proxy_target(all_visitors[index])
 			_hide_visitor(all_visitors[index])
 			all_visitors.remove_at(index)
 			break
 	_visitor_counter = int(prepared.get("counter_before", _visitor_counter))
+	_daily_arrivals = maxi(_daily_arrivals - 1, 0)
+	_metric_revision += 1
+
+
+func _set_exit_target(visitor: VisitorData, source: Dictionary) -> void:
+	visitor.arrival_source_id = String(source.get("arrival_source_id", ""))
+	visitor.current_state = "leaving"
+	visitor.target_position = _source_position(source)
+	if visitor.is_visible and is_instance_valid(visitor.visual_node):
+		var visual := visitor.visual_node as Visitor
+		if visual:
+			visual.set_target(visitor.target_position)
+
+
+func _revalidate_leaving_visitors() -> void:
+	if _arrival_coordinator == null:
+		return
+	for visitor: VisitorData in all_visitors:
+		if visitor.current_state != "leaving" and visitor.current_state != "leaving_waiting":
+			continue
+		var result: Dictionary = _arrival_coordinator.revalidate_exit_source(visitor.arrival_source_id)
+		if not bool(result.get("valid", false)):
+			visitor.current_state = "leaving_waiting"
+			if visitor.is_visible and is_instance_valid(visitor.visual_node):
+				var waiting_visual := visitor.visual_node as Visitor
+				if waiting_visual:
+					waiting_visual.clear_target()
+			continue
+		_set_exit_target(visitor, result.get("source", {}))
 
 
 func _source_position(source_record: Dictionary) -> Vector3:
@@ -541,11 +751,14 @@ func remove_visitor(visitor_id: String) -> void:
 	for index in range(all_visitors.size() - 1, -1, -1):
 		if all_visitors[index].id == visitor_id:
 			var visitor := all_visitors[index]
+			_clear_proxy_target(visitor)
 			_hide_visitor(visitor)
 			var event_bus: Node = get_node_or_null("/root/EventBus")
 			if event_bus != null:
 				event_bus.emit_signal("visitor_left", visitor_id, visitor.satisfaction)
 			all_visitors.remove_at(index)
+			_metric_revision += 1
+			visitor_metrics_snapshot_changed.emit(get_metrics_snapshot())
 			break
 
 
@@ -570,20 +783,38 @@ func serialize() -> Dictionary:
 			"entry_door_side": visitor.entry_door_side,
 			"arrival_source_id": visitor.arrival_source_id,
 			"waypoint_index": visitor.waypoint_index,
-			"current_state": visitor.current_state,
+			"current_state": "moving",
 			"budget": visitor.budget,
 			"satisfaction": visitor.satisfaction,
 		})
-	return {"visitors": data, "counter": _visitor_counter}
+	var purchase_results: Array[Dictionary] = []
+	for result: Dictionary in _purchase_results.values():
+		purchase_results.append(result.duplicate(true))
+	return {"visitors": data, "counter": _visitor_counter, "purchase_results": purchase_results, "metric_day": _metric_day, "daily_arrivals": _daily_arrivals, "finalized_arrival_total": _finalized_arrival_total, "finalized_day_count": _finalized_day_count, "metric_revision": _metric_revision}
 
 
 func deserialize(data: Dictionary) -> void:
 	for visitor: VisitorData in all_visitors:
 		_hide_visitor(visitor)
 	all_visitors.clear()
+	_proxy_queues.clear()
+	_purchase_results.clear()
+	_route_counter = 0
 	_visitor_counter = data.get("counter", 0)
+	_metric_revision = int(data.get("metric_revision", 0))
+	_metric_day = int(data.get("metric_day", 0))
+	_metrics_initialized = true
+	_daily_arrivals = int(data.get("daily_arrivals", 0))
+	_finalized_arrival_total = int(data.get("finalized_arrival_total", 0))
+	_finalized_day_count = int(data.get("finalized_day_count", 0))
+
+	for result_data: Dictionary in data.get("purchase_results", []):
+		if result_data is Dictionary and result_data.has("visitor_id"):
+			_purchase_results[String(result_data["visitor_id"])] = result_data.duplicate(true)
 
 	for visitor_data: Dictionary in data.get("visitors", []):
+		if all_visitors.size() >= MAX_VISITORS:
+			break
 		var visitor := VisitorData.new()
 		if visitor_data.has("id"):
 			visitor.id = String(visitor_data["id"])
@@ -596,11 +827,11 @@ func deserialize(data: Dictionary) -> void:
 			position_data.get("z", 0.0)
 		)
 		visitor.floor_level = visitor_data.get("floor_level", "G")
-		visitor.location_type = visitor_data.get("location_type", "pedestrian_area")
+		visitor.location_type = "pedestrian_area"
 		visitor.entry_door_side = visitor_data.get("entry_door_side", 0)
 		visitor.arrival_source_id = visitor_data.get("arrival_source_id", "")
 		visitor.waypoint_index = visitor_data.get("waypoint_index", 0)
-		visitor.current_state = visitor_data.get("current_state", "moving")
+		visitor.current_state = "moving"
 		visitor.budget = visitor_data.get("budget", 0)
 		visitor.satisfaction = visitor_data.get("satisfaction", 50)
 		visitor.target_position = _pedestrian_area.get_waypoint(visitor.waypoint_index) if _pedestrian_area else visitor.position

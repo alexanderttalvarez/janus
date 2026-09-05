@@ -46,5 +46,18 @@ var typologies: Dictionary = {}  # Dictionary[Vector2i, GridTile.TileTypology]
 ## Display name for this zone (optional, for UI).
 @export var zone_name: String = ""
 
+## Player-set daily rent in centi-Kreds per rentable tile.
+## A negative value means recommendation initialization is pending.
+@export var daily_rent_rate_centi_kreds: int = -1
+
+## Monotonic revision for committed rate changes.
+@export var rate_revision: int = 0
+
+## Rate state is either READY or PENDING_RECOMMENDATION.
+@export var rate_state: String = "PENDING_RECOMMENDATION"
+
+## Detached recommendation provenance used to explain the current rate.
+var rate_recommendation_provenance: Dictionary = {}
+
 ## Valid parcel subdivisions created by ZoneSplitter after an accepted commit.
 var parcels: Array[Parcel] = []

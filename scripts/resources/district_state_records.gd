@@ -4,12 +4,14 @@ extends RefCounted
 ## H2 closed sparse authority-state validator. H3 owns lifecycle and mutation.
 
 const STATE_SCHEMA_VERSION: int = 2
-const DISTRICT_FIELDS: Array[String] = ["state_schema_version", "district_revision", "layout_id", "layout_definition_version", "definition_fingerprint", "plot_states", "street_segment_states", "arrival_source_states", "demolished_fixed_occupant_ids"]
+const DISTRICT_FIELDS: Array[String] = ["state_schema_version", "district_revision", "layout_id", "layout_definition_version", "definition_fingerprint", "plot_states", "street_segment_states", "arrival_source_states", "demolished_fixed_occupant_ids", "construction_schema_version", "construction_revision", "construction_records"]
 const PLOT_FIELDS: Array[String] = ["runtime_plot_id", "section_state_overrides", "floor_states"]
 const SECTION_FIELDS: Array[String] = ["runtime_section_id", "owned", "available"]
 const FLOOR_FIELDS: Array[String] = ["floor_id", "elevation", "acquired_cells", "constructed_cells"]
 const STREET_FIELDS: Array[String] = ["street_segment_id", "converted"]
 const SOURCE_FIELDS: Array[String] = ["arrival_source_id", "enabled"]
+const CONSTRUCTION_RECORD_FIELDS: Array[String] = ["construction_id", "kind", "plot_id", "cells", "shaft_cells", "lobby_cells", "connection"]
+const CONSTRUCTION_SCHEMA_VERSION: int = 1
 
 
 func create_baseline(snapshot: ResolvedDistrictSnapshot) -> Dictionary:
@@ -23,6 +25,9 @@ func create_baseline(snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 		"street_segment_states": [],
 		"arrival_source_states": [],
 		"demolished_fixed_occupant_ids": [],
+		"construction_schema_version": CONSTRUCTION_SCHEMA_VERSION,
+		"construction_revision": 0,
+		"construction_records": [],
 	}
 
 
@@ -34,10 +39,16 @@ func validate(state: Variant, snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 	_check_exact_fields(value, DISTRICT_FIELDS, "$", diagnostics)
 	_check_int(value, "state_schema_version", "$", diagnostics)
 	_check_int(value, "district_revision", "$", diagnostics)
+	_check_int(value, "construction_schema_version", "$", diagnostics)
+	_check_int(value, "construction_revision", "$", diagnostics)
 	if int(value.get("state_schema_version", -1)) != STATE_SCHEMA_VERSION:
 		_add(diagnostics, "STATE_SCHEMA_VERSION_INVALID", "$.state_schema_version", "state schema version must be 2")
 	if int(value.get("district_revision", -1)) < 0:
 		_add(diagnostics, "DISTRICT_REVISION_INVALID", "$.district_revision", "district revision must be nonnegative")
+	if int(value.get("construction_schema_version", -1)) != CONSTRUCTION_SCHEMA_VERSION:
+		_add(diagnostics, "CONSTRUCTION_SCHEMA_VERSION_INVALID", "$.construction_schema_version", "construction schema version must be 1")
+	if int(value.get("construction_revision", -1)) < 0:
+		_add(diagnostics, "CONSTRUCTION_REVISION_INVALID", "$.construction_revision", "construction revision must be nonnegative")
 	if String(value.get("layout_id", "")) != snapshot.get_layout_id():
 		_add(diagnostics, "LAYOUT_ID_MISMATCH", "$.layout_id", "state layout ID must match the snapshot")
 	if String(value.get("definition_fingerprint", "")) != snapshot.get_fingerprint():
@@ -54,6 +65,7 @@ func validate(state: Variant, snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 	_validate_street_states(value.get("street_segment_states", []), street_by_id, data, diagnostics)
 	_validate_source_states(value.get("arrival_source_states", []), source_by_id, diagnostics)
 	_validate_demolished(value.get("demolished_fixed_occupant_ids", []), occupant_by_id, diagnostics)
+	_validate_construction_records(value.get("construction_records", []), floor_by_id, allowed_cells_by_floor, diagnostics)
 	return {"valid": diagnostics.is_empty(), "state": value.duplicate(true) if diagnostics.is_empty() else {}, "diagnostics": diagnostics}
 
 
@@ -219,6 +231,56 @@ func _validate_demolished(value: Variant, occupant_by_id: Dictionary, diagnostic
 		if index > 0 and occupant_id <= previous_id:
 			_add(diagnostics, "STATE_ORDER_INVALID", path, "demolished occupant IDs must be stable-ID ascending")
 		previous_id = occupant_id
+
+
+func _validate_construction_records(value: Variant, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, diagnostics: Array[Dictionary]) -> void:
+	if not value is Array:
+		_add(diagnostics, "CONSTRUCTION_RECORDS_INVALID", "$.construction_records", "construction_records must be an array")
+		return
+	var previous_id: String = ""
+	var occupied: Dictionary = {}
+	for index: int in range(value.size()):
+		var path: String = "$.construction_records[%d]" % index
+		var record: Variant = value[index]
+		if not record is Dictionary:
+			_add(diagnostics, "CONSTRUCTION_RECORD_INVALID", path, "construction record must be an object")
+			continue
+		_check_exact_fields(record, CONSTRUCTION_RECORD_FIELDS, path, diagnostics)
+		_check_string(record, "construction_id", path, diagnostics)
+		_check_string(record, "kind", path, diagnostics)
+		_check_string(record, "plot_id", path, diagnostics)
+		var construction_id: String = String(record.get("construction_id", ""))
+		if construction_id.is_empty() or (index > 0 and construction_id <= previous_id):
+			_add(diagnostics, "CONSTRUCTION_ORDER_INVALID", path, "construction records must be unique and stable-ID ascending")
+		previous_id = construction_id
+		var kind: String = String(record.get("kind", ""))
+		if not ["corridor", "stairs", "elevator", "operations_room"].has(kind):
+			_add(diagnostics, "CONSTRUCTION_TYPE_INVALID", path, "construction record kind is not approved")
+		var cells: Variant = record.get("cells", null)
+		if not cells is Array or cells.is_empty():
+			_add(diagnostics, "CONSTRUCTION_CELLS_INVALID", path, "construction record requires explicit cells")
+			continue
+		for cell: Variant in cells:
+			if not cell is Dictionary:
+				_add(diagnostics, "CONSTRUCTION_CELL_INVALID", path, "construction cells must be objects")
+				continue
+			var floor_id: String = String(cell.get("floor_id", ""))
+			var x: int = int(cell.get("x", -1))
+			var y: int = int(cell.get("y", -1))
+			var key: String = "%s:%d:%d" % [floor_id, x, y]
+			if not floor_by_id.has(floor_id) or not allowed_cells_by_floor.get(floor_id, {}).has("%d,%d" % [x, y]):
+				_add(diagnostics, "CONSTRUCTION_CELL_FORBIDDEN", path, "construction cell must belong to immutable floor rights")
+			if occupied.has(key):
+				_add(diagnostics, "CONSTRUCTION_CELL_OVERLAP", path, "one committed construction element occupies each tile")
+			occupied[key] = true
+			if typeof(cell.get("elevation", null)) != TYPE_INT:
+				_add(diagnostics, "CONSTRUCTION_CELL_INVALID", path, "construction cell elevation must be an integer")
+		var connection: Variant = record.get("connection", null)
+		if not connection is Dictionary:
+			_add(diagnostics, "CONSTRUCTION_CONNECTION_INVALID", path, "construction connection metadata must be an object")
+		for field: String in ["shaft_cells", "lobby_cells"]:
+			if not (record.get(field, null) is Array):
+				_add(diagnostics, "CONSTRUCTION_CELL_SET_INVALID", path, "%s must be an array" % field)
 
 
 func _validate_cells(value: Array, path: String, diagnostics: Array[Dictionary]) -> void:

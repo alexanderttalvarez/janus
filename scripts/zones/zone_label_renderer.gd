@@ -190,7 +190,7 @@ func _get_active_floor() -> Floor:
 		return null
 	for child in projection_root.get_children():
 		var floor := child as Floor
-		if floor != null and floor.floor_level == _active_floor_level:
+		if floor != null and floor.floor_level == _active_floor_level and floor.plot_id == projection_plot_id:
 			return floor
 	return null
 
@@ -203,7 +203,7 @@ func _find_floor(plot_id: String, floor_level: String) -> Floor:
 		return null
 	for child in projection_root.get_children():
 		var floor := child as Floor
-		if floor != null and floor.plot_id == plot_id and floor.floor_level == floor_level:
+		if floor != null and floor.plot_id == projection_plot_id and floor.floor_level == floor_level:
 			return floor
 	return null
 

@@ -1,181 +1,311 @@
-## TenantManager — Lifecycle management, application evaluation, viability tracking.
-## Tenants apply to vacant zones, construct, operate, and may close.
-## Wired to TimeManager for daily evaluation and EconomyManager for rent.
+## TenantManager — authoritative tenant lifecycle and rent snapshot owner.
 class_name TenantManager
 extends Node
 
+signal tenant_bound(tenant_id: String, zone_id: String, parcel_id: String)
+signal tenant_released(tenant_id: String, zone_id: String, parcel_id: String)
+signal rent_snapshot_published(snapshot: Dictionary)
+signal spatial_context_invalidated(diagnostics: Array[Dictionary])
+signal tenant_application_evaluated(result: Dictionary)
 
-## All tenants, active or closed.
-var all_tenants: Array[TenantData] = []
+const LIFECYCLE_STATES: Array[String] = ["candidate", "exclusivity", "constructing", "operating", "critical", "closing", "closed"]
+const SNAPSHOT_SCHEMA_VERSION: int = 1
 
-## Tenant ID counter.
+var all_tenants: Array[Dictionary] = []
 var _tenant_counter: int = 0
-
-## Reference to ZoneManager for zone queries.
+var _authority_revision: int = 0
+var _session_seed: int = 0
+var _evaluation_ordinals: Dictionary = {}
+var _next_evaluations: Dictionary = {}
 var _zone_manager: ZoneManager
+var _last_rent_snapshot: Dictionary = {}
+var _spatial_context: SpatialEvaluationContext
+var _diagnostics: Array[Dictionary] = []
+var _evaluation_results: Dictionary = {}
 
 
 func _ready() -> void:
-	pass  # Initialized by main_game.
+	pass
 
 
-## Set reference to ZoneManager (wire after scene loads).
-func initialize(zone_manager: ZoneManager) -> void:
+func initialize(zone_manager: ZoneManager, session_seed: int = 0) -> void:
 	_zone_manager = zone_manager
+	_session_seed = maxi(session_seed, 0)
 
 
-# ── Application System ─────────────────────────────────────────────────
-
-## Called on sim_day_passed to evaluate vacant zones and construction progress.
-func on_sim_day_passed(sim_day: int) -> void:
-	_evaluate_vacant_zones()
-	_update_construction(sim_day)
-	_check_viability()
+func configure_session_seed(session_seed: int) -> void:
+	_session_seed = maxi(session_seed, 0)
 
 
-## Evaluate all vacant zones and potentially generate a tenant application.
-func _evaluate_vacant_zones() -> void:
-	if _zone_manager == null:
-		return
-	for zone_id: String in _zone_manager.zones:
-		var zone: ZoneData = _zone_manager.zones[zone_id]
-		if zone.parcels.is_empty():
+func authority_revision() -> int:
+	return _authority_revision
+
+
+func diagnostics() -> Array[Dictionary]:
+	return _diagnostics.duplicate(true)
+
+
+func generate_candidate(zone_id: String, parcel_id: String, zone_type: String, minimum_tiles: int, legal_subtype_ids: Array, neighbor_subtype_ids: Array, supported_tier: int, sim_day: int, policy: TenantCandidatePolicy) -> Dictionary:
+	if policy == null or not bool(policy.validate_content().get("valid", false)):
+		return _record_unavailable_evaluation(parcel_id, sim_day, "CANDIDATE_TIER_POLICY_UNAVAILABLE")
+	var ordinal: int = int(_evaluation_ordinals.get(parcel_id, 0))
+	var selection := policy.select(zone_type, supported_tier, legal_subtype_ids, neighbor_subtype_ids, minimum_tiles, _session_seed, parcel_id, ordinal)
+	if not bool(selection.get("valid", false)):
+		return _record_unavailable_evaluation(parcel_id, sim_day, String(selection.get("diagnostics", [{"code": "CANDIDATE_POLICY_NO_LEGAL_PROFILE"}])[0].get("code", "CANDIDATE_POLICY_NO_LEGAL_PROFILE")))
+	var profile: Dictionary = selection["profile"]
+	return {
+		"valid": true,
+		"candidate_id": "candidate_%s_%d" % [parcel_id, ordinal],
+		"parcel_id": parcel_id,
+		"zone_id": zone_id,
+		"subtype_id": String(profile["subtype_id"]),
+		"candidate_profile_id": String(profile["profile_id"]),
+		"candidate_tier": int(profile["tier"]),
+		"selectivity": int(selection["selectivity"]),
+		"policy_revision": int(selection["policy_revision"]),
+		"provenance": String(selection["provenance"]),
+		"evaluation_ordinal": ordinal,
+		"evaluation_day": sim_day,
+		"diagnostics": [],
+	}
+
+
+func _record_unavailable_evaluation(parcel_id: String, sim_day: int, code: String) -> Dictionary:
+	var result := {"valid": false, "outcome": "deferred", "diagnostics": [{"code": code}], "next_evaluation_after_days": 3}
+	return _record_application_result(parcel_id, sim_day, result)
+
+
+func register_candidate(candidate: Dictionary, sim_day: int) -> Dictionary:
+	var diagnostics: Array[Dictionary] = []
+	for field: String in ["candidate_id", "parcel_id", "zone_id", "subtype_id", "candidate_profile_id"]:
+		if String(candidate.get(field, "")).is_empty():
+			diagnostics.append({"code": "TENANT_CANDIDATE_INVALID", "path": "$.%s" % field})
+	if diagnostics.size() > 0:
+		return {"committed": false, "diagnostics": diagnostics}
+	var tenant_id := _next_id()
+	var record: Dictionary = {
+		"tenant_id": tenant_id,
+		"candidate_id": String(candidate["candidate_id"]),
+		"parcel_id": String(candidate["parcel_id"]),
+		"zone_id": String(candidate["zone_id"]),
+		"subtype_id": String(candidate["subtype_id"]),
+		"candidate_profile_id": String(candidate["candidate_profile_id"]),
+		"candidate_tier": int(candidate.get("candidate_tier", 1)),
+		"selectivity": int(candidate.get("selectivity", 0)),
+		"candidate_policy_revision": int(candidate.get("policy_revision", 1)),
+		"candidate_provenance": String(candidate.get("provenance", "")),
+		"lifecycle_state": "exclusivity",
+		"created_day": sim_day,
+		"exclusivity_until_day": sim_day + 7,
+		"construction_complete_day": -1,
+	}
+	var bind_result := _bind_parcel(record)
+	if not bool(bind_result.get("committed", false)):
+		_tenant_counter -= 1
+		return bind_result
+	all_tenants.append(record)
+	_authority_revision += 1
+	tenant_bound.emit(tenant_id, record["zone_id"], record["parcel_id"])
+	return {"committed": true, "tenant_id": tenant_id, "authority_revision": _authority_revision, "diagnostics": []}
+
+
+func release_tenant(tenant_id: String, reason: String, sim_day: int) -> Dictionary:
+	for record: Dictionary in all_tenants:
+		if String(record.get("tenant_id", "")) != tenant_id:
 			continue
-		for parcel: Parcel in zone.parcels:
-			if not parcel.has_tenant and randi() % 3 == 0:  # ~33% chance per day.
-				_generate_application(zone, parcel)
+		if String(record.get("lifecycle_state", "")) == "closed":
+			return {"committed": false, "diagnostics": [{"code": "TENANT_ALREADY_CLOSED"}]}
+		var release_result := _zone_manager.release_tenant_from_parcel(String(record["zone_id"]), String(record["parcel_id"]), tenant_id)
+		if not bool(release_result.get("committed", false)):
+			return release_result
+		record["lifecycle_state"] = "closed"
+		record["closed_day"] = sim_day
+		record["close_reason"] = reason
+		_authority_revision += 1
+		tenant_released.emit(tenant_id, record["zone_id"], record["parcel_id"])
+		return {"committed": true, "authority_revision": _authority_revision, "diagnostics": []}
+	return {"committed": false, "diagnostics": [{"code": "TENANT_NOT_FOUND", "tenant_id": tenant_id}]}
 
 
-## Generate a tenant application for a parcel.
-func _generate_application(zone: ZoneData, parcel: Parcel) -> void:
-	var tenant := TenantData.new()
-	var tier := _calculate_tenant_tier()
-	tenant.initialize(_next_id(), zone.id, parcel.id, tier)
-
-	# Calculate application score.
-	var score := _calculate_application_score(tenant, zone, parcel)
-	if score >= 50:  # Threshold for acceptance.
-		parcel.has_tenant = true
-		parcel.tenant_id = tenant.id
-		tenant.current_state = TenantData.TenantState.EXCLUSIVITY_LOCK
-		all_tenants.append(tenant)
-		var event_bus: Node = get_node_or_null("/root/EventBus")
-		if event_bus != null:
-			event_bus.tenant_applied.emit(zone.id, tenant.id, tier)
-
-
-## Calculate what tier of tenant the district supports.
-func _calculate_tenant_tier() -> TenantData.Tier:
-	var r := randi() % 10
-	if r < 4:
-		return TenantData.Tier.BASIC
-	if r < 7:
-		return TenantData.Tier.STANDARD
-	if r < 9:
-		return TenantData.Tier.PREMIUM
-	return TenantData.Tier.LUXURY
+func advance_lifecycle(sim_day: int, construction_days: int = 14) -> Dictionary:
+	var changed: Array[String] = []
+	for record: Dictionary in all_tenants:
+		var state := String(record.get("lifecycle_state", ""))
+		if state == "candidate":
+			record["lifecycle_state"] = "exclusivity"
+			changed.append(String(record["tenant_id"]))
+		elif state == "exclusivity" and sim_day >= int(record["exclusivity_until_day"]):
+			record["lifecycle_state"] = "constructing"
+			record["construction_complete_day"] = sim_day + maxi(construction_days, 1)
+			changed.append(String(record["tenant_id"]))
+		elif state == "constructing" and sim_day >= int(record["construction_complete_day"]):
+			record["lifecycle_state"] = "operating"
+			changed.append(String(record["tenant_id"]))
+	if not changed.is_empty():
+		_authority_revision += 1
+	return {"committed": true, "changed_tenant_ids": changed, "authority_revision": _authority_revision, "diagnostics": []}
 
 
-## Calculate application score (simplified MVP version).
-func _calculate_application_score(tenant: TenantData, zone: ZoneData, _parcel: Parcel) -> int:
-	var score: int = 50  # Base.
-
-	# Tier bonus.
-	score += int(tenant.tier) * 5
-
-	# Zone type match bonus.
-	if zone.type == ZoneData.ZONE_TYPE_NAMES[ZoneData.ZoneType.RETAIL]:
-		score += 10
-	elif zone.type == ZoneData.ZONE_TYPE_NAMES[ZoneData.ZoneType.FOOD_BEVERAGE]:
-		score += 5
-
-	# Tile count bonus (bigger = better).
-	score += mini(zone.tiles.size(), 20)
-
-	return score
-
-
-# ── Construction ───────────────────────────────────────────────────────
-
-## Update construction progress for all constructing tenants.
-func _update_construction(sim_day: int) -> void:
-	var event_bus: Node = get_node_or_null("/root/EventBus")
-	for t: TenantData in all_tenants:
-		if t.current_state == TenantData.TenantState.EXCLUSIVITY_LOCK:
-			# Start construction after 1-week exclusivity.
-			t.start_construction(sim_day, 4)  # Assume 4 tiles per parcel.
-			if event_bus != null:
-				event_bus.tenant_construction_started.emit(t.zone_id, t.id)
-		elif t.current_state == TenantData.TenantState.CONSTRUCTING:
-			var prev_progress := t.construction_progress
-			t.update_construction(sim_day)
-			if t.current_state == TenantData.TenantState.OPERATING and prev_progress < 0.99:
-				if event_bus != null:
-					event_bus.tenant_opened.emit(t.zone_id, t.id)
+func build_rent_snapshot(sim_day: int, zone_revision: int) -> Dictionary:
+	var entries: Array[Dictionary] = []
+	for record: Dictionary in all_tenants:
+		if String(record.get("lifecycle_state", "")) != "operating":
+			continue
+		var subtype_id := String(record["subtype_id"])
+		var zone_rate := _zone_manager.zone_rate_snapshot(String(record["zone_id"])) if _zone_manager != null else {"valid": false}
+		if not bool(zone_rate.get("valid", false)) or String(zone_rate.get("rate_state", "")) != "READY":
+			_diagnostics.append({"code": "TENANT_RENT_RATE_MISSING", "zone_id": String(record["zone_id"])})
+			continue
+		var daily_rate: int = int(zone_rate["daily_rent_rate_centi_kreds"])
+		var tile_count: int = _parcel_tile_count(String(record["zone_id"]), String(record["parcel_id"]))
+		var rent_amount: int = floori(float(daily_rate * tile_count) / 100.0)
+		entries.append({
+			"tenant_id": String(record["tenant_id"]),
+			"parcel_id": String(record["parcel_id"]),
+			"zone_id": String(record["zone_id"]),
+			"subtype_id": subtype_id,
+			"parcel_tile_count": tile_count,
+			"daily_rate_centi_kreds": daily_rate,
+			"rent_amount_kreds": rent_amount,
+		})
+	var snapshot := {
+		"schema_version": SNAPSHOT_SCHEMA_VERSION,
+		"simulation_day": sim_day,
+		"tenant_revision": _authority_revision,
+		"zone_revision": zone_revision,
+		"entries": entries,
+	}
+	_last_rent_snapshot = snapshot.duplicate(true)
+	rent_snapshot_published.emit(_last_rent_snapshot.duplicate(true))
+	return {"committed": true, "snapshot": _last_rent_snapshot.duplicate(true), "diagnostics": []}
 
 
-# ── Viability ──────────────────────────────────────────────────────────
-
-## Check viability for all operating tenants.
-func _check_viability() -> void:
-	var event_bus: Node = get_node_or_null("/root/EventBus")
-	for t: TenantData in all_tenants:
-		if t.current_state == TenantData.TenantState.OPERATING or t.current_state == TenantData.TenantState.CRITICAL:
-			# Simulate revenue based on tier.
-			t.monthly_revenue = int(t.tier) * randi_range(80, 150)
-			t.monthly_rent = int(t.tier) * 100 + randi_range(-20, 20)
-
-			var viable := t.check_viability()
-			if not viable:
-				if event_bus != null:
-					event_bus.tenant_viability_changed.emit(t.id, "Closing" if t.current_state == TenantData.TenantState.CLOSING else "Critical")
-				if t.current_state == TenantData.TenantState.CLOSING:
-					_close_tenant(t)
+func last_rent_snapshot() -> Dictionary:
+	return _last_rent_snapshot.duplicate(true)
 
 
-## Close a tenant (eviction + cleanup).
-func _close_tenant(tenant: TenantData) -> void:
-	tenant.current_state = TenantData.TenantState.CLOSED
-	tenant.is_active = false
+func evaluate_application(context: ApplicationEvaluationContext, sim_day: int) -> Dictionary:
+	var parcel_id := ""
+	if context != null:
+		var context_data := context.to_dictionary()
+		parcel_id = String(context_data.get("parcel_id", ""))
+		if int(context_data.get("candidate_tier", 0)) > int(context_data.get("supported_prestige_tier", 0)):
+			return _record_application_result(parcel_id, sim_day, {"valid": false, "outcome": "deferred", "diagnostics": [{"code": "CANDIDATE_TIER_POLICY_UNAVAILABLE"}]})
+	var result := ApplicationEvaluator.new().evaluate(context)
 
-	# Clear the parcel.
-	if _zone_manager:
-		var zone: ZoneData = _zone_manager.zones.get(tenant.zone_id, null)
-		if zone:
-			for parcel: Parcel in zone.parcels:
-				if parcel.tenant_id == tenant.id:
-					parcel.has_tenant = false
-					parcel.tenant_id = ""
+	if context != null:
+		parcel_id = String(context.to_dictionary().get("parcel_id", ""))
+	if not bool(result.get("valid", false)):
+		return _record_application_result(parcel_id, sim_day, result)
+	if String(result.get("outcome", "")) == "passed":
+		var data := context.to_dictionary()
+		var bind_result := register_candidate({
+			"candidate_id": String(data["candidate_id"]),
+			"parcel_id": String(data["parcel_id"]),
+			"zone_id": String(data["zone_id"]),
+			"subtype_id": String(data["subtype_id"]),
+			"candidate_profile_id": String(data["candidate_profile_id"]),
+			"candidate_tier": int(data["candidate_tier"]),
+			"selectivity": int(data["selectivity"]),
+			"policy_revision": int(data["policy_revision"]),
+			"provenance": String(data["provenance"]),
+		}, sim_day)
+		if not bool(bind_result.get("committed", false)):
+			result["outcome"] = "deferred"
+			result["diagnostics"] = [{"code": "APPLICATION_BIND_STALE"}]
+			return _record_application_result(parcel_id, sim_day, result)
+		result["tenant_id"] = String(bind_result["tenant_id"])
+		result["next_evaluation_day"] = -1
+		return _record_application_result(parcel_id, sim_day, result)
+	return _record_application_result(parcel_id, sim_day, result)
 
-	var event_bus: Node = get_node_or_null("/root/EventBus")
-	if event_bus != null:
-		event_bus.tenant_closed.emit(tenant.zone_id, tenant.id)
+
+func evaluation_result(parcel_id: String) -> Dictionary:
+	return _evaluation_results.get(parcel_id, {}).duplicate(true)
 
 
-# ── Serialization ──────────────────────────────────────────────────────
+func _record_application_result(parcel_id: String, sim_day: int, result: Dictionary) -> Dictionary:
+	var ordinal: int = int(_evaluation_ordinals.get(parcel_id, 0)) + 1 if not parcel_id.is_empty() else 0
+	if not parcel_id.is_empty():
+		_evaluation_ordinals[parcel_id] = ordinal
+		result["evaluation_ordinal"] = ordinal
+		result["next_evaluation_day"] = sim_day + int(result.get("next_evaluation_after_days", 3)) if String(result.get("outcome", "")) != "passed" else -1
+		_evaluation_results[parcel_id] = result.duplicate(true)
+	tenant_application_evaluated.emit(result.duplicate(true))
+	return result
+
+
+func capture_spatial_context(prestige: OfficialPrestigeSnapshot, circulation: CirculationEvaluationSnapshot, relationship: ZoneRelationshipSnapshot, policy: RentRecommendationPolicy) -> Dictionary:
+	var result := SpatialEvaluationContext.capture(prestige, circulation, relationship, policy)
+	if not bool(result.get("valid", false)):
+		var failed_diagnostics: Array[Dictionary] = []
+		for diagnostic: Variant in result.get("diagnostics", []):
+			if diagnostic is Dictionary:
+				failed_diagnostics.append(diagnostic)
+		spatial_context_invalidated.emit(failed_diagnostics)
+		return result
+	_spatial_context = result["context"] as SpatialEvaluationContext
+	return {"valid": true, "diagnostics": []}
+
+
+func evaluate_recommended_rent(elevation: int, prestige_authority_revision: int, topology_revision: int, geometry_revision: int, policy_revision: int) -> Dictionary:
+	if _spatial_context == null:
+		return {"valid": false, "diagnostics": [{"code": "SPATIAL_CONTEXT_UNAVAILABLE"}]}
+	if not _spatial_context.is_current(prestige_authority_revision, topology_revision, geometry_revision, policy_revision):
+		var stale_diagnostics: Array[Dictionary] = [{"code": "SPATIAL_CONTEXT_STALE", "message": "one or more captured authority revisions changed"}]
+		spatial_context_invalidated.emit(stale_diagnostics)
+		return {"valid": false, "diagnostics": stale_diagnostics}
+	return _spatial_context.calculate_recommendation(elevation)
+
+
+func on_sim_day_passed(sim_day: int) -> void:
+	advance_lifecycle(sim_day)
+	if _zone_manager != null:
+		build_rent_snapshot(sim_day, _zone_manager.get_district_revision())
+
 
 func serialize() -> Dictionary:
-	var data: Array[Dictionary] = []
-	for t: TenantData in all_tenants:
-		data.append({
-			"id": t.id, "tier": t.tier, "name": t.name,
-			"zone_id": t.zone_id, "parcel_id": t.parcel_id,
-			"current_state": t.current_state, "is_active": t.is_active,
-			"construction_progress": t.construction_progress,
-		})
-	return {"tenants": data, "counter": _tenant_counter}
+	return {
+		"schema_version": SNAPSHOT_SCHEMA_VERSION,
+		"authority_revision": _authority_revision,
+		"session_seed": _session_seed,
+		"tenant_counter": _tenant_counter,
+		"evaluation_ordinals": _evaluation_ordinals.duplicate(true),
+		"next_evaluations": _next_evaluations.duplicate(true),
+		"tenants": all_tenants.duplicate(true),
+		"diagnostics": _diagnostics.duplicate(true),
+		"evaluation_results": _evaluation_results.duplicate(true),
+	}
 
 
 func deserialize(data: Dictionary) -> void:
-	all_tenants.clear()
-	_tenant_counter = data.get("counter", 0)
-	for td: Dictionary in data.get("tenants", []):
-		var t := TenantData.new()
-		t.id = td["id"]; t.tier = td["tier"]; t.name = td.get("name", "")
-		t.zone_id = td.get("zone_id", ""); t.parcel_id = td.get("parcel_id", "")
-		t.current_state = td.get("current_state", 0); t.is_active = td.get("is_active", false)
-		t.construction_progress = td.get("construction_progress", 0.0)
-		all_tenants.append(t)
+	var snapshot := TenantAuthoritySnapshot.new()
+	snapshot.configure(data)
+	var validation := snapshot.validate()
+	if not bool(validation["valid"]):
+		_diagnostics = validation["diagnostics"]
+		return
+	_authority_revision = int(data["authority_revision"])
+	_session_seed = int(data["session_seed"])
+	_tenant_counter = int(data["tenant_counter"])
+	_evaluation_ordinals = data["evaluation_ordinals"].duplicate(true)
+	_next_evaluations = data["next_evaluations"].duplicate(true)
+	all_tenants = data["tenants"].duplicate(true)
+	_diagnostics = data["diagnostics"].duplicate(true)
+	_evaluation_results = data["evaluation_results"].duplicate(true)
+
+
+func _bind_parcel(record: Dictionary) -> Dictionary:
+	if _zone_manager == null:
+		return {"committed": false, "diagnostics": [{"code": "TENANT_ZONE_MANAGER_NOT_BOUND"}]}
+	return _zone_manager.bind_tenant_to_parcel(String(record["zone_id"]), String(record["parcel_id"]), String(record["tenant_id"]))
+
+
+func _parcel_tile_count(zone_id: String, parcel_id: String) -> int:
+	if _zone_manager == null:
+		return 0
+	var parcel_snapshot: Dictionary = _zone_manager.parcel_snapshot(zone_id, parcel_id)
+	return int(parcel_snapshot.get("tile_count", 0))
 
 
 func _next_id() -> String:

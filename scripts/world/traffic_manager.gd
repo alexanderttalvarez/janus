@@ -27,39 +27,6 @@ const INTERSECTION_WAITING: int = 2
 const INTERSECTION_LATER_RESERVED: int = 3
 const INTERSECTION_CLEARED: int = 4
 
-const LANE_IDS: Array = [
-	&"Lane_North_Eastbound",
-	&"Lane_North_Westbound",
-	&"Lane_East_Southbound",
-	&"Lane_East_Northbound",
-	&"Lane_South_Westbound",
-	&"Lane_South_Eastbound",
-	&"Lane_West_Northbound",
-	&"Lane_West_Southbound",
-]
-
-const LANE_CROSSWALKS: Dictionary = {
-	&"Lane_North_Eastbound": &"Crosswalk_North",
-	&"Lane_North_Westbound": &"Crosswalk_North",
-	&"Lane_East_Southbound": &"Crosswalk_East",
-	&"Lane_East_Northbound": &"Crosswalk_East",
-	&"Lane_South_Westbound": &"Crosswalk_South",
-	&"Lane_South_Eastbound": &"Crosswalk_South",
-	&"Lane_West_Northbound": &"Crosswalk_West",
-	&"Lane_West_Southbound": &"Crosswalk_West",
-}
-
-const LANE_INTERSECTION_ZONES: Dictionary = {
-	&"Lane_North_Eastbound": [&"NW", &"NE"],
-	&"Lane_North_Westbound": [&"NE", &"NW"],
-	&"Lane_East_Southbound": [&"NE", &"SE"],
-	&"Lane_East_Northbound": [&"SE", &"NE"],
-	&"Lane_South_Westbound": [&"SE", &"SW"],
-	&"Lane_South_Eastbound": [&"SW", &"SE"],
-	&"Lane_West_Northbound": [&"SW", &"NW"],
-	&"Lane_West_Southbound": [&"NW", &"SW"],
-}
-
 const BODY_COLORS: Array = [
 	Color(0.78, 0.12, 0.06),
 	Color(0.06, 0.27, 0.72),
@@ -90,12 +57,19 @@ class IntersectionCoordinator:
 	func is_entry_allowed(zone_id: StringName) -> bool:
 		return not _occupants.has(zone_id)
 
+	func clear_invalid(invalid_ids: Dictionary) -> void:
+		for zone_id: StringName in _occupants.keys():
+			var reservation: Dictionary = _occupants[zone_id]
+			if invalid_ids.has(String(reservation.get("lane_id", ""))) or invalid_ids.has(String(zone_id)):
+				_occupants.erase(zone_id)
+
 	func clear() -> void:
 		_occupants.clear()
 
 
 class CarState:
 	var id: int = 0
+	var route_id: String = ""
 	var node: Node3D
 	var fade_tween: Tween
 	var distance: float = 0.0
@@ -111,12 +85,6 @@ class CarState:
 class LaneState:
 	var id: StringName
 	var crosswalk_id: StringName
-	var spawn: Marker3D
-	var stop_line: Marker3D
-	var exit: Marker3D
-	var source_clear: Marker3D
-	var intersection_hold: Marker3D
-	var intersection_clear: Marker3D
 	var source_zone_id: StringName
 	var later_zone_id: StringName
 	var start_position: Vector3
@@ -154,7 +122,6 @@ class LaneState:
 @export var mandatory_crosswalk_stops: bool = true
 
 @onready var _active_cars: Node3D = $ActiveCars
-@onready var _lanes_root: Node3D = get_node_or_null("../TrafficLayout/Lanes") as Node3D
 
 var _car_scene: PackedScene
 var _lanes: Array[LaneState] = []
@@ -168,6 +135,7 @@ var _road_graph: RoadGraphSnapshot
 var _topology_mode: bool = false
 var _control_clock: TrafficControlClock = load("res://scripts/traffic/traffic_control_clock.gd").new() as TrafficControlClock
 var _control_offsets: Dictionary = {}
+var _graph_revision_before_bind: int = -1
 
 
 func _ready() -> void:
@@ -180,8 +148,9 @@ func _ready() -> void:
 		_rng.randomize()
 	else:
 		_rng.seed = random_seed
-	if not _initialize_lanes():
-		set_physics_process(false)
+	# H7 owns lane/control identity. Wait for the composed RoadGraphSnapshot;
+	# authored scene Nodes are not a traffic authority or bootstrap source.
+	set_physics_process(false)
 
 
 func _physics_process(delta: float) -> void:
@@ -197,18 +166,54 @@ func _physics_process(delta: float) -> void:
 ## Bind transient traffic behavior to the latest immutable H7 graph.
 ## TrafficManager owns no topology and never vetoes a graph replacement.
 func set_road_graph(snapshot: RoadGraphSnapshot) -> void:
+	var previous_graph: RoadGraphSnapshot = _road_graph
+	_graph_revision_before_bind = -1 if previous_graph == null else previous_graph.graph_revision
+	var old_lanes: Dictionary = {}
+	for old_lane: LaneState in _lanes:
+		old_lanes[String(old_lane.id)] = old_lane
 	_road_graph = null if snapshot == null else snapshot.duplicate_value()
 	_topology_mode = _road_graph != null
-	clear_active_cars()
 	_lanes.clear()
 	_control_offsets.clear()
-	if _topology_mode:
-		if not _initialize_graph_lanes():
-			push_error("TrafficManager could not bind the H7 road graph")
-			_topology_mode = false
-			set_physics_process(false)
-		else:
-			set_physics_process(true)
+	if not _topology_mode:
+		clear_active_cars()
+		set_physics_process(false)
+		return
+	if not _initialize_graph_lanes(old_lanes):
+		push_error("TrafficManager could not bind the H7 road graph")
+		_topology_mode = false
+		clear_active_cars()
+		set_physics_process(false)
+		return
+	for old_lane_id: String in old_lanes:
+		if _find_lane(StringName(old_lane_id)) == null:
+			var removed_lane: LaneState = old_lanes[old_lane_id] as LaneState
+			for index: int in range(removed_lane.cars.size() - 1, -1, -1):
+				_remove_car(removed_lane, removed_lane.cars[index], index)
+	set_physics_process(true)
+
+
+## Consume an H7 delta without taking ownership of graph state. Only cars and
+## reservations attached to invalid route/lane IDs are discarded.
+func apply_road_graph_delta(delta: RoadGraphDelta) -> Dictionary:
+	if delta == null or _road_graph == null:
+		return {"valid": false, "diagnostics": [{"code": "TRAFFIC_GRAPH_REQUIRED", "message": "a bound H7 graph is required before applying a delta"}]}
+	if delta.graph_revision != _road_graph.graph_revision or delta.previous_graph_revision != _graph_revision_before_bind:
+		clear_active_cars()
+		return {"valid": false, "recovery_required": true, "diagnostics": [{"code": "TRAFFIC_DELTA_REVISION_MISMATCH", "message": "missed or stale H7 graph delta requires full graph recovery"}]}
+	var invalid_ids: Dictionary = {}
+	for route_id: String in delta.invalid_route_ids:
+		invalid_ids[route_id] = true
+	for reservation_id: String in delta.invalid_reservation_ids:
+		invalid_ids[reservation_id] = true
+	for lane: LaneState in _lanes:
+		for index: int in range(lane.cars.size() - 1, -1, -1):
+			var car: CarState = lane.cars[index]
+			if invalid_ids.has(car.route_id) or invalid_ids.has(String(lane.id)):
+				_remove_car(lane, car, index)
+	_cleanup_invalid_reservations(invalid_ids)
+	_graph_revision_before_bind = delta.graph_revision
+	return {"valid": true, "recovery_required": false, "diagnostics": []}
 
 
 func get_road_graph_revision() -> int:
@@ -267,9 +272,23 @@ func get_active_car_count() -> int:
 	return total
 
 
-func _initialize_graph_lanes() -> bool:
-	if _road_graph == null or _road_graph.lanes.is_empty():
+func get_reservation_count() -> int:
+	return _intersection_coordinator._occupants.size()
+
+
+func get_bound_lane_ids() -> Array[String]:
+	var result: Array[String] = []
+	for lane: LaneState in _lanes:
+		result.append(String(lane.id))
+	result.sort()
+	return result
+
+
+func _initialize_graph_lanes(old_lanes: Dictionary = {}) -> bool:
+	if _road_graph == null:
 		return false
+	if _road_graph.lanes.is_empty():
+		return true
 	for record: Dictionary in _road_graph.lanes:
 		var lane := LaneState.new()
 		lane.id = StringName(record.get("id", ""))
@@ -281,15 +300,39 @@ func _initialize_graph_lanes() -> bool:
 		lane.later_zone_id = StringName(record.get("destination_zone_id", ""))
 		if lane.length <= 0.01 or lane.direction.length_squared() <= 0.01:
 			return false
-		lane.stop_distance = lane.length * 0.45
+		lane.stop_distance = clampf(float(record.get("stop_distance", lane.length * 0.45)), 0.0, lane.length)
 		lane.source_clear_distance = lane.length * 0.30
 		lane.intersection_hold_distance = lane.length * 0.65
 		lane.intersection_clear_distance = lane.length * 0.85
 		lane.next_spawn_time = _simulation_time + _rng.randf_range(0.75, 3.0)
+		var old_lane: LaneState = old_lanes.get(String(lane.id)) as LaneState
+		if old_lane != null:
+			lane.cars = old_lane.cars
 		_lanes.append(lane)
 	for control: Dictionary in _road_graph.traffic_controls:
 		_control_offsets[String(control.get("crosswalk_id", ""))] = float(control.get("offset_t", 0.0))
 	return true
+
+
+func _find_lane(lane_id: StringName) -> LaneState:
+	for lane: LaneState in _lanes:
+		if lane.id == lane_id:
+			return lane
+	return null
+
+
+func _cleanup_invalid_reservations(invalid_ids: Dictionary) -> void:
+	_intersection_coordinator.clear_invalid(invalid_ids)
+
+
+func _remove_car(lane: LaneState, car: CarState, index: int) -> void:
+	_release_current_intersection_zone(lane, car)
+	if car.fade_tween != null:
+		car.fade_tween.kill()
+	if is_instance_valid(car.node):
+		car.node.queue_free()
+	car_despawned.emit(lane.id, car.id)
+	lane.cars.remove_at(index)
 
 
 func _crosswalk_id_for_segment(segment_id: String) -> String:
@@ -299,60 +342,11 @@ func _crosswalk_id_for_segment(segment_id: String) -> String:
 	return ""
 
 
-func _initialize_lanes() -> bool:
-	if _lanes_root == null:
-		push_error("TrafficManager requires World/TrafficLayout/Lanes")
-		return false
-	for lane_id: StringName in LANE_IDS:
-		var lane_node := _lanes_root.get_node_or_null(String(lane_id)) as Node3D
-		if lane_node == null:
-			push_error("TrafficManager lane is missing: " + String(lane_id))
-			return false
-		var lane := LaneState.new()
-		lane.id = lane_id
-		lane.crosswalk_id = LANE_CROSSWALKS[lane_id] as StringName
-		lane.spawn = lane_node.get_node_or_null("Spawn") as Marker3D
-		lane.stop_line = lane_node.get_node_or_null("StopLine") as Marker3D
-		lane.exit = lane_node.get_node_or_null("Exit") as Marker3D
-		lane.source_clear = lane_node.get_node_or_null("SourceClear") as Marker3D
-		lane.intersection_hold = lane_node.get_node_or_null("IntersectionHold") as Marker3D
-		lane.intersection_clear = lane_node.get_node_or_null("IntersectionClear") as Marker3D
-		var zone_ids: Array = LANE_INTERSECTION_ZONES.get(lane_id, [])
-		if zone_ids.size() != 2:
-			push_error("TrafficManager intersection zones are incomplete: " + String(lane_id))
-			return false
-		lane.source_zone_id = zone_ids[0] as StringName
-		lane.later_zone_id = zone_ids[1] as StringName
-		if lane.spawn == null or lane.stop_line == null or lane.exit == null or lane.source_clear == null or lane.intersection_hold == null or lane.intersection_clear == null:
-			push_error("TrafficManager lane markers are incomplete: " + String(lane_id))
-			return false
-		lane.start_position = lane.spawn.global_position
-		var route := lane.exit.global_position - lane.start_position
-		lane.length = route.length()
-		if lane.length <= 0.01:
-			push_error("TrafficManager lane has no usable route: " + String(lane_id))
-			return false
-		lane.direction = route / lane.length
-		lane.stop_distance = (lane.stop_line.global_position - lane.start_position).dot(lane.direction)
-		lane.source_clear_distance = (lane.source_clear.global_position - lane.start_position).dot(lane.direction)
-		lane.intersection_hold_distance = (lane.intersection_hold.global_position - lane.start_position).dot(lane.direction)
-		lane.intersection_clear_distance = (lane.intersection_clear.global_position - lane.start_position).dot(lane.direction)
-		if lane.stop_distance <= 0.0 or lane.stop_distance >= lane.length:
-			push_error("TrafficManager stop line is outside lane bounds: " + String(lane_id))
-			return false
-		if lane.source_clear_distance <= 0.0 or lane.intersection_hold_distance <= lane.source_clear_distance or lane.intersection_clear_distance <= lane.intersection_hold_distance or lane.intersection_clear_distance >= lane.length:
-			push_error("TrafficManager intersection markers are outside lane bounds: " + String(lane_id))
-			return false
-		lane.next_spawn_time = _rng.randf_range(0.75, 3.0)
-		_lanes.append(lane)
-	return true
-
-
 func _update_lane(lane: LaneState, delta: float) -> void:
 	for index in range(lane.cars.size() - 1, -1, -1):
 		var car := lane.cars[index]
 		if not is_instance_valid(car.node):
-			lane.cars.remove_at(index)
+			_remove_car(lane, car, index)
 	lane.cars.sort_custom(func(first: CarState, second: CarState) -> bool: return first.distance > second.distance)
 	for index in range(lane.cars.size()):
 		var leader: CarState = lane.cars[index - 1] if index > 0 else null
@@ -389,7 +383,10 @@ func _update_car(lane: LaneState, car: CarState, leader: CarState, delta: float)
 	var target_speed := car.desired_speed
 	target_speed = minf(target_speed, _get_intersection_speed_limit(lane, car, leader))
 	if car.crosswalk_phase == CROSSWALK_APPROACHING:
-		if _should_stop_at_crosswalk(lane.crosswalk_id):
+		if car.distance >= lane.stop_distance:
+			# Yellow does not stop a car that already crossed its stop line.
+			car.crosswalk_phase = CROSSWALK_CLEARED
+		elif _should_stop_at_crosswalk(lane.crosswalk_id):
 			var remaining_to_stop := lane.stop_distance - car.distance
 			if remaining_to_stop <= 0.0:
 				_begin_crosswalk_hold(lane, car)
@@ -411,7 +408,7 @@ func _update_car(lane: LaneState, car: CarState, leader: CarState, delta: float)
 	car.speed = move_toward(car.speed, target_speed, speed_change)
 	var next_distance := car.distance + car.speed * delta
 
-	if car.crosswalk_phase == CROSSWALK_APPROACHING and _should_stop_at_crosswalk(lane.crosswalk_id) and next_distance >= lane.stop_distance:
+	if car.crosswalk_phase == CROSSWALK_APPROACHING and _should_stop_at_crosswalk(lane.crosswalk_id) and car.distance < lane.stop_distance and next_distance >= lane.stop_distance:
 		car.distance = lane.stop_distance
 		_begin_crosswalk_hold(lane, car)
 		_apply_car_transform(lane, car)
@@ -559,6 +556,7 @@ func _spawn_car(lane: LaneState) -> bool:
 	var car := CarState.new()
 	car.id = _next_car_id
 	_next_car_id += 1
+	car.route_id = "route/straight/%s" % String(lane.id)
 	car.node = car_node
 	car.current_intersection_zone = lane.source_zone_id
 	car.intersection_phase = INTERSECTION_SOURCE_RESERVED
