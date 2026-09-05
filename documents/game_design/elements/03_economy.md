@@ -30,7 +30,7 @@ The player sets a **daily rent rate per zone** (in Kreds/tile/day). This rate ap
 
 #### Daily settlement
 
-Rent is credited once on every authoritative simulation-day boundary. At 1× speed, one simulation day is 24 real seconds. The daily rate remains the player-facing and tenant-viability input; it is not converted into a weekly rate or deferred to weekly settlement.
+Rent is credited once on every authoritative simulation-day boundary. At 1× speed, one simulation day is 24 real seconds. For an Open tenant, daily rent is the current zone daily rate multiplied by its parcel tile count, rounded down to integer Kreds. No rent is credited during application, exclusivity lock, or construction. The daily rate remains the player-facing and tenant-viability input; it is not converted into a weekly rate or deferred to weekly settlement.
 
 #### Market Rate Formula
 

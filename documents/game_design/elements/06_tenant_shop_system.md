@@ -46,7 +46,9 @@ Tenants apply automatically to vacant zones. The player has no direct control ov
 - **First evaluation:** 1 sim day after zone becomes vacant
 - **Subsequent evaluations:** Every 3 sim days until filled
 
-Each evaluation generates a random tenant candidate matching the zone type. The candidate has a **Selectivity** attribute (-10 to +20) that modifies their application threshold.
+Each evaluation generates a seeded-random tenant candidate matching the zone type. The Tenant authority persists its session seed and a stable per-parcel evaluation ordinal, so save/load and input ordering cannot change an already scheduled result. The candidate has a **Selectivity** attribute (-10 to +20) that modifies their application threshold.
+
+Candidate subtype selection must respect the existing parcel adjacency graph-color constraint: edge-adjacent parcels cannot receive the same subtype. Randomness selects only among legal eligible subtype candidates; it never bypasses size/type eligibility or assigns a conflicting subtype.
 
 ### Application Score Formula
 
@@ -254,7 +256,7 @@ If rent is 20% above recommended → Prices = 1.2x Recommended
 ### Revenue Collection
 
 - Revenue is calculated per visitor visit, accumulated daily
-- Player receives rent daily (regardless of tenant revenue)
+- Player receives rent daily once the tenant is Open (regardless of tenant revenue). No rent is credited during application, lock, or construction.
 - Tenant revenue is tracked for viability checks
 
 ---
@@ -289,6 +291,10 @@ The player does not manage tenants directly. Feedback comes through:
 | **Tenant Status** | Healthy/Concerned/Critical/Closing indicators | Adjust rent, improve zone conditions, or accept closure |
 
 ---
+
+## Deferred architecture note — tenant interiors and visitor interactions
+
+Tenant interiors, furnishing, and visitor interactions are deliberately not specified by this design section yet. Since zones can create irregular tenant footprints and each subtype may require distinct service points, fixtures, circulation, and capacity, these concerns require a dedicated future architecture/design handoff. See [Future Tenant Architecture Topics](../../architecture/handoff/tenant/_future_topics.md). No current tenant lifecycle feature may assume a fixed rectangular interior layout or visitor interaction model.
 
 ## Integration with Other Systems
 
