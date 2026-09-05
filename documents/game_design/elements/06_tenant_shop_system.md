@@ -46,7 +46,7 @@ Tenants apply automatically to vacant zones. The player has no direct control ov
 - **First evaluation:** 1 sim day after zone becomes vacant
 - **Subsequent evaluations:** Every 3 sim days until filled
 
-Each evaluation generates a seeded-random tenant candidate matching the zone type. The Tenant authority persists its session seed and a stable per-parcel evaluation ordinal, so save/load and input ordering cannot change an already scheduled result. The candidate has a **Selectivity** attribute (-10 to +20) that modifies their application threshold.
+Each evaluation generates a seeded-random tenant candidate matching the zone type. Its tier is selected by immutable candidate-tier policy but can never exceed the currently supported district Prestige tier. The Tenant authority persists its session seed and a stable per-parcel evaluation ordinal, so save/load and input ordering cannot change an already scheduled result. The candidate has a **Selectivity** attribute (-10 to +20) that modifies their application threshold.
 
 Candidate subtype selection must respect the existing parcel adjacency graph-color constraint: edge-adjacent parcels cannot receive the same subtype. Randomness selects only among legal eligible subtype candidates; it never bypasses size/type eligibility or assigns a conflicting subtype.
 
@@ -141,7 +141,7 @@ Threshold = 80 + (Tier - 1) × 10 + Selectivity
 **Application Decision:**
 ```
 If Score ≥ Threshold → Tenant applies → 1-week exclusivity lock → Construction begins
-If Score < Threshold → No application → Wait 3 sim days → Next candidate
+If Score < Threshold → No application or parcel binding → Wait 3 sim days → Next seeded candidate
 ```
 
 ---

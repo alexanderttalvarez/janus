@@ -50,7 +50,7 @@ Recommended Rent = Rent Ceiling × Floor Factor × Accessibility Factor × Adjac
 Recommended Rent = 18 × 1.05 × 1.00 × 1.15 = 21.74 Kreds/tile/day
 ```
 
-The player sees this as the **recommended rate**. They can set any value. Setting above recommended increases tenant dissatisfaction risk. Setting below increases tenant happiness but reduces income.
+The player sees this as the **recommended rate**. A newly created zone initializes its committed daily rate to the currently calculated recommended rate. The player can set any non-negative rate; rate changes take effect for the next application evaluation and next daily settlement only, never retroactively. Setting above recommended increases tenant dissatisfaction risk. Setting below increases tenant happiness but reduces income.
 
 ---
 

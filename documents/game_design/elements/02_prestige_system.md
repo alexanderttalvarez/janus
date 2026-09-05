@@ -100,6 +100,21 @@ Prestige values map to named tiers. Each tier provides mechanical benefits. With
 | **City Destination** | 6,500–8,999 | 2.5x | Tiers 1–5 | $45 |
 | **Megacity Mall** | 9,000–10,000+ | 3.0x | Tiers 1–5 + Exclusive | $60 |
 
+### Initial official state and tenant-tier mapping
+
+A new session begins with the authored official tier **Empty Lot**. It supports Tenant Tier 1 and carries the Empty Lot rent ceiling of **5 Kreds/tile/day** (500 centi-Kreds). This is a committed initial policy state, not an inferred quality calculation.
+
+| Prestige tier | Highest supported tenant tier | Additional category |
+|---|---:|---|
+| Empty Lot | 1 | — |
+| Small Market | 2 | — |
+| Neighborhood Center | 3 | — |
+| Regional Mall | 4 | — |
+| City Destination | 5 | — |
+| Megacity Mall | 5 | Exclusive eligibility flag |
+
+Exclusive is an additional Megacity category, not Tenant Tier 6.
+
 ### Hybrid Threshold/Multiplier Behavior
 
 - **Within a tier:** Visitor attraction scales linearly with prestige. Going from 1,600 to 2,000 prestige gives a smooth, continuous increase in visitors.
