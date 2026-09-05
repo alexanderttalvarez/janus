@@ -35,19 +35,21 @@ Rent is credited once on every authoritative simulation-day boundary. At 1× spe
 #### Market Rate Formula
 
 ```
-Recommended Rent = Rent Ceiling × Floor Factor × Accessibility Factor × Adjacency Factor
+Unclamped Recommendation = Rent Ceiling × Floor Factor × Accessibility Factor × Adjacency Factor
+Recommended Rent = min(Rent Ceiling, Unclamped Recommendation)
 ```
 
 | Component | Formula / Values |
 |-----------|-----------------|
 | **Rent Ceiling** | From prestige tier table ($5–$60/tile/day) |
-| **Floor Factor** | Ground (G) = 1.00. Each floor above ground: +0.05 (max 1.25 at the fifth upper floor and above). Each floor below ground: -0.10 (min 0.50 at U5). |
+| **Floor Factor** | Ground (G) = 1.00. F1, the first floor above G, = 1.05. Each further floor above ground: +0.05 (max 1.25 at the fifth upper floor and above). Each floor below ground: -0.10 (min 0.50 at U5). |
 | **Accessibility Factor** | Based on zone circulation score: Poor = 0.70, Average = 0.85, Good = 1.00, Excellent = 1.15 |
 | **Adjacency Factor** | Based on synergy with neighboring zones: Negative = 0.80, Neutral = 1.00, Positive = 1.15 |
 
 **Example:** A zone on F1, the second above-ground level (1.05), with Good accessibility (1.00) and Positive synergy (1.15) in a Neighborhood Center (ceiling $18):
 ```
-Recommended Rent = 18 × 1.05 × 1.00 × 1.15 = 21.74 Kreds/tile/day
+Unclamped Recommendation = 18 × 1.05 × 1.00 × 1.15 = 21.74 Kreds/tile/day
+Recommended Rent = min(18, 21.74) = 18 Kreds/tile/day
 ```
 
 The player sees this as the **recommended rate**. A newly created zone initializes its committed daily rate to the currently calculated recommended rate. The player can set any non-negative rate; rate changes take effect for the next application evaluation and next daily settlement only, never retroactively. Setting above recommended increases tenant dissatisfaction risk. Setting below increases tenant happiness but reduces income.

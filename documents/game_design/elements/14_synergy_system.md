@@ -62,10 +62,11 @@ Synergy affects whether tenants apply to a zone (see Tenant / Shop System):
 
 | Relationship | Application Score Impact |
 |--------------|-------------------------|
-| Complementary | +15 |
+| Complementary | +20 |
 | Neutral | 0 |
-| Cannibalization | -5 |
 | Conflicting | -10 |
+
+For tenant application evaluation, same-zone-type effects are represented exclusively by the separate Competition Penalty distance bands. The evaluator considers other zones within 5 boundary-to-boundary tiles and uses the relationship with the greatest absolute application impact; ties resolve toward the negative impact, then canonical stable zone ID. It does not sum relationship impacts for this bounded application component. The base Synergy Score and future revenue modifiers remain separate systems.
 
 ### Prestige
 

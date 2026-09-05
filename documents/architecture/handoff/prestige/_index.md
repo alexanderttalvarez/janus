@@ -6,7 +6,7 @@ This program defines Prestige as a committed cross-system authority. It does not
 
 | Order | Handoff | Status | Scope |
 |---:|---|---|---|
-| 01 | [Official Tier Publication](01_official_tier_publication.md) | Draft — ready for architecture approval | Initial official tier, immutable tier/rent policy, snapshot/event contract, and V2 persistence. |
+| 01 | [Official Tier Publication](01_official_tier_publication.md) | Approved — 2026-09-05 | Initial official tier, immutable tier/rent policy, snapshot/event contract, and V2 persistence. |
 
 ## Program rules
 

@@ -8,6 +8,7 @@ This program defines authoritative tenancy from parcel occupancy through later b
 |---:|---|---|---|
 | 01 | [Occupancy and Daily Rent](01_occupancy_and_daily_rent.md) | Approved — 2026-09-05 | Seeded legal candidate selection, lifecycle occupancy, atomic parcel binding, daily-rent input, and V2 tenant persistence. |
 | 02 | [Rent Policy and Application Evaluation](02_rent_policy_and_application_evaluation.md) | Approved — 2026-09-05 | Zone-owned rent, recommendation, full score evaluation, candidate-tier cap, retry policy, and presentation read/intent contracts. |
+| 03 | [Candidate Policy and Catalog](03_candidate_policy_and_catalog.md) | Approved — 2026-09-05 (delegated architecture authority) | Immutable MVP candidate profiles, uniform seeded selection, Selectivity, catalog provenance, and compatibility. |
 
 ## Program rules
 

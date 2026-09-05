@@ -50,6 +50,10 @@ Each evaluation generates a seeded-random tenant candidate matching the zone typ
 
 Candidate subtype selection must respect the existing parcel adjacency graph-color constraint: edge-adjacent parcels cannot receive the same subtype. Randomness selects only among legal eligible subtype candidates; it never bypasses size/type eligibility or assigns a conflicting subtype.
 
+### MVP Candidate Policy
+
+MVP candidate content is an immutable, versioned catalog. A candidate profile is selected uniformly from eligible entries matching the zone type, legal subtype, and a tier no higher than the supported Prestige tier. Selectivity is selected uniformly from the inclusive integer range -10 to +20. The initial MVP catalog contains Tier 1 profiles for the existing five legal subtype examples in each zone type; later content may add authored brands, tier weights, and subtype-specific size ranges through a policy revision.
+
 ### Application Score Formula
 
 ```
