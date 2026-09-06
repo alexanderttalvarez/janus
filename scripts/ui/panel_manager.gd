@@ -23,7 +23,7 @@ func register_panel(panel_name: String, panel_scene: PackedScene) -> void:
 	_panel_registry[panel_name] = panel_scene
 
 
-func open_panel(panel_name: String) -> bool:
+func open_panel(panel_name: String, model: Dictionary = {}) -> bool:
 	if not _panel_registry.has(panel_name):
 		return false
 	if PRIMARY_PANELS.has(panel_name) and not _primary_panel_name.is_empty() and _primary_panel_name != panel_name:
@@ -34,8 +34,12 @@ func open_panel(panel_name: String) -> bool:
 	if scene == null:
 		return false
 	var panel: Control = scene.instantiate() as Control
+	if panel_name == "visitors" and panel.get_script() == null:
+		panel.set_script(load("res://scripts/ui/visitors_panel.gd"))
 	panel.name = panel_name
 	panel.size = Vector2(PANEL_WIDTH, 600)
+	if panel.has_method("configure_model"):
+		panel.call("configure_model", model.duplicate(true))
 	add_child(panel)
 	_open_panels.append(panel)
 	if PRIMARY_PANELS.has(panel_name):
@@ -55,6 +59,47 @@ func close_panel(panel_name: String) -> void:
 			EventBus.panel_closed.emit(panel_name)
 			break
 	_reposition_panels()
+
+
+func open_read_model_panel(panel_name: String, model: Dictionary) -> bool:
+	if _panel_registry.has(panel_name):
+		return open_panel(panel_name, model)
+	if not PRIMARY_PANELS.has(panel_name):
+		return false
+	if not _primary_panel_name.is_empty():
+		close_panel(_primary_panel_name)
+	if _open_panels.size() >= MAX_PANELS:
+		return false
+	var panel_script: Script = load("res://scripts/ui/read_model_panel.gd")
+	var panel: Control = panel_script.new() as Control
+	panel.name = panel_name
+	panel.size = Vector2(PANEL_WIDTH, 600)
+	panel.call("configure", panel_name, model.duplicate(true))
+	add_child(panel)
+	_open_panels.append(panel)
+	_primary_panel_name = panel_name
+	_reposition_panels()
+	EventBus.panel_opened.emit(panel_name)
+	return true
+
+
+func open_notification_log(adapter: NotificationAdapter) -> bool:
+	if _open_panels.any(func(panel: Control) -> bool: return panel.name == "notifications"):
+		return true
+	if not _primary_panel_name.is_empty():
+		close_panel(_primary_panel_name)
+	if _open_panels.size() >= MAX_PANELS:
+		return false
+	var panel_script: Script = load("res://scripts/ui/notification_log_panel.gd")
+	var panel: Control = panel_script.new() as Control
+	panel.name = "notifications"
+	panel.size = Vector2(PANEL_WIDTH, 600)
+	panel.call("configure", adapter)
+	add_child(panel)
+	_open_panels.append(panel)
+	_reposition_panels()
+	EventBus.panel_opened.emit("notifications")
+	return true
 
 
 func close_all() -> void:

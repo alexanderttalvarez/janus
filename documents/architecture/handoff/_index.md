@@ -11,6 +11,7 @@ Architecture handoffs are organized into focused implementation programs. Each p
 | Economy | Session financial authority, transaction safety, policy snapshots, recurring financial boundaries, and later pricing/refund policy. | [Economy Handoff Index](economy/_index.md) |
 | Progression | Prestige/Tech-derived eligibility, Plot Access selection, elevation availability, and progression snapshots for transactions. | [Progression Handoff Index](progression/_index.md) |
 | Tenant | Tenant occupancy lifecycle, legal seeded candidate selection, rent-input snapshots, and later business-performance handoffs. | [Tenant Handoff Index](tenant/_index.md) |
+| Tenant Interiors | Subtype/fixture content, parcel feasibility, procedural layouts, candidate weighting, runtime service, queues, visitor interaction, persistence, and Product MVP cutover. | [Tenant Interiors Handoff Index](tenant_interiors/_index.md) |
 | Prestige | Official tier/rent-ceiling publication, future calculation inputs, and consumers across Tenant and Progression. | [Prestige Handoff Index](prestige/_index.md) |
 | Spatial Evaluation Inputs | Revisioned topology and zone-relationship facts plus pure rent recommendation for tenant evaluation. | [Spatial Evaluation Inputs Handoff Index](spatial_evaluation/_index.md) |
 | Session | Gameplay composition, authoritative calendar/content bootstrap, full atomic V2 restore, and MVP acceptance gate. | [Session Handoff Index](session/_index.md) |

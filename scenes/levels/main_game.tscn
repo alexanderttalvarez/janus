@@ -351,7 +351,6 @@ light_energy = 1.5
 shadow_enabled = true
 
 [node name="GameUI" parent="." unique_id=1170613073 instance=ExtResource("14_game_ui")]
-visible = false
 
 [node name="DoorTool" type="Node" parent="." unique_id=1180338646]
 script = ExtResource("19_8c1vm")

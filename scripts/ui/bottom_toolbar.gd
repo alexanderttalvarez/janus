@@ -10,11 +10,15 @@ var _finish_button: Button
 var _remove_button: Button
 var _transit_button: Button
 var _door_mode: bool = false
+var _notification_button: Button
 
 
 func _ready() -> void:
 	GameManager.ui_mode_changed.connect(_on_mode_changed)
-	_build_build_mode()
+	if GameManager.ui_mode == GameManager.UIMode.OBSERVE:
+		_build_observe_mode()
+	else:
+		_build_build_mode()
 
 
 func _build_build_mode() -> void:
@@ -32,8 +36,33 @@ func _build_observe_mode() -> void:
 	_clear_buttons()
 	_mode_label.text = "Observe"
 	_add_button("Build Zones", func(): GameManager.enter_build_mode())
-	_add_button("Heatmap", func(): pass)
-	_add_button("Finances", func(): pass)
+	_add_button("Finances", func(): _open_primary_panel("finances"))
+	_add_button("Prestige", func(): _open_primary_panel("prestige"))
+	_add_button("Tenants", func(): _open_primary_panel("tenants"))
+	_add_button("Visitors", func(): _open_primary_panel("visitors"))
+	_add_button("Metrics", func(): _open_primary_panel("metrics"))
+	_notification_button = _add_button("Notifications", func(): _open_notification_log())
+
+
+func set_notification_unresolved(unresolved: bool) -> void:
+	if _notification_button == null:
+		return
+	_notification_button.text = "Notifications •" if unresolved else "Notifications"
+	_notification_button.tooltip_text = "High-priority notification requires attention" if unresolved else "Open notification log"
+
+
+func _open_primary_panel(panel_name: String) -> void:
+	var scene_root: Node = get_tree().current_scene
+	var presentation_root: Node = scene_root.get_node_or_null("GameUI") if scene_root != null else null
+	if presentation_root != null and presentation_root.has_method("open_primary_panel"):
+		presentation_root.call("open_primary_panel", panel_name)
+
+
+func _open_notification_log() -> void:
+	var scene_root: Node = get_tree().current_scene
+	var presentation_root: Node = scene_root.get_node_or_null("GameUI") if scene_root != null else null
+	if presentation_root != null and presentation_root.has_method("open_notification_log"):
+		presentation_root.call("open_notification_log")
 
 
 func _enter_paint_mode(zone_type: String) -> void:
@@ -248,6 +277,7 @@ func _add_button(text: String, callback: Callable) -> Button:
 
 func _clear_buttons() -> void:
 	_finish_button = null
+	_notification_button = null
 	_remove_button = null
 	_transit_button = null
 	for child in _buttons.get_children():

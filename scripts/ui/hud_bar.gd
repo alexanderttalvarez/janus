@@ -1,8 +1,9 @@
-## HUDBar — Top bar showing Money, Visitors, Prestige, Speed, Clock, Wall Mode.
-## Uses hybrid data flow: reads initial state directly, subscribes to EventBus for updates.
+## HUDBar — Top bar rendering the detached PresentationCoordinator HUD model.
 class_name HUDBar
 extends Control
 
+signal save_requested
+signal load_requested
 
 @onready var _money_label: Label = $MoneyLabel
 @onready var _visitors_label: Label = $VisitorsLabel
@@ -14,102 +15,74 @@ extends Control
 @onready var _save_button: Button = $SaveLoadButtons/SaveButton
 @onready var _load_button: Button = $SaveLoadButtons/LoadButton
 
-const SAVE_SLOT: int = 1
+var _presentation_root: GameUI
+var _model: Dictionary = {}
+
+
+func bind_presentation(presentation_root: GameUI) -> void:
+	_presentation_root = presentation_root
+	apply_model(presentation_root.get_hud_model())
 
 
 func _ready() -> void:
-	_refresh_all()
-	EventBus.money_changed.connect(_on_money_changed)
 	GameManager.speed_changed.connect(_on_speed_changed)
 	GameManager.wall_mode_changed.connect(_on_wall_mode_changed)
-	_save_button.pressed.connect(_on_save_pressed)
-	_load_button.pressed.connect(_on_load_pressed)
+	_save_button.pressed.connect(func() -> void: save_requested.emit())
+	_load_button.pressed.connect(func() -> void: load_requested.emit())
+	_money_label.size = Vector2(160.0, 23.0)
+	_visitors_label.position = Vector2(180.0, 8.0)
+	_visitors_label.size = Vector2(180.0, 23.0)
+	_prestige_label.position = Vector2(370.0, 8.0)
+	_prestige_label.size = Vector2(230.0, 23.0)
+	_speed_label.position = Vector2(800.0, 8.0)
+	_speed_label.size = Vector2(70.0, 23.0)
+	_clock_label.position = Vector2(900.0, 8.0)
+	_wall_mode_label.position = Vector2(1100.0, 8.0)
+	apply_model(_model)
 
 
-func _process(_delta: float) -> void:
-	_refresh_visitors()
-	_refresh_clock()
-	_refresh_camera()
+func apply_model(model: Dictionary) -> void:
+	_model = model.duplicate(true)
+	if not is_node_ready():
+		return
+	var metrics: Dictionary = _model.get("metrics", {})
+	_money_label.text = "Money: %s K" % _format_integer(int(metrics.get("money", 0))) if metrics.has("money") else "Money: unavailable"
+	if metrics.has("current_visitors") or metrics.has("daily_arrivals"):
+		_visitors_label.text = "Visitors: %d / %d" % [int(metrics.get("current_visitors", 0)), int(metrics.get("daily_arrivals", 0))]
+	else:
+		_visitors_label.text = "Visitors: unavailable"
+	_prestige_label.text = "Prestige: %s" % str(metrics.get("prestige", "unavailable")) if metrics.has("prestige") else "Prestige: unavailable"
+	_speed_label.text = _speed_text(int(metrics.get("simulation_speed", GameManager.speed))) if metrics.has("simulation_speed") else "Speed: unavailable"
+	_clock_label.text = str(metrics.get("clock", "Clock: unavailable")) if metrics.has("clock") else "Clock: unavailable"
+	_wall_mode_label.text = "Walls: %s" % str(metrics.get("wall_mode", "unavailable")) if metrics.has("wall_mode") else "Walls: unavailable"
 
 
-func _refresh_all() -> void:
-	_refresh_money()
-	_refresh_visitors()
-	_refresh_prestige()
-	_refresh_speed()
-	_refresh_clock()
-	_refresh_wall_mode()
-	_refresh_camera()
+func set_save_status(success: bool, message: String) -> void:
+	_save_button.tooltip_text = message
+	_save_button.modulate = Color.WHITE if success else Color(1.0, 0.5, 0.5)
 
 
-func _refresh_money() -> void:
-	var root := get_tree().current_scene
-	if root:
-		var em := root.get_node_or_null("Simulation/EconomyManager")
-		if em and em is EconomyManager:
-			_money_label.text = "%d K" % (em as EconomyManager).balance
+func set_load_status(success: bool, message: String) -> void:
+	_load_button.tooltip_text = message
+	_load_button.modulate = Color.WHITE if success else Color(1.0, 0.5, 0.5)
 
-func _refresh_visitors() -> void:
-	var root := get_tree().current_scene
-	if root:
-		var vm := root.get_node_or_null("Simulation/VisitorManager")
-		if vm and vm is VisitorManager:
-			var count := (vm as VisitorManager).all_visitors.size()
-			_visitors_label.text = "%d" % count
-
-func _refresh_prestige() -> void:
-	var root := get_tree().current_scene
-	if root:
-		var pm := root.get_node_or_null("Simulation/PrestigeManager")
-		if pm and pm is PrestigeManager:
-			var pmgr := pm as PrestigeManager
-			var snapshot: OfficialPrestigeSnapshot = pmgr.get_committed_snapshot()
-			if snapshot != null:
-				_prestige_label.text = "%s | T%d | %d cK cap" % [pmgr.get_mall_level_name(), snapshot.get_supported_tenant_tier(), snapshot.get_rent_ceiling_centi_kreds()]
-
-func _refresh_speed() -> void:
-	var names := ["||", "1x", "2x", "3x"]
-	_speed_label.text = names[GameManager.speed]
-
-func _refresh_clock() -> void:
-	var root := get_tree().current_scene
-	if root:
-		var tm := root.get_node_or_null("Simulation/TimeManager")
-		if tm and tm is TimeManager:
-			_clock_label.text = (tm as TimeManager).get_visual_clock_string()
-
-func _refresh_wall_mode() -> void:
-	_wall_mode_label.text = GameManager.WALL_MODE_NAMES[GameManager.wall_mode]
-
-
-func _refresh_camera() -> void:
-	var root := get_tree().current_scene
-	if root:
-		var cam: Node3D = root.get_node_or_null("CameraRig/CameraRig")
-		if cam:
-			_camera_label.text = "Cam: %.0f" % rad_to_deg(cam.rotation.y)
-
-
-func _on_money_changed(balance: int, _delta: int) -> void:
-	_money_label.text = "%d K" % balance
 
 func _on_speed_changed(speed: int) -> void:
-	var names := ["||", "1x", "2x", "3x"]
-	_speed_label.text = names[speed]
+	_speed_label.text = _speed_text(speed)
+
 
 func _on_wall_mode_changed(mode: String) -> void:
-	_wall_mode_label.text = mode
+	_wall_mode_label.text = "Walls: %s" % mode
 
-func _on_save_pressed() -> void:
-	var result: Error = SaveManager.save_game(SAVE_SLOT)
-	if result == OK:
-		_save_button.tooltip_text = "Saved slot %d" % SAVE_SLOT
-	else:
-		_save_button.tooltip_text = "Save failed: %s" % error_string(result)
 
-func _on_load_pressed() -> void:
-	var result: Dictionary = SaveManager.load_game(SAVE_SLOT)
-	if bool(result.get("valid", false)):
-		_load_button.tooltip_text = "Loaded slot %d" % SAVE_SLOT
-	else:
-		_load_button.tooltip_text = "Load failed: %s" % String(result.get("reason_code", "unknown error"))
+func _speed_text(speed: int) -> String:
+	var names: Array[String] = ["||", "1x", "2x", "3x"]
+	return "Speed: %s" % (names[speed] if speed >= 0 and speed < names.size() else "?")
+
+
+func _format_integer(value: int) -> String:
+	var raw: String = str(value)
+	if abs(value) < 1000:
+		return raw
+	var split_at: int = raw.length() - 3
+	return raw.substr(0, split_at) + "," + raw.substr(split_at)

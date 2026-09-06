@@ -1,28 +1,39 @@
 class_name FinancesPanel
 extends PanelContainer
 
+var _model: Dictionary = {}
+
+
+func configure_model(model: Dictionary) -> void:
+	_model = model.duplicate(true)
+	if is_node_ready():
+		_refresh()
+
 
 func _ready() -> void:
 	_refresh()
-	EventBus.money_changed.connect(_on_money_changed)
 
 
 func _refresh() -> void:
-	_update_balance()
-	_update_rent()
+	var balance: Label = get_node_or_null("VBoxContainer/Balance") as Label
+	var rent: Label = get_node_or_null("VBoxContainer/Rent") as Label
+	var availability: String = String(_model.get("availability", "UNAVAILABLE"))
+	if availability != "AVAILABLE":
+		if balance != null:
+			balance.text = "Balance: unavailable"
+		if rent != null:
+			rent.text = "Rent income: unavailable"
+		return
+	var values: Dictionary = _model.get("values", {})
+	if balance != null:
+		balance.text = "Balance: %s K" % _format_integer(int(values.get("balance", 0)))
+	if rent != null:
+		rent.text = "Rent income: %s K" % _format_integer(int(values.get("rent_income", 0)))
 
 
-func _update_balance() -> void:
-	var root := get_tree().current_scene
-	if root:
-		var em := root.get_node_or_null("Simulation/EconomyManager")
-		if em and em is EconomyManager:
-			($VBoxContainer/Balance as Label).text = "Balance: %d K" % (em as EconomyManager).balance
-
-
-func _update_rent() -> void:
-	($VBoxContainer/Rent as Label).text = "Rent Income: 0 K"
-
-
-func _on_money_changed(balance: int, _delta: int) -> void:
-	($VBoxContainer/Balance as Label).text = "Balance: %d K" % balance
+func _format_integer(value: int) -> String:
+	var raw: String = str(value)
+	if abs(value) < 1000:
+		return raw
+	var split_at: int = raw.length() - 3
+	return raw.substr(0, split_at) + "," + raw.substr(split_at)
