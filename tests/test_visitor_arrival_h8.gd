@@ -40,7 +40,6 @@ var _demand: ArrivalDemandSnapshot
 func _init() -> void:
 	_setup()
 	_test_demand_independence_and_ordering()
-	_test_legacy_adapter_isolation()
 	_test_revision_and_eligibility_contracts()
 	_test_token_contract()
 	_test_immediate_commit_and_event_order()
@@ -92,11 +91,17 @@ func _cleanup() -> void:
 		_h6.dispose()
 	if _public_projection != null:
 		_public_projection.dispose()
+	if _visitor_manager != null:
+		_visitor_manager.all_visitors.clear()
+		_visitor_manager.free()
+		_visitor_manager = null
 	if _projection_coordinator != null:
 		_projection_coordinator.dispose()
-		_projection_coordinator.queue_free()
+		_projection_coordinator.free()
+		_projection_coordinator = null
 	if _runtime != null:
 		_runtime.free()
+		_runtime = null
 
 
 func _test_demand_independence_and_ordering() -> void:
@@ -112,16 +117,6 @@ func _test_demand_independence_and_ordering() -> void:
 	var invalid_result: Dictionary = invalid_demand.initialize("invalid_demand", 1, [{"position": Vector3.ZERO}])
 	_assert(not bool(invalid_result.get("valid", false)) and _has_code(invalid_result.get("diagnostics", []), "DEMAND_SPATIAL_FIELD_FORBIDDEN"), "demand rejects spatial source fields")
 	_assert(_coordinator._canonical_source_less("e\u0301a", "\u00E9b"), "source ordering normalizes NFC before comparing UTF-8 bytes")
-
-
-func _test_legacy_adapter_isolation() -> void:
-	var adapter: LegacyVisitorSpawnAdapter = load("res://scripts/simulation/legacy_visitor_spawn_adapter.gd").new() as LegacyVisitorSpawnAdapter
-	var source: Dictionary = {"arrival_source_id": "gateway_east", "mode": "PEDESTRIAN"}
-	var bridged: Dictionary = adapter.bridge_selected_source("gateway_east", source)
-	_assert(bool(bridged.get("valid", false)) and bridged.get("source", {}).get("arrival_source_id", "") == "gateway_east", "legacy visitor adapter forwards selected source identity")
-	_assert(not bridged.get("source", {}).has("spawn_point_id") and not bridged.has("legacy_corner_id"), "legacy visitor adapter does not map persisted corner identities")
-	var mismatch: Dictionary = adapter.bridge_selected_source("gateway_north", source)
-	_assert(not bool(mismatch.get("valid", false)) and _has_code(mismatch.get("diagnostics", []), "LEGACY_VISITOR_SOURCE_MISMATCH"), "legacy visitor adapter rejects mismatched source records")
 
 
 func _test_token_contract() -> void:

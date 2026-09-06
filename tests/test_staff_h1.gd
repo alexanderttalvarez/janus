@@ -36,6 +36,8 @@ func _init() -> void:
 	var restored := StaffManager.new()
 	restored.deserialize(manager.serialize())
 	_assert(restored.snapshot()["staff"].size() == 2, "staff authority round-trips detached state")
+	restored.free()
+	manager.free()
 	print("Staff H1 tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 

@@ -188,14 +188,14 @@ func _preview_floor() -> String:
 	var existing := _editing_zone()
 	if existing != null:
 		return existing.floor
-	return _source_floor_label if not _source_floor_label.is_empty() else GridManager.GROUND_FLOOR
+	return _source_floor_label
 
 
 func _preview_plot_id() -> String:
 	var existing := _editing_zone()
 	if existing != null:
 		return existing.plot_id
-	return _source_plot_id if not _source_plot_id.is_empty() else GridManager.DEFAULT_PLOT
+	return _source_plot_id
 
 
 func _show_invalid_perimeter(tiles: Array[Vector2i]) -> void:
@@ -232,6 +232,7 @@ func _add_invalid_perimeter_segment(mesh: BoxMesh, material: StandardMaterial3D,
 	segment.material_override = material
 	var projected_position := _project_grid_coordinate(Vector2(tile_pos) + Vector2(0.5, 0.5) + Vector2(offset.x, offset.z))
 	if projected_position == Vector3.INF:
+		segment.free()
 		return
 	segment.global_position = projected_position + Vector3(0.0, INVALID_PERIMETER_Y, 0.0)
 	var floor := _get_projected_floor()
@@ -466,6 +467,7 @@ func _show_painted_tile(tile_pos: Vector2i) -> void:
 	var mesh := _make_tile_mesh(PAINTED_ALPHA)
 	var projected_position := _project_cell_center(tile_pos)
 	if projected_position == Vector3.INF:
+		mesh.free()
 		return
 	mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET, 0.0)
 	_visual_root.add_child(mesh)
@@ -485,7 +487,7 @@ func _refresh_painted_tile(tile_pos: Vector2i) -> void:
 func _hide_painted_tile(tile_pos: Vector2i) -> void:
 	var mesh: Node = _painted_meshes.get(tile_pos, null)
 	if mesh != null:
-		mesh.queue_free()
+		mesh.free()
 	_painted_meshes.erase(tile_pos)
 
 
@@ -525,7 +527,7 @@ func cancel() -> void:
 	_preview_mesh.visible = false
 	_clear_drag_preview()
 	for mesh: Node in _painted_meshes.values():
-		mesh.queue_free()
+		mesh.free()
 	_painted_meshes.clear()
 
 

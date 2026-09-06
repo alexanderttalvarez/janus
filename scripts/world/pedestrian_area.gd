@@ -15,6 +15,12 @@ extends Node3D
 ## Distance between perimeter waypoints.
 @export var waypoint_spacing: float = 1.0
 
+## Stable H5 door-side values; production does not depend on legacy GridTile.
+const DOOR_NORTH: int = 1
+const DOOR_SOUTH: int = 2
+const DOOR_EAST: int = 4
+const DOOR_WEST: int = 8
+
 
 var _waypoints: Array[Vector3] = []
 
@@ -82,20 +88,20 @@ func get_next_waypoint_index(index: int, step: int = 1) -> int:
 
 
 ## Return the perimeter waypoint aligned with a building door side.
-func get_door_waypoint_index(side: GridTile.DoorSide) -> int:
+func get_door_waypoint_index(side: int) -> int:
 	_ensure_waypoints()
 	var x_count := maxi(1, int(round(plot_size.x / waypoint_spacing)))
 	var z_count := maxi(1, int(round(plot_size.y / waypoint_spacing)))
 	var middle_x := int(x_count / 2)
 	var middle_z := int(z_count / 2)
 	match side:
-		GridTile.DoorSide.NORTH:
+		DOOR_NORTH:
 			return middle_x
-		GridTile.DoorSide.EAST:
+		DOOR_EAST:
 			return x_count + middle_z
-		GridTile.DoorSide.SOUTH:
+		DOOR_SOUTH:
 			return x_count + z_count + (x_count - 1 - middle_x)
-		GridTile.DoorSide.WEST:
+		DOOR_WEST:
 			return x_count + z_count + x_count + (z_count - 1 - middle_z)
 	return 0
 

@@ -35,7 +35,7 @@ class_name WallManager
 extends Node
 
 
-## Wall height in world units — matches GridManager.FLOOR_HEIGHT.
+## Wall height in world units — matches the explicit production projection metrics.
 const WALL_HEIGHT: float = 3.0
 ## Structural wall thickness — matches the floor tile height (0.1) so walls
 ## read as solid slabs, not paper planes.
@@ -67,6 +67,8 @@ const _DIRS: Array[Vector2i] = [Vector2i.RIGHT, Vector2i.LEFT, Vector2i.UP, Vect
 
 var _materials: Dictionary = {}  # material cache key -> ShaderMaterial
 var _box_meshes: Dictionary = {}  # size key -> BoxMesh
+var _district_runtime: DistrictRuntime
+var _production_floor_address: Dictionary = {}
 
 
 func _ready() -> void:
@@ -87,15 +89,32 @@ func _ready() -> void:
 	event_bus.connect("tile_purchased", func(_f: int, _x: int, _y: int): rebuild())
 
 
-## Regenerate all wall meshes from the current grid + zone state.
+## Configure the production wall path. It consumes detached H3 state and
+## ZoneManager records only; the archive GridManager path remains available to
+## isolated test scenes.
+func configure_production(runtime: DistrictRuntime, floor_address: Dictionary) -> void:
+	_district_runtime = runtime
+	_production_floor_address = floor_address.duplicate(true)
+	if _district_runtime != null and not _district_runtime.district_delta_committed.is_connected(_on_district_delta_committed):
+		_district_runtime.district_delta_committed.connect(_on_district_delta_committed)
+
+
+func _on_district_delta_committed(_envelope: Dictionary) -> void:
+	rebuild()
+
+
+## Regenerate all wall meshes from the current district and zone snapshots.
 func rebuild() -> void:
+	if _district_runtime != null:
+		_rebuild_production()
+		return
 	var floor_node := _get_floor()
 	if floor_node == null:
 		return
-	var gm := _get_grid_manager()
+	var gm: Node = _get_spatial_view()
 	if gm == null:
 		return
-	var fg := gm.get_floor_grid()
+	var fg: Variant = gm.get_floor_grid()
 	if fg == null:
 		return
 
@@ -123,20 +142,20 @@ func rebuild() -> void:
 	var manual_door_edges: Dictionary = {}  # edge key -> true
 	for x in range(fg.width):
 		for y in range(fg.height):
-			var tile: GridTile = fg.get_tile(x, y)
+			var tile: Variant = fg.get_tile(x, y)
 			if tile == null or not (tile.owned and tile.floor_built):
 				continue
 			var pos := Vector2i(x, y)
 			built[pos] = true
-			if tile.element == GridTile.TileElement.CIRCULATION:
+			if tile.element == 4:
 				corridor[pos] = true
-			if tile.has_door(GridTile.DoorSide.NORTH):
+			if tile.has_door(1):
 				manual_door_edges[_edge_key(pos, pos + Vector2i.UP)] = true
-			if tile.has_door(GridTile.DoorSide.SOUTH):
+			if tile.has_door(2):
 				manual_door_edges[_edge_key(pos, pos + Vector2i.DOWN)] = true
-			if tile.has_door(GridTile.DoorSide.EAST):
+			if tile.has_door(4):
 				manual_door_edges[_edge_key(pos, pos + Vector2i.RIGHT)] = true
-			if tile.has_door(GridTile.DoorSide.WEST):
+			if tile.has_door(8):
 				manual_door_edges[_edge_key(pos, pos + Vector2i.LEFT)] = true
 
 	var automatic_parcel_door_edges: Dictionary = {}
@@ -161,6 +180,103 @@ func rebuild() -> void:
 		)
 	for i in range(runs.size()):
 		_build_wall_segments(container, runs[i], joints_by_run.get(i, []))
+
+
+func _rebuild_production() -> void:
+	if not _district_runtime.has_session() or _production_floor_address.is_empty():
+		return
+	var floor_node: Floor = _get_production_floor()
+	if floor_node == null:
+		return
+	var container: Node3D = _get_wall_container(floor_node)
+	_clear_walls(container)
+	var state: Dictionary = _district_runtime.get_state()
+	var floor_id: String = String(_production_floor_address.get("floor_id", ""))
+	var floor_label: String = _floor_label(int(_production_floor_address.get("elevation", 0)))
+	var built: Dictionary = {}
+	var corridor: Dictionary = {}
+	for plot_state: Variant in state.get("plot_states", []):
+		if not plot_state is Dictionary or String(plot_state.get("runtime_plot_id", "")) != String(_production_floor_address.get("runtime_plot_id", "")):
+			continue
+		for floor_state: Variant in plot_state.get("floor_states", []):
+			if not floor_state is Dictionary or String(floor_state.get("floor_id", "")) != floor_id:
+				continue
+			for cell: Variant in floor_state.get("constructed_cells", []):
+				if cell is Array and cell.size() == 2:
+					built[Vector2i(int(cell[0]), int(cell[1]))] = true
+	for construction: Variant in state.get("construction_records", []):
+		if not construction is Dictionary or String(construction.get("kind", "")) != "corridor":
+			continue
+		for cell: Variant in construction.get("cells", []):
+			if cell is Dictionary and String(cell.get("floor_id", "")) == floor_id:
+				corridor[Vector2i(int(cell.get("x", -1)), int(cell.get("y", -1)))] = true
+	if built.is_empty():
+		return
+	var zone_of: Dictionary = {}
+	var parcel_of: Dictionary = {}
+	var parcel_zone_of: Dictionary = {}
+	var zones: Array[ZoneData] = []
+	var zone_manager: ZoneManager = _get_zone_manager()
+	if zone_manager != null:
+		for zone: ZoneData in zone_manager.get_zones_on_floor(floor_label):
+			if zone.plot_id != String(_production_floor_address.get("runtime_plot_id", "")):
+				continue
+			zones.append(zone)
+			for tile: Vector2i in zone.tiles:
+				zone_of[tile] = zone.id
+			for parcel: Parcel in zone.parcels:
+				for tile: Vector2i in parcel.tiles:
+					parcel_of[tile] = parcel.id
+					parcel_zone_of[tile] = zone.id
+	var manual_door_edges: Dictionary = {}
+	for record: Variant in state.get("manual_door_records", []):
+		if not record is Dictionary or String(record.get("runtime_plot_id", "")) != String(_production_floor_address.get("runtime_plot_id", "")) or String(record.get("floor_id", "")) != floor_id:
+			continue
+		var from_value: Variant = record.get("from_cell", [])
+		var to_value: Variant = record.get("to_cell", [])
+		if from_value is Array and to_value is Array and from_value.size() == 2 and to_value.size() == 2:
+			manual_door_edges[_edge_key(Vector2i(int(from_value[0]), int(from_value[1])), Vector2i(int(to_value[0]), int(to_value[1])))] = true
+	var automatic_parcel_door_edges: Dictionary = {}
+	for zone: ZoneData in zones:
+		for parcel: Parcel in zone.parcels:
+			for edge: Dictionary in parcel.selected_door_edges:
+				automatic_parcel_door_edges[_edge_key(edge.get("tile", Vector2i.ZERO), edge.get("access", Vector2i.ZERO))] = true
+	var pieces: Array = _collect_wall_pieces(built, corridor, zones, zone_of, parcel_of, parcel_zone_of, manual_door_edges, automatic_parcel_door_edges)
+	var runs: Array = _merge_pieces_into_runs(pieces)
+	var joints_by_run: Dictionary = {}
+	var junctions: Array = _find_wall_junctions(runs, joints_by_run)
+	for junction: Dictionary in junctions:
+		_build_corner_cube(container, junction["point"], junction["outward"], junction["thickness"], junction["is_parcel_boundary"])
+	for index: int in range(runs.size()):
+		_build_wall_segments(container, runs[index], joints_by_run.get(index, []))
+
+
+func _floor_label(elevation: int) -> String:
+	return "G" if elevation == 0 else ("F%d" % elevation if elevation > 0 else "B%d" % absi(elevation))
+
+
+func _get_production_floor() -> Floor:
+	var root: Node = get_tree().current_scene
+	if root == null:
+		return null
+	var world: Node3D = root.get_node_or_null("World") as Node3D
+	if world == null:
+		return null
+	var projection: Node = world.get_node_or_null("ProjectionCoordinator")
+	if projection != null and projection.has_method("get_projected_floor"):
+		var projected: Floor = projection.call("get_projected_floor", _production_floor_address) as Floor
+		if projected != null:
+			return projected
+	var target_floor_id: String = String(_production_floor_address.get("floor_id", ""))
+	var pending: Array[Node] = [world]
+	while not pending.is_empty():
+		var candidate: Node = pending.pop_back()
+		var floor: Floor = candidate as Floor
+		if floor != null and floor.runtime_floor_id == target_floor_id and floor.runtime_plot_id == String(_production_floor_address.get("runtime_plot_id", "")) and floor.elevation == int(_production_floor_address.get("elevation", 0)):
+			return floor
+		for child: Node in candidate.get_children():
+			pending.append(child)
+	return null
 
 
 ## Remove previous wall meshes. Immediate free (not queue_free) so a rebuild
@@ -235,7 +351,7 @@ func _collect_wall_pieces(
 					var is_other_parcel: bool = parcel_zone_of.get(n, "") == zone.id and parcel_of.get(n, "") != parcel.id
 					var is_internal_transit: bool = (
 						zone_of.get(n, "") == zone.id
-						and zone.typologies.get(n, GridTile.TileTypology.TENANT) == GridTile.TileTypology.TRANSIT
+						and zone.typologies.get(n, 0) == 2
 					)
 					if not is_other_parcel and not is_internal_transit:
 						continue
@@ -666,11 +782,10 @@ func _get_floor() -> Node3D:
 	return null
 
 
-func _get_grid_manager() -> GridManager:
-	var root := get_tree().current_scene
-	if root:
-		return root.get_node_or_null("World/GridManager") as GridManager
-	return null
+func _get_spatial_view() -> Node:
+	# Archive-policy test scenes may provide the legacy spatial view through a
+	# dedicated group. Production scenes intentionally provide no such node.
+	return get_tree().get_first_node_in_group("archive_legacy_spatial") as Node
 
 
 func _get_zone_manager() -> ZoneManager:

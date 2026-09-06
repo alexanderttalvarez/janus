@@ -7,9 +7,11 @@ signal tenant_released(tenant_id: String, zone_id: String, parcel_id: String)
 signal rent_snapshot_published(snapshot: Dictionary)
 signal spatial_context_invalidated(diagnostics: Array[Dictionary])
 signal tenant_application_evaluated(result: Dictionary)
+signal service_proxy_snapshot_published(snapshot: Array[Dictionary])
 
 const LIFECYCLE_STATES: Array[String] = ["candidate", "exclusivity", "constructing", "operating", "critical", "closing", "closed"]
 const SNAPSHOT_SCHEMA_VERSION: int = 1
+const SERVICE_PROXY_POLICY_REVISION: int = 1
 
 var all_tenants: Array[Dictionary] = []
 var _tenant_counter: int = 0
@@ -19,6 +21,7 @@ var _evaluation_ordinals: Dictionary = {}
 var _next_evaluations: Dictionary = {}
 var _zone_manager: ZoneManager
 var _last_rent_snapshot: Dictionary = {}
+var _last_service_proxy_snapshot: Array[Dictionary] = []
 var _spatial_context: SpatialEvaluationContext
 var _diagnostics: Array[Dictionary] = []
 var _evaluation_results: Dictionary = {}
@@ -182,6 +185,64 @@ func build_rent_snapshot(sim_day: int, zone_revision: int) -> Dictionary:
 
 func last_rent_snapshot() -> Dictionary:
 	return _last_rent_snapshot.duplicate(true)
+
+
+## Publish detached tenant-facing proxy facts from committed tenant and zone state.
+func publish_service_proxy_snapshot(attachments: Array[Dictionary]) -> Dictionary:
+	var attachments_by_door: Dictionary = {}
+	for attachment: Dictionary in attachments:
+		var door_id: String = String(attachment.get("door_id", ""))
+		var anchor_id: String = String(attachment.get("corridor_anchor_id", ""))
+		if door_id.is_empty() or anchor_id.is_empty():
+			continue
+		if int(attachment.get("topology_revision", -1)) < 0:
+			continue
+		attachments_by_door[door_id] = attachment.duplicate(true)
+	var proxies: Array[Dictionary] = []
+	if _zone_manager != null:
+		var door_facts: Array[Dictionary] = _zone_manager.get_service_proxy_door_snapshots()
+		for record: Dictionary in all_tenants:
+			if String(record.get("lifecycle_state", "")) != "operating":
+				continue
+			for door_fact: Dictionary in door_facts:
+				if String(door_fact.get("tenant_id", "")) != String(record.get("tenant_id", "")):
+					continue
+				if String(door_fact.get("parcel_id", "")) != String(record.get("parcel_id", "")):
+					continue
+				var door_id: String = String(door_fact.get("door_id", ""))
+				if not attachments_by_door.has(door_id):
+					continue
+				var attachment: Dictionary = attachments_by_door[door_id]
+				if not bool(attachment.get("public_corridor_reachable", false)):
+					continue
+				var proxy_id: String = "proxy/%s/%s" % [record["parcel_id"], door_id]
+				var proxy: Dictionary = {
+					"schema_version": VisitorServiceProxy.SCHEMA_VERSION,
+					"parcel_door_proxy_id": proxy_id,
+					"tenant_id": String(record["tenant_id"]),
+					"parcel_id": String(record["parcel_id"]),
+					"door_id": door_id,
+					"corridor_anchor_id": String(attachment["corridor_anchor_id"]),
+					"tenant_active": true,
+					"public_corridor_reachable": true,
+					"proxy_enabled": bool(attachment.get("proxy_enabled", true)),
+					"queue_accepting": true,
+					"proxy_policy_revision": SERVICE_PROXY_POLICY_REVISION,
+					"topology_revision": int(attachment["topology_revision"]),
+					"tenant_revision": _authority_revision,
+				}
+				var validation := VisitorServiceProxy.new()
+				validation.configure(proxy)
+				if bool(validation.validate().get("valid", false)):
+					proxies.append(proxy)
+	proxies.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["parcel_door_proxy_id"]) < String(right["parcel_door_proxy_id"]))
+	_last_service_proxy_snapshot = proxies.duplicate(true)
+	service_proxy_snapshot_published.emit(_last_service_proxy_snapshot.duplicate(true))
+	return {"valid": true, "snapshots": _last_service_proxy_snapshot.duplicate(true), "diagnostics": []}
+
+
+func last_service_proxy_snapshot() -> Array[Dictionary]:
+	return _last_service_proxy_snapshot.duplicate(true)
 
 
 func evaluate_application(context: ApplicationEvaluationContext, sim_day: int) -> Dictionary:

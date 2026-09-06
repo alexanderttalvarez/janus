@@ -9,6 +9,7 @@ var definition_fingerprint: String = ""
 var district_revision: int = -1
 var topology_revision: int = -1
 var active_plot_ids: Array[String] = []
+var selected_plot_ids: Array[String] = []
 var expanded_rectangles: Array[Dictionary] = []
 var margin: float = 0.0
 var margin_quarter: float = 0.0
@@ -26,12 +27,14 @@ func initialize(
 	p_margin: float,
 	p_margin_quarter: float,
 	p_grid_unit_size: float,
-	p_origin: Vector3
+	p_origin: Vector3,
+	p_selected_plot_ids: Array = []
 ) -> void:
 	definition_fingerprint = p_definition_fingerprint
 	district_revision = p_district_revision
 	topology_revision = p_topology_revision
 	active_plot_ids = _sorted_strings(p_active_plot_ids)
+	selected_plot_ids = _sorted_strings(p_selected_plot_ids)
 	expanded_rectangles = _typed_copy(p_rectangles)
 	margin = p_margin
 	margin_quarter = p_margin_quarter
@@ -42,7 +45,7 @@ func initialize(
 
 func duplicate_value() -> CameraBoundsSnapshot:
 	var copy: CameraBoundsSnapshot = load("res://scripts/camera/camera_bounds_snapshot.gd").new() as CameraBoundsSnapshot
-	copy.initialize(definition_fingerprint, district_revision, topology_revision, active_plot_ids, expanded_rectangles, margin, margin_quarter, grid_unit_size, origin)
+	copy.initialize(definition_fingerprint, district_revision, topology_revision, active_plot_ids, expanded_rectangles, margin, margin_quarter, grid_unit_size, origin, selected_plot_ids)
 	return copy
 
 
@@ -68,6 +71,7 @@ func value() -> Dictionary:
 		"district_revision": district_revision,
 		"topology_revision": topology_revision,
 		"active_plot_ids": active_plot_ids.duplicate(),
+		"selected_plot_ids": selected_plot_ids.duplicate(),
 		"expanded_rectangles": expanded_rectangles.duplicate(true),
 		"margin": margin,
 		"margin_quarter": margin_quarter,

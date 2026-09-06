@@ -20,6 +20,7 @@ var _manifest: Dictionary = {}
 var _generation: int = 0
 var _build_token: int = 0
 var _last_result: ProjectionResult
+var _last_built_district_revision: int = -1
 
 
 func configure(runtime: DistrictRuntime, metrics: ProjectionMetrics) -> Dictionary:
@@ -129,6 +130,7 @@ func _commit(result: ProjectionResult) -> Dictionary:
 	_manifest = result.manifest.duplicate(true)
 	_manifest["generation"] = _generation
 	_last_result = result
+	_last_built_district_revision = int(result.manifest.get("district_revision", -1))
 	projection_committed.emit(get_manifest())
 	return {"valid": true, "manifest": get_manifest(), "diagnostics": []}
 
@@ -145,6 +147,7 @@ func dispose() -> void:
 	_metrics = null
 	_builder = null
 	_last_result = null
+	_last_built_district_revision = -1
 	_manifest = {}
 
 
@@ -254,11 +257,11 @@ func _materialize(
 			root.queue_free()
 			return null
 		var elevation: int = int(descriptor.get("elevation", 0))
-		var legacy_floor: String = "G" if elevation == 0 else ("F%d" % elevation if elevation > 0 else "B%d" % absi(elevation))
-		var plot_id: String = String(descriptor.get("plot_id", "plot_0"))
-		floor_node.name = "floor_%s_%s" % [plot_id, legacy_floor]
+		var floor_label: String = "G" if elevation == 0 else ("F%d" % elevation if elevation > 0 else "B%d" % absi(elevation))
+		var plot_id: String = String(descriptor.get("plot_id", ""))
+		floor_node.name = "floor_%s_%s" % [plot_id, floor_label]
 		floor_node.plot_id = plot_id
-		floor_node.floor_level = legacy_floor
+		floor_node.floor_level = floor_label
 		floor_node.position = descriptor.get("position", Vector3.ZERO)
 		floor_node.rotation.y = float(descriptor.get("rotation_y", 0.0))
 		floor_node.set_meta("generated_projection", true)

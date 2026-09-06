@@ -3,6 +3,7 @@ extends RefCounted
 
 ## Immutable H3 traversal input view consumed by H5. It is a derived read
 ## contract and never contains Node references or presentation geometry.
+## H5-facing public access records use the canonical public-band physical kind.
 
 var definition_fingerprint: String = ""
 var district_revision: int = -1
@@ -10,6 +11,8 @@ var zone_revision: int = -1
 var floor_circulation_edges: Array[Dictionary] = []
 var door_access_edges: Array[Dictionary] = []
 var vertical_links: Array[Dictionary] = []
+
+const PUBLIC_BAND_ACCESS_KIND: String = "public_band_physical"
 
 
 func initialize(
@@ -77,6 +80,8 @@ func _validate_records(records: Array[Dictionary], fields: Array[String], label:
 			if not record.has(field):
 				diagnostics.append({"code": "TRAVERSAL_FIELD_MISSING", "path": "$.%s[%d].%s" % [label, index, field], "message": "traversal record field is required"})
 		var record_id: String = String(record.get(fields[0], ""))
+		if label == "door_access_edges" and String(record.get("source_kind", "")) == "H3" and String(record.get("access_kind", "")) != PUBLIC_BAND_ACCESS_KIND:
+			diagnostics.append({"code": "TRAVERSAL_ACCESS_KIND_INVALID", "path": "$.%s[%d].access_kind" % [label, index], "message": "H3 door access must be public-band physical access"})
 		if record_id.is_empty():
 			diagnostics.append({"code": "TRAVERSAL_ID_INVALID", "path": "$.%s[%d]" % [label, index], "message": "traversal record ID is required"})
 		if index > 0 and record_id <= previous_id:

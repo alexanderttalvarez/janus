@@ -1,11 +1,11 @@
 ## MainGame — Root script for main_game.tscn.
-## Initializes World (GridManager + floors), Camera, Simulation, Zone systems.
+## Composes production content, runtime authorities, projections, and presentation systems.
 class_name MainGame
 extends Node3D
 
 
-## Explicit scene-owned content selection. An empty value is rejected.
-@export var bootstrap_layout_id: String = ""
+## Explicit scene-owned production content selection. An empty configuration is rejected.
+@export var bootstrap_config: ProductionDistrictBootstrap
 
 @onready var _world: Node3D = $World
 @onready var _camera_manager: CameraManager = $CameraRig
@@ -19,9 +19,11 @@ extends Node3D
 @onready var _synergy_manager: SynergyManager = $Simulation/SynergyManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
+@onready var _door_tool: DoorTool = $DoorTool
 @onready var _wall_manager: WallManager = $World/WallManager
 @onready var _traffic_manager: TrafficManager = $World/TrafficManager
 var _district_runtime: DistrictRuntime
+var _manual_door_authority: ManualDoorAuthority
 var _initial_snapshot: ResolvedDistrictSnapshot
 var _projection_coordinator: ProjectionCoordinator
 var _public_realm_projection: PublicRealmProjection
@@ -30,6 +32,7 @@ var _traffic_topology: TrafficTopology
 var _parcel_label_renderer: ParcelLabelRenderer
 var _zone_label_renderer: ZoneLabelRenderer
 var _arrival_coordinator: ArrivalCoordinator
+var _traversal_topology_source: DistrictTraversalTopologySource
 var _visitor_demand_authority: VisitorDemandAuthority
 var _content_registry: RefCounted
 var _session_bootstrap: RefCounted
@@ -40,7 +43,6 @@ func _ready() -> void:
 	GameManager.speed = GameManager.Speed.PAUSED
 	if not _begin_session_bootstrap():
 		return
-	_initialize_grid()
 	_initialize_parcel_label_renderer()
 	_initialize_zone_label_renderer()
 	_initialize_camera()
@@ -53,6 +55,7 @@ func _ready() -> void:
 	_initialize_synergy()
 	_initialize_district_runtime()
 	_initialize_projection()
+	_initialize_service_proxies()
 	_focus_camera_on_generated_floor()
 	_initialize_arrivals()
 	_initialize_zone_tool()
@@ -77,49 +80,6 @@ func _ready() -> void:
 
 	print("MainGame: Ready.")
 
-
-# ── Grid Initialization ────────────────────────────────────────────────
-
-func _initialize_grid() -> void:
-	var gm := _world.get_node("GridManager") as GridManager
-	if gm == null:
-		push_error("MainGame: GridManager not found under World.")
-		return
-
-	if _initial_snapshot == null:
-		return
-	var snapshot_data: Dictionary = _initial_snapshot.get_data()
-	var plot_records: Array = snapshot_data.get("plots", [])
-	if plot_records.is_empty():
-		push_error("MainGame: Resolved district contains no buildable plots.")
-		return
-	var plot_record: Dictionary = plot_records[0]
-	var plot_rect: Dictionary = plot_record.get("rect_quarter", {})
-	var width: int = maxi(1, (int(plot_rect.get("maximum_x4", 0)) - int(plot_rect.get("minimum_x4", 0))) / 4)
-	var height: int = maxi(1, (int(plot_rect.get("maximum_z4", 0)) - int(plot_rect.get("minimum_z4", 0))) / 4)
-	var plot := gm.create_plot(GridManager.DEFAULT_PLOT, width, height)
-	if plot == null:
-		push_error("MainGame: Failed to create the selected layout plot.")
-		return
-
-	var buildability: Dictionary = {}
-	for cell: Array in plot_record.get("buildability_mask", []):
-		buildability[Vector2i(int(cell[0]), int(cell[1]))] = true
-	var fg := plot.get_floor(GridManager.GROUND_FLOOR)
-	if fg != null:
-		for x in range(fg.width):
-			for y in range(fg.height):
-				var tile := fg.get_tile(x, y)
-				if tile == null or not buildability.has(Vector2i(x, y)):
-					continue
-				tile.owned = true
-				tile.floor_built = true
-			# The resolved buildability field is the public circulation field. Zone
-			# commits carve Tenant/Transit space out of this field explicitly.
-				tile.element = GridTile.TileElement.CIRCULATION
-
-	gm.rebuild_pathfinding()
-	print("MainGame: Grid initialized from resolved district — %d×%d." % [width, height])
 
 
 func _get_initial_floor_address() -> Dictionary:
@@ -153,7 +113,7 @@ func _resolve_initial_snapshot() -> ResolvedDistrictSnapshot:
 	if _content_registry == null:
 		push_error("MainGame: Content registry is required for layout selection.")
 		return null
-	var result: Dictionary = _content_registry.resolve_layout(bootstrap_layout_id)
+	var result: Dictionary = _content_registry.resolve_layout(bootstrap_config.layout_id)
 	if not bool(result.get("valid", false)):
 		push_error("MainGame: Explicit layout selection rejected: %s" % result.get("diagnostics", []))
 		return null
@@ -161,18 +121,24 @@ func _resolve_initial_snapshot() -> ResolvedDistrictSnapshot:
 
 
 func _begin_session_bootstrap() -> bool:
+	if bootstrap_config == null:
+		push_error("MainGame: Production bootstrap configuration is required.")
+		return false
+	var bootstrap_validation: Dictionary = bootstrap_config.validate()
+	if not bool(bootstrap_validation.get("valid", false)):
+		push_error("MainGame: Production bootstrap configuration is invalid: %s" % bootstrap_validation.get("diagnostics", []))
+		return false
 	_content_registry = load("res://scripts/session/content_registry.gd").new()
-	var approved_layout_ids: Array[String] = [
-		"fixture.legacy_25_single",
-		"fixture.variable_30x40_single",
-		"fixture.mixed_3x3",
-	]
-	var catalog: Dictionary = _content_registry.initialize_fixture_catalog(approved_layout_ids)
+	var production_entries: Array[Dictionary] = [{
+		"layout_id": bootstrap_config.layout_id,
+		"definition_path": bootstrap_config.definition_path,
+	}]
+	var catalog: Dictionary = _content_registry.initialize_production_catalog(production_entries)
 	if not bool(catalog.get("valid", false)):
 		push_error("MainGame: Approved content catalog failed validation: %s" % catalog.get("diagnostics", []))
 		return false
 	_session_bootstrap = load("res://scripts/session/session_bootstrap_coordinator.gd").new()
-	var selection: Dictionary = _session_bootstrap.begin(bootstrap_layout_id, _content_registry)
+	var selection: Dictionary = _session_bootstrap.begin(bootstrap_config.layout_id, _content_registry)
 	if not bool(selection.get("valid", false)):
 		push_error("MainGame: Session bootstrap rejected explicit content: %s" % selection.get("diagnostics", []))
 		return false
@@ -185,6 +151,7 @@ func _composition_is_complete() -> bool:
 		_initial_snapshot != null
 		and _district_runtime != null
 		and _district_runtime.has_session()
+		and _manual_door_authority != null
 		and _time_manager != null
 		and _projection_coordinator != null
 		and _public_realm_projection != null
@@ -226,6 +193,27 @@ func _initialize_district_runtime() -> void:
 	if not bool(session_result.get("valid", false)):
 		push_error("MainGame: District Runtime session creation failed.")
 		return
+	var manual_door_script: Script = load("res://scripts/walls/manual_door_authority.gd")
+	_manual_door_authority = manual_door_script.new() as ManualDoorAuthority
+	_manual_door_authority.configure(_district_runtime, _zone_manager)
+	if not _district_runtime.district_delta_committed.is_connected(_on_district_delta_committed):
+		_district_runtime.district_delta_committed.connect(_on_district_delta_committed)
+	_traversal_topology_source = load("res://scripts/district/district_traversal_topology_source.gd").new() as DistrictTraversalTopologySource
+	_traversal_topology_source.configure(_zone_manager)
+
+
+## Inject explicit H3-owned parcel-door attachments and rebuild derived consumers.
+func set_h3_door_access_attachments(records: Array[Dictionary]) -> Dictionary:
+	if _traversal_topology_source == null or _district_runtime == null:
+		return {"valid": false, "diagnostics": [{"code": "TRAVERSAL_TOPOLOGY_UNAVAILABLE"}]}
+	var result: Dictionary = _traversal_topology_source.apply_to_runtime(_district_runtime, records)
+	if not bool(result.get("valid", false)):
+		return result
+	var projection_result: Dictionary = _rebuild_loaded_projections()
+	if not bool(projection_result.get("valid", false)):
+		return projection_result
+	_refresh_service_proxy_snapshot()
+	return {"valid": true, "diagnostics": []}
 
 
 func _initialize_projection() -> void:
@@ -233,11 +221,11 @@ func _initialize_projection() -> void:
 		push_error("MainGame: District Runtime is required for projection.")
 		return
 	var metrics: ProjectionMetrics = load("res://scripts/projection/projection_metrics.gd").new() as ProjectionMetrics
-	metrics.identity = "main_game_projection_metrics"
-	metrics.revision = 1
-	metrics.grid_unit_size = GridManager.TILE_SIZE
-	metrics.floor_height = GridManager.FLOOR_HEIGHT
-	metrics.origin = Vector3.ZERO
+	metrics.identity = bootstrap_config.projection_metrics_identity
+	metrics.revision = bootstrap_config.projection_metrics_revision
+	metrics.grid_unit_size = bootstrap_config.grid_unit_size
+	metrics.floor_height = bootstrap_config.floor_height
+	metrics.origin = bootstrap_config.origin
 	_projection_coordinator = load("res://scripts/projection/projection_coordinator.gd").new() as ProjectionCoordinator
 	_projection_coordinator.name = "ProjectionCoordinator"
 	_world.add_child(_projection_coordinator)
@@ -298,7 +286,7 @@ func _initialize_parcel_label_renderer() -> void:
 	_parcel_label_renderer.name = "ParcelLabelRenderer"
 	_parcel_label_renderer.zone_manager = _zone_manager
 	_parcel_label_renderer.camera_manager = _camera_manager
-	_parcel_label_renderer.configure_plot_mapping(GridManager.DEFAULT_PLOT, _get_initial_projection_plot_id())
+	_parcel_label_renderer.configure_plot_mapping(_get_initial_projection_plot_id(), _get_initial_projection_plot_id())
 	_world.add_child(_parcel_label_renderer)
 
 
@@ -310,7 +298,7 @@ func _initialize_zone_label_renderer() -> void:
 	_zone_label_renderer.name = "ZoneLabelRenderer"
 	_zone_label_renderer.zone_manager = _zone_manager
 	_zone_label_renderer.camera_manager = _camera_manager
-	_zone_label_renderer.configure_plot_mapping(GridManager.DEFAULT_PLOT, _get_initial_projection_plot_id())
+	_zone_label_renderer.configure_plot_mapping(_get_initial_projection_plot_id(), _get_initial_projection_plot_id())
 	_world.add_child(_zone_label_renderer)
 
 
@@ -380,12 +368,6 @@ func _initialize_visitors() -> void:
 	# Wire camera signals for culling.
 	_camera_manager.floor_changed.connect(_visitor_manager.on_floor_changed)
 	_camera_manager.zoomed.connect(_visitor_manager.on_zoom_changed)
-
-	# Wire GridManager pathfinding graph.
-	var gm: GridManager = _world.get_node("GridManager") as GridManager
-	if gm:
-		_visitor_manager._grid_manager = gm
-		_visitor_manager._pathfinding_graph = gm.pathfinding_graph
 
 	print("MainGame: Visitor system initialized — culling & tick wired.")
 
@@ -462,10 +444,6 @@ func _initialize_staff() -> void:
 		push_error("MainGame: StaffManager not found.")
 		return
 
-	var gm: GridManager = _world.get_node("GridManager") as GridManager
-	if gm:
-		_staff_manager.initialize(gm)
-
 	_time_manager.visitor_tick.connect(_staff_manager.on_visitor_tick)
 
 	print("MainGame: Staff system initialized — cleaners & security.")
@@ -478,15 +456,77 @@ func _initialize_synergy() -> void:
 		push_error("MainGame: SynergyManager not found.")
 		return
 
-	var gm: GridManager = _world.get_node("GridManager") as GridManager
-	if gm:
-		_synergy_manager.initialize(_zone_manager, gm)
+	_synergy_manager.initialize(_zone_manager)
 
 	# Recalculate synergy when zones change.
 	EventBus.zone_created.connect(func(_z: String, _t: String, _c: int): _synergy_manager.recalculate())
 	EventBus.zone_modified.connect(func(_z: String): _synergy_manager.recalculate())
 
 	print("MainGame: Synergy system initialized — zone relationships.")
+
+
+# ── Visitor Service Proxy Composition ─────────────────────────────────
+
+func _initialize_service_proxies() -> void:
+	if _visitor_manager == null or _tenant_manager == null or _public_realm_projection == null:
+		return
+	_visitor_manager.set_proxy_anchor_resolver(Callable(_public_realm_projection, "resolve_service_proxy_anchor"))
+	if not _tenant_manager.service_proxy_snapshot_published.is_connected(_on_service_proxy_snapshot_published):
+		_tenant_manager.service_proxy_snapshot_published.connect(_on_service_proxy_snapshot_published)
+	if not _tenant_manager.tenant_bound.is_connected(_on_tenant_proxy_source_changed):
+		_tenant_manager.tenant_bound.connect(_on_tenant_proxy_source_changed)
+	if not _tenant_manager.tenant_released.is_connected(_on_tenant_proxy_source_changed):
+		_tenant_manager.tenant_released.connect(_on_tenant_proxy_source_changed)
+	if not _public_realm_projection.public_realm_rebuilt.is_connected(_on_public_realm_proxy_source_changed):
+		_public_realm_projection.public_realm_rebuilt.connect(_on_public_realm_proxy_source_changed)
+	if not _time_manager.sim_day_passed.is_connected(_refresh_service_proxy_snapshot):
+		_time_manager.sim_day_passed.connect(_refresh_service_proxy_snapshot)
+	if not EventBus.zone_created.is_connected(_on_proxy_zone_created):
+		EventBus.zone_created.connect(_on_proxy_zone_created)
+	if not EventBus.zone_modified.is_connected(_on_proxy_zone_modified):
+		EventBus.zone_modified.connect(_on_proxy_zone_modified)
+	if not EventBus.zone_deleted.is_connected(_on_proxy_zone_deleted):
+		EventBus.zone_deleted.connect(_on_proxy_zone_deleted)
+	if not EventBus.door_changed.is_connected(_on_proxy_door_changed):
+		EventBus.door_changed.connect(_on_proxy_door_changed)
+	_refresh_service_proxy_snapshot(0)
+
+
+func _on_tenant_proxy_source_changed(_tenant_id: String, _zone_id: String, _parcel_id: String) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _on_public_realm_proxy_source_changed(_manifest: Dictionary) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _on_proxy_zone_created(_zone_id: String, _zone_type: String, _tile_count: int) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _on_proxy_zone_modified(_zone_id: String) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _on_proxy_zone_deleted(_zone_id: String) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _on_proxy_door_changed(_from: Vector2i, _to: Vector2i, _enabled: bool) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _refresh_service_proxy_snapshot(_simulation_day: int = 0) -> void:
+	if _tenant_manager == null or _public_realm_projection == null:
+		return
+	var result: Dictionary = _tenant_manager.publish_service_proxy_snapshot(_public_realm_projection.get_service_proxy_attachments())
+	if not bool(result.get("valid", false)):
+		push_warning("MainGame: service proxy publication failed: %s" % result.get("diagnostics", []))
+
+
+func _on_service_proxy_snapshot_published(snapshot: Array[Dictionary]) -> void:
+	if _visitor_manager != null:
+		_visitor_manager.consume_service_proxies(snapshot)
 
 
 # ── Zone Tool Initialization ───────────────────────────────────────────
@@ -531,8 +571,8 @@ func _initialize_zone_tool() -> void:
 	_zone_tool.configure_projection(
 		_projection_coordinator,
 		_get_initial_floor_address(),
-		GridManager.DEFAULT_PLOT,
-		GridManager.GROUND_FLOOR
+		_get_initial_projection_plot_id(),
+		_get_initial_floor_address().get("floor_id", "G")
 	)
 	_zone_tool.is_active = false
 	_zone_tool.active_zone_type = ZoneData.ZONE_TYPE_NAMES[0]  # Retail by default.
@@ -541,6 +581,14 @@ func _initialize_zone_tool() -> void:
 
 
 # ── Walls ──────────────────────────────────────────────────────────────
+
+func _on_district_delta_committed(envelope: Dictionary) -> void:
+	if String(envelope.get("delta", {}).get("operation", "")) != DistrictRuntime.OP_SET_MANUAL_DOOR:
+		return
+	var projection_result: Dictionary = _rebuild_loaded_projections()
+	if not bool(projection_result.get("valid", false)):
+		push_warning("MainGame: manual-door projection refresh failed: %s" % projection_result.get("diagnostics", []))
+
 
 func _on_road_graph_published(snapshot: RoadGraphSnapshot) -> void:
 	if _traffic_manager == null or snapshot == null:
@@ -558,10 +606,13 @@ func _on_road_graph_delta_published(delta: RoadGraphDelta) -> void:
 
 
 func _initialize_walls() -> void:
+	if _manual_door_authority != null and _door_tool != null and _projection_coordinator != null:
+		_door_tool.configure_production(_manual_door_authority, _projection_coordinator, _get_initial_floor_address())
 	if _wall_manager == null:
 		push_error("MainGame: WallManager not found.")
 		return
-
+	if _district_runtime != null and _projection_coordinator != null:
+		_wall_manager.configure_production(_district_runtime, _get_initial_floor_address())
 	_wall_manager.rebuild()
 
 	print("MainGame: Walls initialized — floor perimeter generated.")
@@ -694,11 +745,12 @@ func _apply_v2_authorities(authorities: Dictionary) -> Dictionary:
 		_prestige_manager.get_mall_level_index(),
 		loaded_snapshot.get_policy_revision()
 	)
-	var gm: GridManager = _world.get_node("GridManager") as GridManager
-	gm.rebuild_pathfinding()
 	var projection_result: Dictionary = _rebuild_loaded_projections()
 	if not bool(projection_result.get("valid", false)):
 		return projection_result
+	if _wall_manager != null:
+		_wall_manager.rebuild()
+	_refresh_service_proxy_snapshot()
 	if _parcel_label_renderer:
 		_parcel_label_renderer.hydrate_active_floor()
 	if _zone_label_renderer:

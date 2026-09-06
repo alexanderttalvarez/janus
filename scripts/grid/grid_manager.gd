@@ -38,7 +38,9 @@ var _floor_instances: Dictionary = {}  # Dictionary[String, Node3D]
 
 
 func _ready() -> void:
-	pass  # Initialization is done by the caller (main_game.tscn or test scene).
+	# Explicit Archive Policy B marker. Production scenes do not instantiate
+	# this retired authority, while legacy regression scenes can opt in.
+	add_to_group("archive_legacy_spatial")
 
 
 # ── Plot Management ────────────────────────────────────────────────────

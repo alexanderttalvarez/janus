@@ -21,6 +21,7 @@ const OP_DEMOLISH_FIXED_OCCUPANT: String = "DEMOLISH_FIXED_OCCUPANT"
 const OP_SET_SOURCE_ENABLED: String = "SET_SOURCE_ENABLED"
 const OP_CONVERT_STREET: String = "CONVERT_STREET"
 const OP_PAINT_ZONE: String = "PAINT_ZONE"
+const OP_SET_MANUAL_DOOR: String = "SET_MANUAL_DOOR"
 
 var _snapshot: ResolvedDistrictSnapshot
 var _state: Dictionary = {}
@@ -173,6 +174,22 @@ func get_traversal_read_view() -> DistrictTraversalReadView:
 
 ## H3-owned injection point for committed traversal records. The records are
 ## validated against the current immutable snapshot and revision before swap.
+## Replace only explicit door attachments while preserving other H3 traversal facts.
+func set_door_access_edges(records: Array[Dictionary], zone_revision: int) -> Dictionary:
+	if _snapshot == null or _traversal_view == null:
+		return {"valid": false, "diagnostics": [{"code": "TRAVERSAL_VIEW_REQUIRED", "message": "door attachments require an active district session"}]}
+	var refreshed: DistrictTraversalReadView = load("res://scripts/district/district_traversal_read_view.gd").new() as DistrictTraversalReadView
+	refreshed.initialize(
+		_snapshot.get_fingerprint(),
+		get_revision(),
+		zone_revision,
+		_traversal_view.floor_circulation_edges,
+		records,
+		_traversal_view.vertical_links
+	)
+	return set_traversal_read_view(refreshed)
+
+
 func set_traversal_read_view(view: DistrictTraversalReadView) -> Dictionary:
 	if _snapshot == null:
 		return _reject("SESSION_REQUIRED", "a District Runtime session is required")
@@ -323,6 +340,69 @@ func _arrival_source_diagnostics(
 		if not is_arrival_source_enabled(arrival_source_id):
 			diagnostics.append({"code": "ARRIVAL_SOURCE_DISABLED", "message": "arrival source is disabled"})
 	return diagnostics
+
+
+## Return the district-owned immutable endpoint facts for one explicit cell.
+## The returned dictionary is a detached snapshot and is never retained.
+func get_manual_door_district_view(address: Dictionary, candidate_state: Dictionary = {}) -> Dictionary:
+	var result: Dictionary = {
+		"resolved": false,
+		"runtime_plot_id": String(address.get("runtime_plot_id", "")),
+		"floor_id": String(address.get("floor_id", "")),
+		"elevation": int(address.get("elevation", 0)),
+		"cell": [],
+		"acquired": false,
+		"constructed": false,
+		"explicit_circulation": false,
+		"district_revision": get_revision() if candidate_state.is_empty() else int(candidate_state.get("district_revision", -1)),
+	}
+	var cell_value: Variant = address.get("cell", null)
+	if not cell_value is Array or cell_value.size() != 2 or typeof(cell_value[0]) != TYPE_INT or typeof(cell_value[1]) != TYPE_INT:
+		return result
+	result["cell"] = [int(cell_value[0]), int(cell_value[1])]
+	if _snapshot == null or result["runtime_plot_id"].is_empty() or result["floor_id"].is_empty() or typeof(address.get("elevation", null)) != TYPE_INT:
+		return result
+	var floor_record: Dictionary = {}
+	for value: Variant in _snapshot.get_data().get("floors", []):
+		if value is Dictionary and String(value.get("id", "")) == String(result["floor_id"]):
+			floor_record = value
+			break
+	if floor_record.is_empty() or String(floor_record.get("plot_id", "")) != String(result["runtime_plot_id"]) or int(floor_record.get("elevation", 0)) != int(result["elevation"]):
+		return result
+	var cell_key: String = "%d,%d" % [result["cell"][0], result["cell"][1]]
+	var cell_resolves: bool = false
+	for value: Variant in _snapshot.get_data().get("cells", []):
+		if value is Dictionary and String(value.get("floor_id", "")) == String(result["floor_id"]) and "%d,%d" % [int(value.get("x", -1)), int(value.get("y", -1))] == cell_key:
+			cell_resolves = true
+			break
+	if not cell_resolves:
+		return result
+	var state: Dictionary = _state if candidate_state.is_empty() else candidate_state
+	result["acquired"] = _manual_door_state_has_cell(state, String(result["runtime_plot_id"]), String(result["floor_id"]), result["cell"], "acquired_cells")
+	result["constructed"] = _manual_door_state_has_cell(state, String(result["runtime_plot_id"]), String(result["floor_id"]), result["cell"], "constructed_cells")
+	for construction: Variant in state.get("construction_records", []):
+		if not construction is Dictionary or String(construction.get("kind", "")) != "corridor":
+			continue
+		for construction_cell: Variant in construction.get("cells", []):
+			if construction_cell is Dictionary and String(construction_cell.get("floor_id", "")) == String(result["floor_id"]) and int(construction_cell.get("x", -1)) == int(result["cell"][0]) and int(construction_cell.get("y", -1)) == int(result["cell"][1]):
+				result["explicit_circulation"] = true
+				break
+		if bool(result["explicit_circulation"]):
+			break
+	result["resolved"] = true
+	return result
+
+
+func _manual_door_state_has_cell(state: Dictionary, plot_id: String, floor_id: String, cell: Array, collection_name: String) -> bool:
+	for plot_state: Variant in state.get("plot_states", []):
+		if not plot_state is Dictionary or String(plot_state.get("runtime_plot_id", "")) != plot_id:
+			continue
+		for floor_state: Variant in plot_state.get("floor_states", []):
+			if floor_state is Dictionary and String(floor_state.get("floor_id", "")) == floor_id:
+				for value: Variant in floor_state.get(collection_name, []):
+					if value is Array and value == cell:
+						return true
+	return false
 
 
 func preview_transaction(intent: Dictionary) -> Dictionary:
@@ -485,6 +565,8 @@ func _evaluate_intent(intent: Dictionary, base_state: Dictionary) -> Dictionary:
 			_apply_source_enabled(intent, candidate, delta, diagnostics)
 		OP_PAINT_ZONE:
 			_apply_paint_zone(intent, delta, diagnostics)
+		OP_SET_MANUAL_DOOR:
+			_apply_set_manual_door(intent, candidate, delta, diagnostics)
 		OP_CONVERT_STREET:
 			if not bool(policy.get("street_conversion_eligible", false)):
 				diagnostics.append({"code": "STREET_CONVERSION_UNAVAILABLE", "message": "Progression does not permit Street Segment conversion"})
@@ -654,6 +736,74 @@ func _apply_demolish_occupant(intent: Dictionary, state: Dictionary, delta: Dict
 	state["demolished_fixed_occupant_ids"] = demolished
 	delta["affected_ids"].append(occupant_id)
 	delta["kind"] = "fixed_occupant_demolished"
+
+
+func _apply_set_manual_door(intent: Dictionary, candidate: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
+	var record_result: Dictionary = _manual_door_record_from_intent(intent)
+	if not bool(record_result.get("valid", false)):
+		diagnostics.append_array(record_result.get("diagnostics", []))
+		return
+	var record: Dictionary = record_result["record"]
+	var from_view: Dictionary = get_manual_door_district_view({"runtime_plot_id": record["runtime_plot_id"], "floor_id": record["floor_id"], "elevation": record["elevation"], "cell": record["from_cell"]}, candidate)
+	var to_view: Dictionary = get_manual_door_district_view({"runtime_plot_id": record["runtime_plot_id"], "floor_id": record["floor_id"], "elevation": record["elevation"], "cell": record["to_cell"]}, candidate)
+	for endpoint: Dictionary in [from_view, to_view]:
+		if not bool(endpoint.get("resolved", false)):
+			diagnostics.append({"code": "MANUAL_DOOR_ENDPOINT_UNRESOLVED", "message": "manual door endpoint is not in the resolved district"})
+		elif not bool(endpoint.get("acquired", false)) or not bool(endpoint.get("constructed", false)):
+			diagnostics.append({"code": "MANUAL_DOOR_ENDPOINT_NOT_BUILT", "message": "manual door endpoints require acquired and constructed floor cells"})
+	if not diagnostics.is_empty():
+		return
+	var records: Array = candidate.get("manual_door_records", []).duplicate(true)
+	var identity: String = _manual_door_record_key(record)
+	var existing_index: int = -1
+	for index: int in range(records.size()):
+		if records[index] is Dictionary and _manual_door_record_key(records[index]) == identity:
+			existing_index = index
+			break
+	var enabled: bool = bool(intent.get("enabled", false))
+	if enabled:
+		if existing_index >= 0:
+			diagnostics.append({"code": "MANUAL_DOOR_ALREADY_SET", "message": "manual door is already committed"})
+			return
+		records.append(record)
+		delta["affected_ids"].append(identity)
+	else:
+		if existing_index < 0:
+			diagnostics.append({"code": "MANUAL_DOOR_NOT_FOUND", "message": "manual door is not committed"})
+			return
+		records.remove_at(existing_index)
+		delta["affected_ids"].append(identity)
+	candidate["manual_door_records"] = records
+	delta["manual_door"] = record.duplicate(true)
+	delta["enabled"] = enabled
+
+
+func _manual_door_record_from_intent(intent: Dictionary) -> Dictionary:
+	var diagnostics: Array[Dictionary] = []
+	for key: String in ["runtime_plot_id", "floor_id", "elevation", "from_cell", "to_cell", "enabled"]:
+		if not intent.has(key):
+			diagnostics.append({"code": "MANUAL_DOOR_FIELD_REQUIRED", "message": "manual door intent requires %s" % key})
+	if not diagnostics.is_empty():
+		return {"valid": false, "diagnostics": diagnostics}
+	if typeof(intent["runtime_plot_id"]) != TYPE_STRING or typeof(intent["floor_id"]) != TYPE_STRING or typeof(intent["elevation"]) != TYPE_INT or typeof(intent["enabled"]) != TYPE_BOOL:
+		return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_INTENT_TYPE_INVALID", "message": "manual door intent fields have invalid types"}]}
+	var from_value: Variant = intent["from_cell"]
+	var to_value: Variant = intent["to_cell"]
+	if not from_value is Array or not to_value is Array or from_value.size() != 2 or to_value.size() != 2 or typeof(from_value[0]) != TYPE_INT or typeof(from_value[1]) != TYPE_INT or typeof(to_value[0]) != TYPE_INT or typeof(to_value[1]) != TYPE_INT:
+		return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_CELL_INVALID", "message": "manual door endpoints must be integer [x,y] pairs"}]}
+	var from: Array = [int(from_value[0]), int(from_value[1])]
+	var to: Array = [int(to_value[0]), int(to_value[1])]
+	if from == to or absi(from[0] - to[0]) + absi(from[1] - to[1]) != 1:
+		return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_EDGE_INVALID", "message": "manual door endpoints must be orthogonally adjacent"}]}
+	if from[1] > to[1] or (from[1] == to[1] and from[0] > to[0]):
+		var swap: Array = from
+		from = to
+		to = swap
+	return {"valid": true, "record": {"runtime_plot_id": String(intent["runtime_plot_id"]), "floor_id": String(intent["floor_id"]), "elevation": int(intent["elevation"]), "from_cell": from, "to_cell": to}, "diagnostics": []}
+
+
+func _manual_door_record_key(record: Dictionary) -> String:
+	return "%s|%s|%d|%d,%d|%d,%d" % [String(record.get("runtime_plot_id", "")), String(record.get("floor_id", "")), int(record.get("elevation", 0)), int(record.get("from_cell", [0, 0])[0]), int(record.get("from_cell", [0, 0])[1]), int(record.get("to_cell", [0, 0])[0]), int(record.get("to_cell", [0, 0])[1])]
 
 
 func _apply_paint_zone(intent: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
@@ -1132,4 +1282,5 @@ func _sort_state(state: Dictionary) -> Dictionary:
 	result["street_segment_states"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["street_segment_id"]) < String(right["street_segment_id"]))
 	result["arrival_source_states"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["arrival_source_id"]) < String(right["arrival_source_id"]))
 	result["demolished_fixed_occupant_ids"].sort()
+	result["manual_door_records"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return _manual_door_record_key(left) < _manual_door_record_key(right))
 	return result

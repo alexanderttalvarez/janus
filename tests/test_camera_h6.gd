@@ -46,6 +46,8 @@ func _test_region_geometry() -> void:
 		{"source_plot_id": "plot_a", "minimum_x4": 0.0, "maximum_x4": 10.0, "minimum_z4": 0.0, "maximum_z4": 10.0},
 	], 2.5, 5.0, 1.0, Vector3.ZERO)
 	_assert(bounds.active_plot_ids == ["plot_a", "plot_b"], "camera bounds sort Active Plot IDs")
+	bounds.selected_plot_ids = ["plot_selected"]
+	_assert(bounds.selected_plot_ids == ["plot_selected"], "camera bounds retain selected/unlocked Plot IDs")
 	_assert(bounds.contains_world_position(Vector3(1.25, 0.0, 1.25)), "camera union contains the first rectangle")
 	_assert(bounds.contains_world_position(Vector3(6.25, 0.0, 1.25)), "camera union contains the disjoint rectangle")
 	_assert(not bounds.contains_world_position(Vector3(3.75, 0.0, 1.25)), "camera union preserves a hole between disjoint rectangles")
@@ -90,10 +92,20 @@ func _test_fixture_projection() -> void:
 	_assert(bool(h6.initialize(runtime, public_projection, null, metrics).get("valid", false)), "H6 configures camera/gateway composition")
 	var built: Dictionary = h6.rebuild()
 	_assert(bool(built.get("valid", false)), "H6 builds camera and gateway snapshots")
+	public_projection._graph.zone_revision += 1
+	var stale_result: Dictionary = h6.rebuild()
+	_assert(not bool(stale_result.get("valid", true)) and stale_result.get("diagnostics", [])[0].get("code", "") == "H6_REVISION_MISMATCH", "H6 rejects a stale H5 topology revision")
+	public_projection._graph.zone_revision = (built.get("gateway_eligibility") as GatewayEligibilitySnapshot).topology_revision
+	_assert(bool(h6.rebuild().get("valid", false)), "H6 retains the last valid projection after stale input rejection")
 	var bounds: CameraBoundsSnapshot = built.get("camera_bounds") as CameraBoundsSnapshot
 	var gateways: GatewayEligibilitySnapshot = built.get("gateway_eligibility") as GatewayEligibilitySnapshot
-	_assert(bounds != null and not bounds.empty and bounds.active_plot_ids.size() >= 4, "H6 camera bounds include committed Active plus selected Plot records")
+	_assert(bounds != null and not bounds.empty and bounds.active_plot_ids.size() > 0, "H6 camera bounds include committed Active Plot records")
+	_assert(bounds.selected_plot_ids.size() == 1 and bounds.selected_plot_ids[0] == progression_port.selected_plot_ids[0], "H6 camera bounds expose selected/unlocked Plot records separately")
 	_assert(bounds.margin > 0.0 and bounds.margin_quarter > 0.0, "H6 uses a positive road-profile-relative margin")
+	var margin_policy: CameraMarginPolicy = load("res://scripts/camera/camera_margin_policy.gd").new() as CameraMarginPolicy
+	var narrow_profile: Dictionary = {"segments": [{"orientation": "HORIZONTAL", "carriageway": {"rect_quarter": {"minimum_z4": 0.0, "maximum_z4": 12.0}}, "pedestrian_bands": [{"rect_quarter": {"minimum_z4": -8.0, "maximum_z4": 0.0}}]}]}
+	var wide_profile: Dictionary = {"segments": [{"orientation": "HORIZONTAL", "carriageway": {"rect_quarter": {"minimum_z4": 0.0, "maximum_z4": 24.0}}, "pedestrian_bands": [{"rect_quarter": {"minimum_z4": -16.0, "maximum_z4": 0.0}}]}]}
+	_assert(float(margin_policy.calculate(wide_profile, 1.0).get("margin_quarter", 0.0)) > float(margin_policy.calculate(narrow_profile, 1.0).get("margin_quarter", 0.0)), "H6 road-profile-relative margin responds to variable road widths")
 	_assert(gateways != null and gateways.entries.size() == 4, "H6 projects every H2 arrival source")
 	var eligible_count: int = 0
 	var h2_passthrough: bool = true

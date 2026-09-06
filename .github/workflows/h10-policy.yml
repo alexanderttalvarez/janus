@@ -1,0 +1,71 @@
+name: H10 Policy Evidence
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  policy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.7
+          use-dotnet: false
+      - name: Build deterministic policy manifests
+        run: python3 tools/h10/build_policy_manifests.py --output-dir build/h10
+      - name: Validate H10 scripts and production startup
+        run: |
+          godot --headless --path . --editor --quit
+          godot --headless --path . --script tests/test_h10_legacy_removal.gd
+          godot --headless --path . res://scenes/levels/main_game.tscn --quit-after 5
+      - name: Run district acceptance suites
+        run: |
+          set -euo pipefail
+          for test in \
+            tests/test_district_layout_definition.gd \
+            tests/test_resolved_district_model.gd \
+            tests/test_district_runtime_h3.gd \
+            tests/test_district_traversal_topology_h3.gd \
+            tests/test_world_projection_h4.gd \
+            tests/test_projection_editor_preview.gd \
+            tests/test_public_realm_h5.gd \
+            tests/test_camera_h6.gd \
+            tests/test_traffic_topology_h7.gd \
+            tests/test_visitor_arrival_h8.gd \
+            tests/test_save_load_h9.gd \
+            tests/test_session_h1.gd; do
+            godot --headless --path . --script "$test" 2>&1 | tee "build/h10/$(basename "$test").log"
+          done
+          for scene in \
+            tests/test_zone_manager_split_commit.tscn \
+            tests/test_wall_manager.tscn \
+            tests/test_zone_tool.tscn \
+            tests/test_zone_label_renderer.tscn; do
+            godot --headless --path . "res://$scene" 2>&1 | tee "build/h10/$(basename "$scene").log"
+          done
+      - name: Export production release
+        run: |
+          mkdir -p build/production
+          godot --headless --path . --export-release "Linux Production" build/production/janus.x86_64
+          chmod +x build/production/janus.x86_64
+      - name: Export Archive Policy B test pack
+        run: |
+          mkdir -p build/test-pack
+          godot --headless --path . --export-pack "Linux Archive Policy B Test Pack" build/test-pack/janus-test-pack.pck
+      - name: Exercise the isolated Archive Policy B test pack
+        run: |
+          godot --headless --main-pack build/test-pack/janus-test-pack.pck --script res://tests/test_h10_legacy_removal.gd
+      - name: Run H10 RVR-1 authority benchmark
+        run: |
+          godot --headless --path . --script tests/benchmarks/h10_rvr1_benchmark.gd > build/h10/rvr1_raw.log 2>&1
+          if grep -E "WARNING:|ERROR:" build/h10/rvr1_raw.log; then exit 1; fi
+      - name: Record artifact checksums
+        run: |
+          sha256sum build/production/janus.x86_64 build/test-pack/janus-test-pack.pck > build/h10/artifact-sha256.txt
+      - name: Upload H10 evidence artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: h10-policy-evidence
+          path: build/h10/

@@ -8,6 +8,7 @@ var _failed: int = 0
 func _init() -> void:
 	_test_candidate_policy()
 	_test_bind_and_release()
+	_test_proxy_publication()
 	_test_rent_snapshot()
 	print("Tenant H1 tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
@@ -70,6 +71,58 @@ func _test_bind_and_release() -> void:
 	var released: Dictionary = tenant_manager.release_tenant(String(bound["tenant_id"]), "test", 12)
 	_assert(bool(released.get("committed", false)), "release clears ownership through ZoneManager")
 	_assert(not bool(zone_manager.parcel_snapshot("zone_retail_1", "parcel_a").get("has_tenant", true)), "released parcel is vacant")
+	tenant_manager.free()
+	zone_manager.free()
+
+
+func _test_proxy_publication() -> void:
+	var zone_manager := ZoneManager.new()
+	var zone := _make_zone()
+	var edge: Dictionary = {
+		"tile": Vector2i(0, 0),
+		"direction": Vector2i.RIGHT,
+		"access": Vector2i(1, 0),
+		"access_kind": "internal_transit",
+	}
+	zone.parcels[0].selected_door_edges = [edge]
+	zone_manager.zones[zone.id] = zone
+	var tenant_manager := TenantManager.new()
+	tenant_manager.initialize(zone_manager, 7)
+	var bound: Dictionary = tenant_manager.register_candidate(_make_candidate(), 1)
+	_assert(bool(bound.get("committed", false)), "operating tenant binds before proxy publication")
+	if not bool(bound.get("committed", false)):
+		tenant_manager.free()
+		zone_manager.free()
+		return
+	tenant_manager.all_tenants[0]["lifecycle_state"] = "operating"
+	var door_id: String = ZoneManager.service_proxy_door_id("parcel_a", edge)
+	var published: Dictionary = tenant_manager.publish_service_proxy_snapshot([{
+		"door_id": door_id,
+		"corridor_anchor_id": "proxy_anchor/%s" % door_id,
+		"public_corridor_reachable": true,
+		"proxy_enabled": true,
+		"topology_revision": 11,
+	}])
+	var snapshots: Array = published.get("snapshots", [])
+	_assert(bool(published.get("valid", false)) and snapshots.size() == 1, "TenantManager publishes one eligible internal Transit proxy")
+	if snapshots.size() == 1:
+		var proxy: Dictionary = snapshots[0]
+		_assert(bool(proxy.get("queue_accepting", false)), "operating tenant proxy publishes the approved accepting fact")
+		_assert(String(proxy.get("corridor_anchor_id", "")).begins_with("proxy_anchor/"), "proxy carries a dedicated stable corridor anchor ID")
+		_assert(String(proxy.get("parcel_door_proxy_id", "")).begins_with("proxy/parcel_a/"), "proxy identity is derived from parcel and door identity")
+		var detached: Array[Dictionary] = tenant_manager.last_service_proxy_snapshot()
+		proxy["tenant_id"] = "mutated"
+		_assert(String(detached[0]["tenant_id"]) != "mutated", "published proxy snapshots are detached from caller mutation")
+	var unreachable: Dictionary = tenant_manager.publish_service_proxy_snapshot([{
+		"door_id": door_id,
+		"corridor_anchor_id": "proxy_anchor/unreachable",
+		"public_corridor_reachable": false,
+		"proxy_enabled": true,
+		"topology_revision": 12,
+	}])
+	_assert(unreachable.get("snapshots", []).is_empty(), "unreachable proxy attachments are not published as candidates")
+	tenant_manager.free()
+	zone_manager.free()
 
 
 func _test_rent_snapshot() -> void:
@@ -87,3 +140,5 @@ func _test_rent_snapshot() -> void:
 	var entries: Array = snapshot_result["snapshot"]["entries"]
 	_assert(entries.size() == 1 and entries[0]["tenant_id"] == tenant_id, "operating tenant appears exactly once in rent snapshot")
 	_assert(int(entries[0]["rent_amount_kreds"]) == 1, "rent uses exact tile count and centi-kred rate")
+	tenant_manager.free()
+	zone_manager.free()

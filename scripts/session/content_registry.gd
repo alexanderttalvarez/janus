@@ -9,34 +9,43 @@ var _prestige_policy: PrestigePolicy
 var _sealed: bool = false
 
 
-## Resolve the exact fixture identities approved by the composition root.
-func initialize_fixture_catalog(layout_ids: Array[String]) -> Dictionary:
+## Load and seal the explicit production layout catalog.
+func initialize_production_catalog(entries: Array[Dictionary]) -> Dictionary:
 	if _sealed:
 		return _failure("CONTENT_REGISTRY_SEALED", "content registry is already sealed")
-	if layout_ids.is_empty():
-		return _failure("CONTENT_REGISTRY_EMPTY", "at least one approved layout is required")
+	if entries.is_empty():
+		return _failure("CONTENT_REGISTRY_EMPTY", "at least one production layout is required")
 
-	var factory: RefCounted = load("res://scripts/resources/district_layout_fixture_factory.gd").new()
-	var resolver: RefCounted = load("res://scripts/resources/district_layout_resolver.gd").new()
+	var resolver: DistrictLayoutResolver = load("res://scripts/resources/district_layout_resolver.gd").new() as DistrictLayoutResolver
+	var loader: DistrictLayoutDefinitionLoader = load("res://scripts/resources/district_layout_definition_loader.gd").new() as DistrictLayoutDefinitionLoader
 	var diagnostics: Array[Dictionary] = []
-	for layout_id: String in layout_ids:
+	for entry: Dictionary in entries:
+		var layout_id: String = String(entry.get("layout_id", ""))
+		var definition_path: String = String(entry.get("definition_path", ""))
 		if layout_id.is_empty():
-			diagnostics.append(_diagnostic("LAYOUT_ID_REQUIRED", "layout_id", "approved layout identities cannot be empty"))
+			diagnostics.append(_diagnostic("LAYOUT_ID_REQUIRED", "layout_id", "production layout identities cannot be empty"))
+			continue
+		if definition_path.is_empty():
+			diagnostics.append(_diagnostic("LAYOUT_DEFINITION_PATH_REQUIRED", layout_id, "production layout definitions require an explicit resource path"))
 			continue
 		if _layout_entries.has(layout_id):
-			diagnostics.append(_diagnostic("LAYOUT_ID_DUPLICATE", layout_id, "approved layout identities must be unique"))
+			diagnostics.append(_diagnostic("LAYOUT_ID_DUPLICATE", layout_id, "production layout identities must be unique"))
 			continue
-		var raw_definition: Dictionary = factory.build_fixture(layout_id)
-		if raw_definition.is_empty():
-			diagnostics.append(_diagnostic("LAYOUT_ID_UNKNOWN", layout_id, "approved layout identity is not registered"))
+		var resource: ProductionDistrictDefinition = load(definition_path) as ProductionDistrictDefinition
+		if resource == null:
+			diagnostics.append(_diagnostic("LAYOUT_DEFINITION_LOAD_FAILED", layout_id, "production layout definition could not be loaded"))
 			continue
-		var resolved: Dictionary = resolver.resolve(raw_definition)
+		var definition: DistrictLayoutDefinition = loader.load_definition(resource.get_raw_record())
+		if not definition.is_published():
+			diagnostics.append_array(definition.get_diagnostics())
+			continue
+		var resolved: Dictionary = resolver.resolve(definition.get_semantic_record())
 		if not bool(resolved.get("valid", false)):
 			diagnostics.append_array(resolved.get("diagnostics", []))
 			continue
 		var snapshot: ResolvedDistrictSnapshot = resolved.get("snapshot") as ResolvedDistrictSnapshot
 		if snapshot == null or snapshot.get_layout_id() != layout_id:
-			diagnostics.append(_diagnostic("LAYOUT_ID_MISMATCH", layout_id, "resolved content identity does not match its registry key"))
+			diagnostics.append(_diagnostic("LAYOUT_ID_MISMATCH", layout_id, "resolved content identity does not match its catalog key"))
 			continue
 		_layout_entries[layout_id] = {
 			"layout_id": layout_id,

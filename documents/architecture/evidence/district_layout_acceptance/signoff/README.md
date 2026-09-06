@@ -1,12 +1,12 @@
-# Acceptance Signoff Status
+# Acceptance Signoff Register
 
-The H10 handoff requires exactly these signoff roles:
+The required H10 roles are Architecture, Design, QA, and Release. Their evidence scopes and required record fields are defined in `h10_release_evidence_contract.md` §5.
 
-| Role | Status |
-| --- | --- |
-| Architecture | Not assigned / not signed |
-| Design | Not assigned / not signed |
-| QA | Not assigned / not signed |
-| Release | Not assigned / not signed |
+| Role | Assigned signer | Status | Candidate commit | Evidence manifest checksum | UTC timestamp |
+| --- | --- | --- | --- | --- | --- |
+| Architecture | Unassigned | Not signed | — | — | — |
+| Design | Unassigned | Not signed | — | — | — |
+| QA | Unassigned | Not signed | — | — | — |
+| Release | Unassigned | Not signed | — | — | — |
 
-This file records status only. It is not a signoff record.
+A row is valid only when the named person provides an explicit `approve` or `reject` decision against the exact candidate commit and evidence-manifest checksum. Four `approve` rows are necessary but not sufficient for H10 acceptance: all technical gates must also pass.

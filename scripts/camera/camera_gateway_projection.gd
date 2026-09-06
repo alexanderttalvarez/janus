@@ -16,6 +16,8 @@ var _gateway_eligibility: GatewayEligibilitySnapshot
 var _subscribed: bool = false
 var _delta_handler: Callable
 var _session_handler: Callable
+var _last_built_district_revision: int = -1
+var _last_built_topology_revision: int = -1
 
 
 func initialize(
@@ -40,34 +42,41 @@ func initialize(
 
 
 func rebuild() -> Dictionary:
+	if _district_runtime != null and _public_realm_projection != null and _camera_bounds != null and _gateway_eligibility != null and _public_realm_projection.get_graph_snapshot() != null and _last_built_district_revision == _district_runtime.get_revision() and _last_built_topology_revision == _public_realm_projection.get_graph_snapshot().zone_revision:
+		return {"valid": true, "camera_bounds": _camera_bounds, "gateway_eligibility": _gateway_eligibility, "skipped": true, "diagnostics": []}
 	if _district_runtime == null or not _district_runtime.has_session():
 		return {"valid": false, "diagnostics": [{"code": "H6_SESSION_REQUIRED", "message": "a committed district session is required"}]}
 	var snapshot: ResolvedDistrictSnapshot = _district_runtime.get_snapshot()
 	var state: Dictionary = _district_runtime.get_state()
 	var graph: PedestrianGraphSnapshot = _public_realm_projection.get_graph_snapshot()
 	var road_profile: Dictionary = _public_realm_projection.get_road_profile_snapshot()
-	if graph == null:
+	var traversal: DistrictTraversalReadView = _district_runtime.get_traversal_read_view()
+	if graph == null or traversal == null:
 		return {"valid": false, "diagnostics": [{"code": "H5_GRAPH_REQUIRED", "message": "H6 requires the committed H5 pedestrian graph"}]}
-	if graph.definition_fingerprint != snapshot.get_fingerprint() or graph.district_revision != int(state.get("district_revision", -1)):
-		return {"valid": false, "diagnostics": [{"code": "H6_REVISION_MISMATCH", "message": "H5 graph does not match the committed district snapshot"}]}
+	if graph.definition_fingerprint != snapshot.get_fingerprint() or graph.district_revision != int(state.get("district_revision", -1)) or graph.zone_revision != traversal.zone_revision:
+		return {"valid": false, "diagnostics": [{"code": "H6_REVISION_MISMATCH", "message": "H5 graph does not match the committed district/topology revisions"}]}
 	var margin_result: Dictionary = _margin_policy.calculate(road_profile, _metrics.grid_unit_size)
 	if not bool(margin_result.get("valid", false)):
 		return {"valid": false, "diagnostics": margin_result.get("diagnostics", [])}
 	var active: Array[Dictionary] = _get_camera_accessible_plot_records(snapshot, state)
 	var active_ids: Array[String] = []
+	var selected_ids: Array[String] = _get_selected_plot_ids(snapshot)
 	var rectangles: Array[Dictionary] = []
 	for plot: Dictionary in active:
 		var plot_id: String = String(plot.get("id", ""))
-		active_ids.append(plot_id)
+		if _is_plot_active(snapshot, state, plot_id):
+			active_ids.append(plot_id)
 		var expanded: Dictionary = _expand_rect(plot.get("rect_quarter", {}), float(margin_result["margin_quarter"]), plot_id)
 		if not expanded.is_empty():
 			rectangles.append(expanded)
 	active_ids.sort()
 	var bounds: CameraBoundsSnapshot = load("res://scripts/camera/camera_bounds_snapshot.gd").new() as CameraBoundsSnapshot
-	bounds.initialize(snapshot.get_fingerprint(), int(state.get("district_revision", -1)), graph.zone_revision, active_ids, rectangles, float(margin_result["margin"]), float(margin_result["margin_quarter"]), _metrics.grid_unit_size, _metrics.origin)
+	bounds.initialize(snapshot.get_fingerprint(), int(state.get("district_revision", -1)), graph.zone_revision, active_ids, rectangles, float(margin_result["margin"]), float(margin_result["margin_quarter"]), _metrics.grid_unit_size, _metrics.origin, selected_ids)
 	var gateways: GatewayEligibilitySnapshot = _build_gateway_snapshot(snapshot, state, graph)
 	_camera_bounds = bounds
 	_gateway_eligibility = gateways
+	_last_built_district_revision = int(state.get("district_revision", -1))
+	_last_built_topology_revision = graph.zone_revision
 	if _camera_manager != null and _camera_manager.has_method("set_camera_bounds_snapshot"):
 		_camera_manager.call("set_camera_bounds_snapshot", bounds)
 	rebuilt.emit(bounds.duplicate_value(), gateways.duplicate_value())
@@ -100,6 +109,8 @@ func dispose() -> void:
 	_public_realm_projection = null
 	_camera_manager = null
 	_metrics = null
+	_last_built_district_revision = -1
+	_last_built_topology_revision = -1
 	_subscribed = false
 	_delta_handler = Callable()
 	_session_handler = Callable()
@@ -112,20 +123,33 @@ func _on_district_delta_committed(_envelope: Dictionary) -> void:
 
 
 func _on_session_replaced(_layout_id: String, _fingerprint: String) -> void:
-	var result: Dictionary = rebuild()
-	if not bool(result.get("valid", false)):
-		push_error("H6 rebuild rejected replaced district session: %s" % result.get("diagnostics", []))
+	# MainGame rebuilds all projections after an atomic restore.
+	_last_built_district_revision = -1
+	_last_built_topology_revision = -1
 
 
 func _get_camera_accessible_plot_records(snapshot: ResolvedDistrictSnapshot, state: Dictionary) -> Array[Dictionary]:
 	var records: Array[Dictionary] = []
-	var selected_ids: Array = _district_runtime.get_progression_policy_snapshot().get("selected_plot_ids", [])
+	var selected_ids: Array = _get_selected_plot_ids(snapshot)
 	for plot: Dictionary in snapshot.get_data().get("plots", []):
 		var plot_id: String = String(plot.get("id", ""))
 		if _is_plot_active(snapshot, state, plot_id) or selected_ids.has(plot_id):
 			records.append(plot)
 	records.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left.get("id", "")) < String(right.get("id", "")))
 	return records
+
+
+func _get_selected_plot_ids(snapshot: ResolvedDistrictSnapshot) -> Array[String]:
+	var available_ids: Dictionary = {}
+	for plot: Dictionary in snapshot.get_data().get("plots", []):
+		available_ids[String(plot.get("id", ""))] = true
+	var selected: Array[String] = []
+	for value: Variant in _district_runtime.get_progression_policy_snapshot().get("selected_plot_ids", []):
+		var plot_id: String = String(value)
+		if available_ids.has(plot_id):
+			selected.append(plot_id)
+	selected.sort()
+	return selected
 
 
 func _is_plot_active(snapshot: ResolvedDistrictSnapshot, state: Dictionary, plot_id: String) -> bool:

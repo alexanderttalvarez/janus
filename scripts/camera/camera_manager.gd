@@ -60,7 +60,7 @@ var _is_rotating: bool = false
 ## Reference to the active zoom tween (for interruption).
 var _zoom_tween: Tween
 
-## H6 immutable camera envelope. Null preserves legacy fallback behavior.
+## H6 immutable camera envelope. Null is an explicit no-pan safety state.
 var _camera_bounds_snapshot: CameraBoundsSnapshot
 
 # ── OnReady References ─────────────────────────────────────────────────
@@ -295,7 +295,7 @@ func _apply_floor_visibility(_current_level: String) -> void:
 
 # ── Position Limits ────────────────────────────────────────────────────
 
-## Replace the legacy radial clamp with an immutable H6 camera envelope.
+## Install an immutable H6 camera envelope for camera movement bounds.
 func set_camera_bounds_snapshot(snapshot: CameraBoundsSnapshot) -> void:
 	_camera_bounds_snapshot = null if snapshot == null else snapshot.duplicate_value()
 

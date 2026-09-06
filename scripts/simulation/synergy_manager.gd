@@ -30,12 +30,8 @@ const PROXIMITY_RANGE: int = 5
 var zone_scores: Dictionary = {}
 
 var _zone_manager: ZoneManager
-var _grid_manager: GridManager
-
-
-func initialize(zm: ZoneManager, gm: GridManager) -> void:
+func initialize(zm: ZoneManager) -> void:
 	_zone_manager = zm
-	_grid_manager = gm
 
 
 ## Recalculate all zone synergies.

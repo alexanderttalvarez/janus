@@ -12,6 +12,8 @@ func _ready() -> void:
 	_test_reverse_rectangle()
 	_test_single_tile_rectangle()
 	_test_repainting_existing_tiles_revalidates_typology()
+	for _frame: int in range(3):
+		await get_tree().process_frame
 	print("ZoneTool tests: %d passed, %d failed" % [_passed, _failed])
 	get_tree().quit(0 if _failed == 0 else 1)
 
@@ -67,6 +69,8 @@ func _test_repainting_existing_tiles_revalidates_typology() -> void:
 			grid_manager.get_tile(x, y).element = GridTile.TileElement.CIRCULATION
 
 	var tool := ZoneTool.new()
+	tool._source_plot_id = GridManager.DEFAULT_PLOT
+	tool._source_floor_label = GridManager.GROUND_FLOOR
 	tool.is_active = true
 	add_child(tool)
 	tool._paint_rectangle(Vector2i(2, 2), Vector2i(3, 4))
@@ -77,5 +81,8 @@ func _test_repainting_existing_tiles_revalidates_typology() -> void:
 	tool.set_transit_mode(false)
 	tool._paint_rectangle(Vector2i(2, 2), Vector2i(3, 4))
 	_assert(tool.can_finish, "repainting existing Transit tiles as Tenant immediately revalidates")
-	tool.queue_free()
-	world.queue_free()
+	tool.cancel()
+	if tool._visual_root != null and is_instance_valid(tool._visual_root):
+		tool._visual_root.free()
+	tool.free()
+	world.free()

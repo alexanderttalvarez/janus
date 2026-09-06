@@ -14,7 +14,7 @@ var camera_manager: CameraManager
 var source_plot_id: String = ""
 var projection_plot_id: String = ""
 var _projection_coordinator: ProjectionCoordinator
-var _active_floor_level: String = GridManager.GROUND_FLOOR
+var _active_floor_level: String = ""
 
 
 func configure_plot_mapping(source_id: String, projected_id: String) -> void:
@@ -29,6 +29,8 @@ func _ready() -> void:
 	_connect_events()
 	if camera_manager != null:
 		_active_floor_level = camera_manager.get_current_floor()
+	else:
+		_active_floor_level = "G"
 	hydrate_active_floor()
 
 

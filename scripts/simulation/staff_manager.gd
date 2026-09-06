@@ -17,12 +17,6 @@ var all_staff: Array[Dictionary] = []
 var cleaning_tasks: Array[Dictionary] = []
 var authority_revision: int = 0
 var _staff_counter: int = 0
-var _grid_manager: GridManager
-
-
-func initialize(grid_manager: GridManager) -> void:
-	_grid_manager = grid_manager
-
 
 func on_visitor_tick(_tick: int) -> void:
 	# Visitor integration is intentionally deferred; Staff H1 publishes records only.

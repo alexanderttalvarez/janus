@@ -14,6 +14,8 @@ var _metrics: ProjectionMetrics
 var _builder: PublicRealmDescriptorBuilder
 var _graph: PedestrianGraphSnapshot
 var _latest_realm: Dictionary = {}
+var _latest_state: Dictionary = {}
+var _proxy_anchor_resolutions: Dictionary = {}
 var _disposed: bool = false
 
 
@@ -36,6 +38,10 @@ func initialize(runtime: DistrictRuntime, coordinator: ProjectionCoordinator, me
 func rebuild() -> Dictionary:
 	if _disposed or _runtime == null or _coordinator == null or _builder == null:
 		return _reject("PUBLIC_REALM_DISPOSED", "public realm projection is not configured")
+	var current_traversal: DistrictTraversalReadView = _runtime.get_traversal_read_view()
+	var current_state: Dictionary = _runtime.get_state()
+	if _graph != null and current_traversal != null and int(_latest_realm.get("district_revision", -1)) == _runtime.get_revision() and int(_latest_realm.get("zone_revision", -1)) == current_traversal.zone_revision and _latest_state == current_state:
+		return {"valid": true, "manifest": _coordinator.get_manifest(), "graph": _graph, "skipped": true, "diagnostics": []}
 	var captured: Dictionary = _runtime.get_state_read()
 	var snapshot: ResolvedDistrictSnapshot = captured.get("snapshot") as ResolvedDistrictSnapshot
 	var traversal: DistrictTraversalReadView = _runtime.get_traversal_read_view()
@@ -67,6 +73,7 @@ func rebuild() -> Dictionary:
 		return _reject_diagnostics(committed.get("diagnostics", []))
 	_graph = built.get("graph") as PedestrianGraphSnapshot
 	_latest_realm = {"definition_fingerprint": snapshot.get_fingerprint(), "district_revision": int(captured.get("district_revision", -1)), "zone_revision": traversal.zone_revision, "segments": built.get("segments", []).duplicate(true), "intersections": built.get("intersections", []).duplicate(true)}
+	_latest_state = captured.get("state", {}).duplicate(true)
 	pedestrian_graph_delta_published.emit(_graph_delta(previous_graph, _graph))
 	public_realm_rebuilt.emit(committed.get("manifest", {}))
 	return {"valid": true, "manifest": committed.get("manifest", {}), "graph": _graph, "diagnostics": []}
@@ -136,6 +143,44 @@ func get_road_profile_snapshot() -> Dictionary:
 	return _latest_realm.duplicate(true)
 
 
+## Return detached public-corridor attachments for committed parcel-door proxies.
+func get_service_proxy_attachments() -> Array[Dictionary]:
+	var attachments: Array[Dictionary] = []
+	if _graph == null:
+		return attachments
+	for edge: Dictionary in _graph.edges:
+		if String(edge.get("kind", "")) != "public_band_physical":
+			continue
+		var door_id: String = String(edge.get("source_id", ""))
+		if door_id.is_empty():
+			continue
+		attachments.append({
+			"door_id": door_id,
+			"corridor_anchor_id": "proxy_anchor/%s" % door_id,
+			"public_corridor_reachable": true,
+			"proxy_enabled": true,
+			"topology_revision": _graph.zone_revision,
+		})
+	attachments.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["door_id"]) < String(right["door_id"]))
+	return attachments
+
+
+## Register derived anchor resolution without making the anchor ID coordinate-derived.
+func set_service_proxy_anchor_resolution(anchor_id: String, resolution: Dictionary) -> void:
+	if anchor_id.is_empty():
+		return
+	_proxy_anchor_resolutions[anchor_id] = resolution.duplicate(true)
+
+
+func resolve_service_proxy_anchor(anchor_id: String) -> Dictionary:
+	if not _proxy_anchor_resolutions.has(anchor_id):
+		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	var resolution: Dictionary = _proxy_anchor_resolutions[anchor_id].duplicate(true)
+	if not bool(resolution.get("valid", false)) or not resolution.get("position", null) is Vector3:
+		return {"valid": false, "diagnostics": resolution.get("diagnostics", [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}])}
+	return resolution
+
+
 func get_graph_snapshot() -> PedestrianGraphSnapshot:
 	return null if _graph == null else _graph.duplicate_value()
 
@@ -150,6 +195,8 @@ func dispose() -> void:
 	_builder = null
 	_graph = null
 	_latest_realm = {}
+	_latest_state = {}
+	_proxy_anchor_resolutions.clear()
 
 
 func _on_district_delta_committed(_envelope: Dictionary) -> void:

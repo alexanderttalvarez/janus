@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://bacxwcos1oit4"]
 
 [ext_resource type="Script" uid="uid://bpatskxswuqau" path="res://scripts/levels/main_game.gd" id="1_main_game"]
-[ext_resource type="Script" uid="uid://c15g86wqdhhj2" path="res://scripts/grid/grid_manager.gd" id="2_grid_manager"]
+[ext_resource type="Resource" path="res://resources/districts/production_district_bootstrap.tres" id="2_8c1vm"]
 [ext_resource type="Script" uid="uid://bs30mfoth3xer" path="res://scripts/zones/zone_manager.gd" id="3_zone_manager"]
 [ext_resource type="Script" uid="uid://cegguehmuiv8i" path="res://scripts/walls/wall_manager.gd" id="4_gpckr"]
 [ext_resource type="Script" uid="uid://cxb7ishmx4bbn" path="res://scripts/simulation/time_manager.gd" id="4_time_manager"]
@@ -53,12 +53,9 @@ ambient_light_energy = 0.8
 
 [node name="root" type="Node3D" unique_id=1177771844]
 script = ExtResource("1_main_game")
-bootstrap_layout_id = "fixture.legacy_25_single"
+bootstrap_config = ExtResource("2_8c1vm")
 
 [node name="World" type="Node3D" parent="." unique_id=754628474]
-
-[node name="GridManager" type="Node" parent="World" unique_id=1293930685]
-script = ExtResource("2_grid_manager")
 
 [node name="ZoneManager" type="Node" parent="World" unique_id=888189535]
 script = ExtResource("3_zone_manager")

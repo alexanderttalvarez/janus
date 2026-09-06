@@ -1,34 +1,28 @@
 # H10 Readiness Blockers
 
-This is the current migration-readiness record. H10 implementation is in
-progress; the adapter boundary removals are partially complete.
+Executable adapter boundary removal is complete. H10 acceptance remains blocked by incomplete evidence, not by an unselected architecture.
 
-## Evidence gaps
+## Defined release-evidence policy
 
-- H1-H9 execution results are now recorded in the proof artifact, but the
-  detailed acceptance matrices, fixture evidence, fault-injection evidence,
-  and migration evidence required by H10 are not complete.
-- H4 editor-preview tests pass, but formal editor-preview acceptance/lifecycle
-  evidence is not recorded.
-- H5 frontage/public-band migration evidence is not recorded.
-- H7 Fixture C connectivity, graph golden, cleanup, and clock evidence is not
-  recorded.
-- H8 complete fault-boundary and cleanup evidence is not recorded.
-- H9 detailed staged-failure and repeated-cycle evidence is not recorded.
+`../signoff/h10_release_evidence_contract.md` now fixes the Hybrid R1 target hardware, absolute and relative budgets, sampling protocol, warning/leak gate, Archive Policy B package/CI proof, GridManager classification, and signoff protocol.
 
-## Policy and approval gaps
+## Evidence still required
 
-- H6 policy record selects road-profile-relative camera margin and removal of
-  the legacy 20-purchased-tile rule:
-  `documents/architecture/handoff/district_layout/h6_policy_acceptance.md`.
-- Formal Design selection and Architecture validation for H6 are not recorded.
-- Performance policy is selected as **hybrid**; target hardware, thresholds,
-  and sampling protocol remain to be recorded.
-- Archive policy is selected as **B — separate test pack**; packaging and CI
-  evidence remain to be recorded.
-- Architecture, Design, QA, and Release signoffs are not assigned or recorded.
+- Run the RVR-1 benchmark and repeated-cycle workload; retain raw samples, console logs, baseline comparison, and derived report.
+- Fix and rerun every suite that emits ObjectDB/resource-leak warnings. The
+  previously observed H8, traversal, staff, tenant, visitor-proxy,
+  rent-settlement, and zone-tool leaks are cleared; the remaining broad-suite
+  warning audit includes the intentional state-machine negative-transition
+  diagnostic.
+- Implement/run CI proof for the separate production export and test pack, including checksums, manifests, zero-reachability audit, forbidden-content scan, and retained job logs.
+- Complete the H10 coverage matrix with named static/dependency/behavioral evidence for every row.
+- Record H4 lifecycle, H5 frontage/public-band, H7 Fixture C graph/cleanup/clock, H8 fault-boundary/cleanup, and H9 staged-failure/repeated-cycle evidence.
+- Assign independent Architecture, Design, QA, and Release signers and record approvals in `../signoff/README.md` against the final candidate manifest.
+
+## GridManager release status
+
+`GridManager` is archive-only retired legacy authority. It cannot remain in production reachability or supply omitted identity, geometry, mutation, or V2 fallback. Its retention is allowed only inside the separately packaged test pack while named regression suites require it.
 
 ## Required next action
 
-Complete the remaining H10 boundary removals, rerun the ordered regression
-suites, complete the missing evidence rows, and obtain the required signoffs.
+Produce the above evidence at one candidate commit, then run the final H10 acceptance gate. Do not mark H10 accepted based on policy definition alone.

@@ -2,6 +2,7 @@
 .godot/
 
 # Export artifacts
+build/
 *.apk
 *.aab
 *.ipa

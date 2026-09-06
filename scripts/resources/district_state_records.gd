@@ -4,7 +4,7 @@ extends RefCounted
 ## H2 closed sparse authority-state validator. H3 owns lifecycle and mutation.
 
 const STATE_SCHEMA_VERSION: int = 2
-const DISTRICT_FIELDS: Array[String] = ["state_schema_version", "district_revision", "layout_id", "layout_definition_version", "definition_fingerprint", "plot_states", "street_segment_states", "arrival_source_states", "demolished_fixed_occupant_ids", "construction_schema_version", "construction_revision", "construction_records"]
+const DISTRICT_FIELDS: Array[String] = ["state_schema_version", "district_revision", "layout_id", "layout_definition_version", "definition_fingerprint", "plot_states", "street_segment_states", "arrival_source_states", "demolished_fixed_occupant_ids", "construction_schema_version", "construction_revision", "construction_records", "manual_door_records"]
 const PLOT_FIELDS: Array[String] = ["runtime_plot_id", "section_state_overrides", "floor_states"]
 const SECTION_FIELDS: Array[String] = ["runtime_section_id", "owned", "available"]
 const FLOOR_FIELDS: Array[String] = ["floor_id", "elevation", "acquired_cells", "constructed_cells"]
@@ -12,6 +12,7 @@ const STREET_FIELDS: Array[String] = ["street_segment_id", "converted"]
 const SOURCE_FIELDS: Array[String] = ["arrival_source_id", "enabled"]
 const CONSTRUCTION_RECORD_FIELDS: Array[String] = ["construction_id", "kind", "plot_id", "cells", "shaft_cells", "lobby_cells", "connection"]
 const CONSTRUCTION_SCHEMA_VERSION: int = 1
+const MANUAL_DOOR_FIELDS: Array[String] = ["runtime_plot_id", "floor_id", "elevation", "from_cell", "to_cell"]
 
 
 func create_baseline(snapshot: ResolvedDistrictSnapshot) -> Dictionary:
@@ -28,6 +29,7 @@ func create_baseline(snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 		"construction_schema_version": CONSTRUCTION_SCHEMA_VERSION,
 		"construction_revision": 0,
 		"construction_records": [],
+		"manual_door_records": [],
 	}
 
 
@@ -66,6 +68,7 @@ func validate(state: Variant, snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 	_validate_source_states(value.get("arrival_source_states", []), source_by_id, diagnostics)
 	_validate_demolished(value.get("demolished_fixed_occupant_ids", []), occupant_by_id, diagnostics)
 	_validate_construction_records(value.get("construction_records", []), floor_by_id, allowed_cells_by_floor, diagnostics)
+	_validate_manual_door_records(value.get("manual_door_records", []), plot_ids, floor_by_id, allowed_cells_by_floor, diagnostics)
 	return {"valid": diagnostics.is_empty(), "state": value.duplicate(true) if diagnostics.is_empty() else {}, "diagnostics": diagnostics}
 
 
@@ -281,6 +284,69 @@ func _validate_construction_records(value: Variant, floor_by_id: Dictionary, all
 		for field: String in ["shaft_cells", "lobby_cells"]:
 			if not (record.get(field, null) is Array):
 				_add(diagnostics, "CONSTRUCTION_CELL_SET_INVALID", path, "%s must be an array" % field)
+
+
+func _validate_manual_door_records(value: Variant, plot_ids: Dictionary, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, diagnostics: Array[Dictionary]) -> void:
+	if not value is Array:
+		_add(diagnostics, "MANUAL_DOOR_RECORDS_INVALID", "$.manual_door_records", "manual_door_records must be an array")
+		return
+	var previous_key: String = ""
+	var seen: Dictionary = {}
+	for index: int in range(value.size()):
+		var path: String = "$.manual_door_records[%d]" % index
+		var record: Variant = value[index]
+		if not record is Dictionary:
+			_add(diagnostics, "MANUAL_DOOR_RECORD_INVALID", path, "manual door record must be an object")
+			continue
+		_check_exact_fields(record, MANUAL_DOOR_FIELDS, path, diagnostics)
+		_check_string(record, "runtime_plot_id", path, diagnostics)
+		_check_string(record, "floor_id", path, diagnostics)
+		_check_int(record, "elevation", path, diagnostics)
+		var plot_id: String = String(record.get("runtime_plot_id", ""))
+		var floor_id: String = String(record.get("floor_id", ""))
+		if not plot_ids.has(plot_id):
+			_add(diagnostics, "MANUAL_DOOR_PLOT_UNKNOWN", path, "manual door plot is not in the immutable snapshot")
+		if not floor_by_id.has(floor_id) or String(floor_by_id.get(floor_id, {}).get("plot_id", "")) != plot_id:
+			_add(diagnostics, "MANUAL_DOOR_FLOOR_UNKNOWN", path, "manual door floor must belong to its Plot")
+		elif int(record.get("elevation", 0)) != int(floor_by_id[floor_id].get("elevation", 0)):
+			_add(diagnostics, "MANUAL_DOOR_ELEVATION_MISMATCH", path, "manual door elevation must match its immutable floor")
+		var from_cell: Variant = record.get("from_cell", null)
+		var to_cell: Variant = record.get("to_cell", null)
+		if not _valid_manual_door_cell(from_cell) or not _valid_manual_door_cell(to_cell):
+			_add(diagnostics, "MANUAL_DOOR_CELL_INVALID", path, "manual door endpoints must be nonnegative [x,y] integer pairs")
+			continue
+		var from: Array = [int(from_cell[0]), int(from_cell[1])]
+		var to: Array = [int(to_cell[0]), int(to_cell[1])]
+		if from == to or absi(from[0] - to[0]) + absi(from[1] - to[1]) != 1:
+			_add(diagnostics, "MANUAL_DOOR_EDGE_INVALID", path, "manual door endpoints must be distinct orthogonally adjacent cells")
+		if _cell_compare(from, to) >= 0:
+			_add(diagnostics, "MANUAL_DOOR_EDGE_NON_CANONICAL", path, "manual door endpoints must be in canonical row-major order")
+		var allowed_cells: Dictionary = allowed_cells_by_floor.get(floor_id, {})
+		if not allowed_cells.has("%d,%d" % [from[0], from[1]]) or not allowed_cells.has("%d,%d" % [to[0], to[1]]):
+			_add(diagnostics, "MANUAL_DOOR_CELL_FORBIDDEN", path, "manual door endpoints must resolve in the immutable floor")
+		var identity: String = _manual_door_key(plot_id, floor_id, int(record.get("elevation", 0)), from, to)
+		if seen.has(identity):
+			_add(diagnostics, "MANUAL_DOOR_DUPLICATE", path, "manual door edges must be unique")
+		seen[identity] = true
+		if index > 0 and identity <= previous_key:
+			_add(diagnostics, "STATE_ORDER_INVALID", path, "manual door records must be stable identity ascending")
+		previous_key = identity
+
+
+func _valid_manual_door_cell(value: Variant) -> bool:
+	return value is Array and value.size() == 2 and typeof(value[0]) == TYPE_INT and typeof(value[1]) == TYPE_INT and int(value[0]) >= 0 and int(value[1]) >= 0
+
+
+func _cell_compare(left: Array, right: Array) -> int:
+	if int(left[1]) != int(right[1]):
+		return -1 if int(left[1]) < int(right[1]) else 1
+	if int(left[0]) == int(right[0]):
+		return 0
+	return -1 if int(left[0]) < int(right[0]) else 1
+
+
+func _manual_door_key(plot_id: String, floor_id: String, elevation: int, from: Array, to: Array) -> String:
+	return "%s|%s|%d|%d,%d|%d,%d" % [plot_id, floor_id, elevation, from[0], from[1], to[0], to[1]]
 
 
 func _validate_cells(value: Array, path: String, diagnostics: Array[Dictionary]) -> void:

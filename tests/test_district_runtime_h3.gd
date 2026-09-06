@@ -70,6 +70,26 @@ class FakeZone extends DistrictRuntimePorts.DistrictZonePort:
 		return {"accepted": true, "diagnostics": []}
 
 
+class FakeDoorZoneManager extends Node:
+	var revision: int = 1
+	var endpoint_zones: Dictionary = {}
+
+	func get_district_revision() -> int:
+		return revision
+
+	func get_manual_door_zone_view(address: Dictionary, _candidate_state: Dictionary = {}) -> Dictionary:
+		var cell: Array = address.get("cell", [])
+		var key: String = "%d,%d" % [int(cell[0]), int(cell[1])] if cell is Array and cell.size() == 2 else "invalid"
+		var facts: Dictionary = endpoint_zones.get(key, {})
+		return {
+			"resolved": true,
+			"zone_id": String(facts.get("zone_id", "")),
+			"typology": int(facts.get("typology", -1)),
+			"in_mutation_scope": false,
+			"zone_revision": revision,
+		}
+
+
 class FakeProgression extends DistrictRuntimePorts.DistrictProgressionPort:
 	var revision: int = 1
 	var minimum_elevation: int = -5
@@ -102,6 +122,8 @@ func _init() -> void:
 	_test_lifecycle_and_preview()
 	_test_section_activation_and_revision()
 	_test_vertical_space_and_construction()
+	_test_manual_door_authority()
+	_test_manual_door_zone_candidate()
 	_test_atomic_rejection_and_fault_isolation()
 	_test_sparse_state_boundary()
 	print("DistrictRuntime H3 tests: %d passed, %d failed" % [_passed, _failed])
@@ -203,6 +225,103 @@ func _test_vertical_space_and_construction() -> void:
 	_assert(_runtime.get_revision() == 4, "demolition advances revision")
 	var invalid_upper: Dictionary = _runtime.commit_transaction({"operation": "ACQUIRE_SPACE", "runtime_plot_id": plot["id"], "floor_id": _floor_for(data["floors"], plot["id"], 2)["id"], "elevation": 2, "cells": [cell], "expected_district_revision": 4})
 	_assert(not bool(invalid_upper.get("valid", false)) and _has_code(invalid_upper.get("diagnostics", []), "VERTICAL_SEQUENCE_REQUIRED"), "upper space requires the adjacent elevation first")
+
+
+func _test_manual_door_authority() -> void:
+	var snapshot: ResolvedDistrictSnapshot = _runtime.get_snapshot()
+	var data: Dictionary = snapshot.get_data()
+	var plot: Dictionary = data["plots"][0]
+	var floor: Dictionary = _floor_for(data["floors"], plot["id"], 0)
+	var cells: Array = _find_adjacent_cells(plot.get("buildability_mask", []))
+	_assert(cells.size() == 2, "manual-door fixture provides adjacent immutable cells")
+	if cells.size() != 2:
+		return
+	var door_runtime: DistrictRuntime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	var door_economy: FakeEconomy = FakeEconomy.new()
+	var door_zone_port: FakeZone = FakeZone.new()
+	var door_progression: FakeProgression = FakeProgression.new()
+	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
+	ports.initialize(door_economy, door_zone_port, door_progression)
+	door_runtime.configure_ports(ports)
+	var door_state: Dictionary = DistrictStateRecords.new().create_baseline(snapshot)
+	door_state["plot_states"] = [{
+		"runtime_plot_id": plot["id"],
+		"section_state_overrides": [],
+		"floor_states": [{
+			"floor_id": floor["id"],
+			"elevation": floor["elevation"],
+			"acquired_cells": cells.duplicate(true),
+			"constructed_cells": cells.duplicate(true),
+		}],
+	}]
+	_assert(bool(door_runtime.create_session(snapshot, door_state).get("valid", false)), "manual-door fixture session creates with acquired constructed cells")
+	var door_zone_manager: FakeDoorZoneManager = FakeDoorZoneManager.new()
+	door_zone_manager.endpoint_zones["%d,%d" % [cells[0][0], cells[0][1]]] = {"zone_id": "zone_a", "typology": ManualDoorAuthority.TRANSIT_TYPOLOGY}
+	door_zone_manager.endpoint_zones["%d,%d" % [cells[1][0], cells[1][1]]] = {"zone_id": "zone_b", "typology": ManualDoorAuthority.TRANSIT_TYPOLOGY}
+	var authority: ManualDoorAuthority = ManualDoorAuthority.new()
+	authority.configure(door_runtime, door_zone_manager)
+	var intent: Dictionary = {
+		"runtime_plot_id": plot["id"],
+		"floor_id": floor["id"],
+		"elevation": floor["elevation"],
+		"from_cell": cells[0],
+		"to_cell": cells[1],
+		"enabled": true,
+		"expected_district_revision": door_runtime.get_revision(),
+		"expected_zone_revision": door_zone_manager.get_district_revision(),
+	}
+	var preview: Dictionary = authority.preview_manual_door(intent)
+	_assert(bool(preview.get("valid", false)) and door_runtime.get_revision() == 0, "manual-door preview composes detached district and zone views without mutation")
+	var commit: Dictionary = authority.commit_manual_door(intent)
+	_assert(bool(commit.get("valid", false)) and door_runtime.get_revision() == 1, "manual-door commit uses one H3 transaction")
+	_assert(door_runtime.get_state().get("manual_door_records", []).size() == 1, "manual-door record is owned by DistrictRuntime")
+	_assert(bool(DistrictStateRecords.new().validate(door_runtime.get_state(), snapshot).get("valid", false)), "committed manual-door records validate at the H2 boundary")
+	intent["expected_district_revision"] = 1
+	var duplicate: Dictionary = authority.commit_manual_door(intent)
+	_assert(not bool(duplicate.get("valid", false)) and _has_code(duplicate.get("diagnostics", []), "MANUAL_DOOR_ALREADY_SET"), "duplicate manual-door placement rejects atomically")
+	intent["enabled"] = false
+	var removal: Dictionary = authority.commit_manual_door(intent)
+	_assert(bool(removal.get("valid", false)) and door_runtime.get_state().get("manual_door_records", []).is_empty(), "manual-door removal is revision guarded and atomic")
+	intent["enabled"] = true
+	intent["expected_district_revision"] = door_runtime.get_revision()
+	intent["expected_zone_revision"] = 1
+	door_zone_manager.revision = 2
+	var stale_zone: Dictionary = authority.preview_manual_door(intent)
+	_assert(not bool(stale_zone.get("valid", false)) and _has_code(stale_zone.get("diagnostics", []), "STALE_ZONE_REVISION"), "mixed zone revisions reject before H3 evaluation")
+	door_runtime.free()
+	door_zone_manager.free()
+
+
+func _test_manual_door_zone_candidate() -> void:
+	var manager: ZoneManager = load("res://scripts/zones/zone_manager.gd").new() as ZoneManager
+	var zone: ZoneData = ZoneData.new()
+	zone.id = "zone_a"
+	zone.plot_id = "plot_a"
+	zone.floor = "G"
+	zone.type = ZoneData.ZONE_TYPE_NAMES[0]
+	zone.tiles = [Vector2i(0, 0)]
+	zone.typologies[Vector2i(0, 0)] = ManualDoorAuthority.TRANSIT_TYPOLOGY
+	manager.zones[zone.id] = zone
+	var paint_intent: Dictionary = {"zone_plot_id": "plot_a", "zone_floor_label": "G", "zone_type": zone.type, "cells": [[1, 0]], "typologies": {Vector2i(1, 0): 0}, "paint_mode": "zone"}
+	var candidate: Dictionary = manager._build_manual_door_zone_candidate(paint_intent)
+	var record: Dictionary = {"runtime_plot_id": "plot_a", "floor_id": "floor_a", "elevation": 0, "from_cell": [0, 0], "to_cell": [1, 0]}
+	var validation: Dictionary = manager._validate_manual_door_records_against_zone_candidate([record], candidate)
+	_assert(not bool(validation.get("valid", false)) and _has_code(validation.get("diagnostics", []), "EXISTING_DOOR_INVALIDATED"), "prospective zone candidate rejects an invalidated manual door")
+	manager.free()
+
+
+func _find_adjacent_cells(values: Array) -> Array:
+	for first_value: Variant in values:
+		if not first_value is Array or first_value.size() != 2:
+			continue
+		for second_value: Variant in values:
+			if not second_value is Array or second_value.size() != 2 or first_value == second_value:
+				continue
+			if absi(int(first_value[0]) - int(second_value[0])) + absi(int(first_value[1]) - int(second_value[1])) == 1:
+				var result: Array = [first_value.duplicate(), second_value.duplicate()]
+				result.sort_custom(func(left: Array, right: Array) -> bool: return int(left[1]) < int(right[1]) or (int(left[1]) == int(right[1]) and int(left[0]) < int(right[0])))
+				return result
+	return []
 
 
 func _test_atomic_rejection_and_fault_isolation() -> void:

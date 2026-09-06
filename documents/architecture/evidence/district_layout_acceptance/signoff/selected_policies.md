@@ -1,7 +1,6 @@
 # Selected Release and Migration Policies
 
-These selections were approved by the project owner after the pre-H10
-evidence review.
+These selections were approved by the project owner after the pre-H10 evidence review.
 
 ## H6 camera policies
 
@@ -10,21 +9,18 @@ evidence review.
 | Camera infrastructure margin | **B — road-profile-relative** | Approved; implementation record: `documents/architecture/handoff/district_layout/h6_policy_acceptance.md` |
 | Legacy 20-purchased-tile rule | **A — remove at migration** | Approved; implementation record: `documents/architecture/handoff/district_layout/h6_policy_acceptance.md` |
 
-## Performance policy
+## H10 release policies
 
-**Hybrid** — use baseline-relative comparison together with target-platform
-absolute limits. Concrete target hardware, thresholds, and sampling protocol
-remain to be supplied by Release/Architecture before final acceptance.
-
-## Archive policy
-
-**B — separate test pack** — archived fixtures and proof-only material remain
-outside the production runtime package. Packaging and CI evidence remain to be
-recorded before final acceptance.
+| Policy | Selection | Binding contract |
+| --- | --- | --- |
+| Performance | **Hybrid R1** — RVR-1 absolute limits plus same-hardware relative regression limits | `h10_release_evidence_contract.md` §§1 and 2 |
+| Archive | **B — separate test pack** — zero production reachability, manifest and CI proof required | `h10_release_evidence_contract.md` §3 |
+| GridManager | **Archive-only retired legacy authority**; no production identity, geometry, mutation, or serialization fallback | `h10_release_evidence_contract.md` §4 |
+| Signoffs | Architecture, Design, QA, and Release; independent, commit-bound approvals | `h10_release_evidence_contract.md` §5 |
 
 ## Approval record
 
-Approval message: `H6: B/A, Performance: hybrid; Archive: B`.
+- Initial policy selection: `H6: B/A, Performance: hybrid; Archive: B`.
+- **2026-09-05:** Project owner approved the Hybrid R1, Archive Policy B, GridManager classification, warning/leak gate, and signoff protocol in `h10_release_evidence_contract.md`.
 
-This records policy selection only. It is not a substitute for the required
-Architecture, Design, QA, and Release signoff assignments.
+This is an architecture/policy approval. It does not substitute for completed measurements, CI artifacts, warning cleanup, signer assignments, or the four required candidate-specific release signoffs.

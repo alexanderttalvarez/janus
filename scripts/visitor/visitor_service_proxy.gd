@@ -16,6 +16,9 @@ func to_dictionary() -> Dictionary:
 
 func validate() -> Dictionary:
 	var diagnostics: Array[Dictionary] = []
+	for key: Variant in _data.keys():
+		if not FIELDS.has(String(key)):
+			diagnostics.append({"code": "SERVICE_PROXY_UNKNOWN_FIELD", "path": "$.%s" % String(key)})
 	for field: String in FIELDS:
 		if not _data.has(field):
 			diagnostics.append({"code": "SERVICE_PROXY_INVALID", "path": "$.%s" % field})

@@ -48,8 +48,8 @@ const BUILDING_MODE_VISITOR_OPACITY: float = 0.5
 
 var _pedestrian_area: PedestrianArea
 var _visual_container: Node3D
-var _grid_manager: GridManager
 var _pathfinding_graph: PathfindingGraph
+var _proxy_anchor_resolver: Callable = Callable()
 var _visitor_scene: PackedScene
 var _visitor_mode_opacity: float = 1.0
 var _arrival_coordinator: ArrivalCoordinator
@@ -74,7 +74,7 @@ func get_active_visitor_count() -> int:
 	return all_visitors.size()
 
 
-func publish_service_proxies(proxies: Array[Dictionary]) -> Dictionary:
+func consume_service_proxies(proxies: Array[Dictionary]) -> Dictionary:
 	var next_proxies: Dictionary = {}
 	for proxy_data: Dictionary in proxies:
 		var proxy := VisitorServiceProxy.new()
@@ -86,6 +86,10 @@ func publish_service_proxies(proxies: Array[Dictionary]) -> Dictionary:
 		next_proxies[String(proxy_data["parcel_door_proxy_id"])] = proxy_data.duplicate(true)
 	_service_proxies = next_proxies
 	return {"valid": true, "proxy_count": _service_proxies.size(), "diagnostics": []}
+
+
+func set_proxy_anchor_resolver(resolver: Callable) -> void:
+	_proxy_anchor_resolver = resolver
 
 
 func select_service_proxy(_visitor_id: String) -> Dictionary:
@@ -101,8 +105,6 @@ func capture_service_proxy_snapshot(visitor_id: String) -> Dictionary:
 	if not bool(selected.get("valid", false)):
 		return selected
 	var proxy: Dictionary = selected["proxy"].duplicate(true)
-	if not proxy.get("corridor_anchor_position", null) is Vector3:
-		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
 	return {"valid": true, "visitor_id": visitor_id, "proxy": proxy, "proxy_revision": int(proxy["proxy_policy_revision"]), "topology_revision": int(proxy["topology_revision"]), "tenant_revision": int(proxy["tenant_revision"]), "diagnostics": []}
 
 
@@ -127,10 +129,10 @@ func request_proxy_route(visitor_id: String, snapshot: Dictionary) -> Dictionary
 	var proxy_id: String = String(proxy.get("parcel_door_proxy_id", ""))
 	if proxy_id.is_empty():
 		return {"valid": false, "diagnostics": [{"code": "SERVICE_PROXY_INVALID"}]}
-	var anchor_variant: Variant = proxy.get("corridor_anchor_position", null)
-	if not anchor_variant is Vector3:
-		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
-	var anchor_position: Vector3 = anchor_variant
+	var anchor_result: Dictionary = _resolve_proxy_anchor(String(proxy.get("corridor_anchor_id", "")))
+	if not bool(anchor_result.get("valid", false)):
+		return anchor_result
+	var anchor_position: Vector3 = anchor_result["position"]
 	_route_counter += 1
 	visitor.target_proxy_id = proxy_id
 	visitor.target_proxy_policy_revision = int(snapshot.get("proxy_revision", -1))
@@ -142,7 +144,7 @@ func request_proxy_route(visitor_id: String, snapshot: Dictionary) -> Dictionary
 	visitor.target_position = anchor_position
 	if visitor.is_visible and is_instance_valid(visitor.visual_node):
 		var visual := visitor.visual_node as Visitor
-		var route_variant: Variant = proxy.get("public_corridor_path", [])
+		var route_variant: Variant = anchor_result.get("path", [])
 		if route_variant is Array and not route_variant.is_empty():
 			var route: Array[Vector3] = []
 			for point: Variant in route_variant:
@@ -155,6 +157,17 @@ func request_proxy_route(visitor_id: String, snapshot: Dictionary) -> Dictionary
 		else:
 			visual.set_target(anchor_position)
 	return {"valid": true, "route_request_id": visitor.route_request_id, "target_proxy_id": proxy_id, "diagnostics": []}
+
+
+func _resolve_proxy_anchor(anchor_id: String) -> Dictionary:
+	if anchor_id.is_empty() or not _proxy_anchor_resolver.is_valid():
+		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	var resolved: Variant = _proxy_anchor_resolver.call(anchor_id)
+	if not resolved is Dictionary or not bool(resolved.get("valid", false)):
+		return {"valid": false, "diagnostics": resolved.get("diagnostics", [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]) if resolved is Dictionary else [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	if not resolved.get("position", null) is Vector3:
+		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	return resolved.duplicate(true)
 
 
 func cancel_proxy_target(visitor_id: String) -> Dictionary:
@@ -274,11 +287,6 @@ func _ready() -> void:
 	var game_manager: Node = get_node_or_null("/root/GameManager")
 	if game_manager != null:
 		game_manager.connect("ui_mode_changed", _on_ui_mode_changed)
-	var event_bus: Node = get_node_or_null("/root/EventBus")
-	if event_bus != null:
-		event_bus.connect("zone_created", _on_zone_created)
-		event_bus.connect("zone_modified", _on_zone_modified)
-		event_bus.connect("door_changed", _on_door_changed)
 	_visitor_mode_opacity = _get_mode_visitor_opacity()
 	_apply_culling()
 
@@ -407,140 +415,33 @@ func _complete_proxy_interaction(visitor: VisitorData) -> void:
 		visitor.current_state = "moving"
 
 
-func _on_zone_created(zone_id: String, _zone_type: String, _tile_count: int) -> void:
-	_on_zone_changed(zone_id)
-
-
-func _on_zone_modified(zone_id: String) -> void:
-	_on_zone_changed(zone_id)
-
-
-## Remove visitors occupying a newly walled zone and repath remaining visitors.
-func _on_door_changed(from: Vector2i, to: Vector2i, enabled: bool) -> void:
-	# Opening a door cannot invalidate an existing visitor route. Leave current
-	# movement untouched; future target selection will use the new connection.
-	if enabled:
-		return
-	var exterior_side := _get_exterior_door_side(from, to)
-	if exterior_side != 0:
-		_redirect_visitors_from_closed_door(exterior_side)
-		return
-	# Closing an internal door can invalidate routes, so repath building
-	# visitors after the current input event completes.
-	call_deferred("_repath_visitors_after_door_change")
-
-
-func _redirect_visitors_from_closed_door(side: int) -> void:
-	for visitor: VisitorData in all_visitors:
-		var heading_to_door := visitor.location_type == "pedestrian_area" and (
-			visitor.current_state == "entering" or visitor.waypoint_index == _pedestrian_area.get_door_waypoint_index(side)
-		)
-		if not heading_to_door:
-			continue
-		if visitor.is_visible and is_instance_valid(visitor.visual_node):
-			var visual := visitor.visual_node as Visitor
-			if visual:
-				visual.clear_target()
-		_set_next_pedestrian_target(visitor)
-
-
-func _repath_visitors_after_door_change() -> void:
-	_sync_data_positions()
-	for visitor: VisitorData in all_visitors:
-		if visitor.current_state == "leaving":
-			continue
-		if visitor.is_visible and is_instance_valid(visitor.visual_node):
-			var visual := visitor.visual_node as Visitor
-			if visual:
-				visual.clear_target()
-		if visitor.current_state == "entering":
-			_set_next_pedestrian_target(visitor)
-		elif visitor.current_state == "moving_to_proxy":
-			var snapshot: Dictionary = capture_service_proxy_snapshot(visitor.id)
-			if bool(snapshot.get("valid", false)):
-				request_proxy_route(visitor.id, snapshot)
-			else:
-				cancel_proxy_target(visitor.id)
-
-
-func _on_zone_changed(zone_id: String) -> void:
-	if _grid_manager == null:
-		return
-	var zone_manager := get_tree().current_scene.get_node_or_null("World/ZoneManager") as ZoneManager
-	if zone_manager == null:
-		return
-	var zone: ZoneData = zone_manager.zones.get(zone_id, null)
-	if zone == null:
-		return
-	_sync_data_positions()
-	var remove_ids: Array[String] = []
-	for visitor: VisitorData in all_visitors:
-		if visitor.floor_level != zone.floor:
-			continue
-		var current_tile := _grid_manager.world_to_grid(visitor.position)
-		var target_tile := _grid_manager.world_to_grid(visitor.target_position)
-		if zone.tiles.has(current_tile) or zone.tiles.has(target_tile):
-			remove_ids.append(visitor.id)
-	for visitor_id: String in remove_ids:
-		remove_visitor(visitor_id)
-
-
 func _get_door_side_for_waypoint(waypoint_index: int) -> int:
 	if _pedestrian_area == null:
 		return 0
 	for side: int in [
-		GridTile.DoorSide.NORTH, GridTile.DoorSide.SOUTH,
-		GridTile.DoorSide.EAST, GridTile.DoorSide.WEST
+		PedestrianArea.DOOR_NORTH, PedestrianArea.DOOR_SOUTH,
+		PedestrianArea.DOOR_EAST, PedestrianArea.DOOR_WEST
 	]:
 		if waypoint_index == _pedestrian_area.get_door_waypoint_index(side):
 			return side
 	return 0
 
 
-func _is_exterior_door_open(side: int) -> bool:
-	if _grid_manager == null:
-		return false
-	return _grid_manager.has_door_between(_get_door_interior_position(side), _get_door_exterior_position(side))
+func _is_exterior_door_open(_side: int) -> bool:
+	# H8 arrival eligibility is the production authority for visitor entry.
+	return _arrival_coordinator != null
 
 
 func _get_door_exterior_position(side: int) -> Vector2i:
 	match side:
-		GridTile.DoorSide.NORTH:
+		PedestrianArea.DOOR_NORTH:
 			return Vector2i(12, -1)
-		GridTile.DoorSide.SOUTH:
+		PedestrianArea.DOOR_SOUTH:
 			return Vector2i(12, 25)
-		GridTile.DoorSide.EAST:
+		PedestrianArea.DOOR_EAST:
 			return Vector2i(25, 12)
-		GridTile.DoorSide.WEST:
+		PedestrianArea.DOOR_WEST:
 			return Vector2i(-1, 12)
-	return Vector2i.ZERO
-
-
-func _get_exterior_door_side(from: Vector2i, to: Vector2i) -> int:
-	var exterior := to if _grid_manager.get_tile(to.x, to.y) == null else from
-	if _grid_manager.get_tile(exterior.x, exterior.y) != null:
-		return 0
-	if exterior.y < 0:
-		return GridTile.DoorSide.NORTH
-	if exterior.y >= 25:
-		return GridTile.DoorSide.SOUTH
-	if exterior.x < 0:
-		return GridTile.DoorSide.WEST
-	if exterior.x >= 25:
-		return GridTile.DoorSide.EAST
-	return 0
-
-
-func _get_door_interior_position(side: int) -> Vector2i:
-	match side:
-		GridTile.DoorSide.NORTH:
-			return Vector2i(12, 0)
-		GridTile.DoorSide.SOUTH:
-			return Vector2i(12, 24)
-		GridTile.DoorSide.EAST:
-			return Vector2i(24, 12)
-		GridTile.DoorSide.WEST:
-			return Vector2i(0, 12)
 	return Vector2i.ZERO
 
 

@@ -9,7 +9,6 @@ func _init() -> void:
 	_test_control_clock()
 	_test_topology_fixture()
 	_test_fixture_c_scope_and_conversion()
-	_test_legacy_adapter_isolation()
 	print("Traffic Topology H7 tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 
@@ -190,45 +189,6 @@ func _test_fixture_c_scope_and_conversion() -> void:
 	coordinator.dispose()
 	coordinator.queue_free()
 	runtime.free()
-
-
-func _test_legacy_adapter_isolation() -> void:
-	var main_root: Node3D = Node3D.new()
-	var layout: Node3D = Node3D.new()
-	layout.name = "TrafficLayout"
-	main_root.add_child(layout)
-	var lanes_root: Node3D = Node3D.new()
-	lanes_root.name = "Lanes"
-	layout.add_child(lanes_root)
-	for lane_id: String in LegacyAuthoredTrafficLayoutAdapter.EXPECTED_LANES:
-		var lane: Node3D = Node3D.new()
-		lane.name = lane_id
-		lanes_root.add_child(lane)
-		for marker_name: String in LegacyAuthoredTrafficLayoutAdapter.EXPECTED_MARKERS:
-			var marker: Marker3D = Marker3D.new()
-			marker.name = marker_name
-			lane.add_child(marker)
-	var crosswalk_root: Node3D = Node3D.new()
-	crosswalk_root.name = "Crosswalks"
-	layout.add_child(crosswalk_root)
-	for crosswalk_name: String in LegacyAuthoredTrafficLayoutAdapter.EXPECTED_CROSSWALKS:
-		var crosswalk: Marker3D = Marker3D.new()
-		crosswalk.name = crosswalk_name
-		crosswalk_root.add_child(crosswalk)
-	var zones_root: Node3D = Node3D.new()
-	zones_root.name = "IntersectionZones"
-	layout.add_child(zones_root)
-	for zone_name: String in LegacyAuthoredTrafficLayoutAdapter.EXPECTED_RESERVATION_ZONES:
-		var zone: Node3D = Node3D.new()
-		zone.name = zone_name
-		zones_root.add_child(zone)
-	var adapter: LegacyAuthoredTrafficLayoutAdapter = load("res://scripts/traffic/legacy_authored_traffic_layout_adapter.gd").new() as LegacyAuthoredTrafficLayoutAdapter
-	var adapted: Dictionary = adapter.validate(main_root)
-	_assert(bool(adapted.get("valid", false)) and adapted.get("lanes", []).size() == 8, "legacy traffic adapter validates the exact eight-lane compatibility fixture")
-	_assert(adapted.get("marker_families", []).size() == 6 and adapted.get("reservation_zones", []).size() == 4, "legacy traffic adapter reports six marker families and four reservation zones")
-	var manager_script: Script = load("res://scripts/world/traffic_manager.gd") as Script
-	_assert(not manager_script.get_source_code().contains("_initialize_lanes()"), "TrafficManager no longer boots from legacy authored lane Nodes")
-	main_root.free()
 
 
 func _assert(condition: bool, message: String) -> void:

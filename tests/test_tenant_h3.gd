@@ -21,6 +21,8 @@ func _init() -> void:
 	_assert(first_manager.evaluation_result("parcel_b").get("next_evaluation_day", -1) == 13, "unavailable candidate schedules the documented three-day retry")
 	var excluded: Dictionary = first_manager.generate_candidate("zone_a", "parcel_c", "Retail", 6, [], ["retail.fashion", "retail.electronics", "retail.home_goods", "retail.jewelry", "retail.bookstore"], 1, 10, TenantCandidatePolicy.new())
 	_assert(not bool(excluded.get("valid", false)), "adjacency exclusion can remove every legal subtype")
+	first_manager.free()
+	second_manager.free()
 	print("Tenant H3 tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 

@@ -20,6 +20,8 @@ func _init() -> void:
 	staff.fire("staff_1")
 	economy.on_sim_week_passed(2)
 	_assert(economy.balance == 3500, "boundary payroll includes only currently employed staff")
+	economy.free()
+	staff.free()
 	print("Staff payroll tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 

@@ -143,13 +143,6 @@ func district_quote(transaction: Dictionary) -> Dictionary:
 	}
 
 
-## Compatibility wrapper for legacy zero-cost calls; paid H3 calls use district_quote.
-func district_reserve(value: int) -> Dictionary:
-	if value != 0:
-		return _diagnostic_result("POLICY_UNAVAILABLE", "paid district reservations require a policy-bound quote")
-	return _reserve_quote({"accepted": true, "value": 0, "charge_category": "NO_CHARGE", "economy_revision": authority_revision, "economy_policy_revision": int(get_policy_snapshot().get("revision", -1)), "progression_policy_revision": 0})
-
-
 func reserve_quote(quote: Dictionary) -> Dictionary:
 	return _reserve_quote(quote)
 
@@ -343,7 +336,6 @@ func _on_sim_week_passed(week: int) -> void:
 # ── Staff Wages (Monthly) ──────────────────────────────────────────────
 
 func _on_sim_month_passed(_month: int) -> void:
-	_pay_staff_wages()
 	_process_loan_payments()
 
 
@@ -370,11 +362,6 @@ func _settle_staff_wages(week: int) -> Dictionary:
 	for marker: String in pending_ids:
 		_settled_staff_weeks[marker] = true
 	return {"committed": true, "amount_kreds": total, "simulation_week": week, "diagnostics": []}
-
-
-func _pay_staff_wages() -> void:
-	# Legacy hook intentionally has no financial behavior; payroll is weekly and snapshot-backed.
-	_staff_wages = 0
 
 
 # ── Loans ──────────────────────────────────────────────────────────────
@@ -433,7 +420,6 @@ func _process_loan_payments() -> void:
 func set_infinite_money(enabled: bool) -> void:
 	_infinite_money = enabled
 	if enabled:
-		# Keep the legacy setter as a boundary input; quote/capture still run.
 		return
 
 

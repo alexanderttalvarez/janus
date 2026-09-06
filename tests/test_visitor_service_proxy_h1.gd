@@ -10,11 +10,14 @@ var _events: Array[Dictionary] = []
 
 func _init() -> void:
 	_manager = VisitorManager.new()
+	_manager.set_proxy_anchor_resolver(Callable(self, "_resolve_proxy_anchor"))
 	_manager.visitor_purchase_result_committed.connect(_on_purchase_result)
 	_test_proxy_contract_and_ordering()
 	_test_route_staleness_and_cancellation()
 	_test_fifo_queue_and_exactly_once_result()
 	_test_metrics_and_persistence()
+	_manager.all_visitors.clear()
+	_manager.free()
 	print("Visitor H1 tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 
@@ -22,7 +25,7 @@ func _init() -> void:
 func _test_proxy_contract_and_ordering() -> void:
 	var invalid: Dictionary = _proxy("proxy_invalid", true)
 	invalid["node"] = Node3D.new()
-	var publish: Dictionary = _manager.publish_service_proxies([
+	var publish: Dictionary = _manager.consume_service_proxies([
 		_proxy("proxy_b", true),
 		_proxy("proxy_a", true),
 		invalid,
@@ -33,12 +36,13 @@ func _test_proxy_contract_and_ordering() -> void:
 	var invalid_proxy := VisitorServiceProxy.new()
 	invalid_proxy.configure(invalid)
 	_assert(not bool(invalid_proxy.validate().get("valid", false)), "proxy snapshots reject Node-derived identity fields")
+	invalid["node"].free()
 	var missing_anchor: Dictionary = _proxy("proxy_missing_anchor", true)
-	missing_anchor.erase("corridor_anchor_position")
-	_manager.publish_service_proxies([missing_anchor])
+	missing_anchor.erase("corridor_anchor_id")
+	_manager.consume_service_proxies([missing_anchor])
 	var missing_snapshot: Dictionary = _manager.capture_service_proxy_snapshot("visitor_1")
 	_assert(not bool(missing_snapshot.get("valid", false)), "unresolved corridor anchors are unavailable rather than coordinate-fallback targets")
-	_manager.publish_service_proxies([_proxy("proxy_b", true), _proxy("proxy_a", true)])
+	_manager.consume_service_proxies([_proxy("proxy_b", true), _proxy("proxy_a", true)])
 
 
 func _test_route_staleness_and_cancellation() -> void:
@@ -87,6 +91,8 @@ func _test_metrics_and_persistence() -> void:
 	restored.deserialize(saved)
 	var restored_metrics: Dictionary = restored.get_metrics_snapshot()
 	_assert(int(restored_metrics.get("daily_arrivals", -1)) == 0 and int(restored_metrics.get("finalized_arrival_total", -1)) == 1 and restored._purchase_results.has("visitor_purchase"), "metrics and committed result history restore without replaying transient work")
+	restored.all_visitors.clear()
+	restored.free()
 
 
 func _proxy(proxy_id: String, queue_accepting: bool) -> Dictionary:
@@ -97,7 +103,6 @@ func _proxy(proxy_id: String, queue_accepting: bool) -> Dictionary:
 		"parcel_id": "parcel_1",
 		"door_id": "door_1",
 		"corridor_anchor_id": "anchor_1",
-		"corridor_anchor_position": Vector3(2.0, 0.0, 2.0),
 		"tenant_active": true,
 		"public_corridor_reachable": true,
 		"proxy_enabled": true,
@@ -106,6 +111,12 @@ func _proxy(proxy_id: String, queue_accepting: bool) -> Dictionary:
 		"topology_revision": 1,
 		"tenant_revision": 1,
 	}
+
+
+func _resolve_proxy_anchor(anchor_id: String) -> Dictionary:
+	if anchor_id != "anchor_1":
+		return {"valid": false, "diagnostics": [{"code": "CORRIDOR_ANCHOR_UNRESOLVED"}]}
+	return {"valid": true, "position": Vector3(2.0, 0.0, 2.0), "path": []}
 
 
 func _add_visitor(visitor_id: String) -> VisitorData:

@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="ProductionDistrictBootstrap" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/session/production_district_bootstrap.gd" id="1_bootstrap"]
+
+[resource]
+script = ExtResource("1_bootstrap")
+layout_id = "district.initial"
+definition_path = "res://resources/districts/district_initial.tres"
+projection_metrics_identity = "district.initial.projection_metrics"
+projection_metrics_revision = 1
+grid_unit_size = 1.0
+floor_height = 3.0
+origin = Vector3(0, 0, 0)

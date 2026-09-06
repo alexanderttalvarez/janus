@@ -14,6 +14,8 @@ var _graph: RoadGraphSnapshot
 var _graph_revision: int = 0
 var _subscribed: bool = false
 var _delta_handler: Callable
+var _last_built_district_revision: int = -1
+var _last_built_state: Dictionary = {}
 
 
 func initialize(p_runtime: DistrictRuntime, p_public_realm: PublicRealmProjection, p_metrics: ProjectionMetrics) -> Dictionary:
@@ -33,6 +35,9 @@ func initialize(p_runtime: DistrictRuntime, p_public_realm: PublicRealmProjectio
 
 
 func rebuild() -> Dictionary:
+	if _district_runtime != null and _graph != null and _last_built_district_revision == _district_runtime.get_revision() and _last_built_state == _district_runtime.get_state():
+		var unchanged_delta: RoadGraphDelta = _build_delta(_graph, _graph, "unchanged")
+		return {"valid": true, "snapshot": _graph, "delta": unchanged_delta, "skipped": true, "diagnostics": []}
 	if _district_runtime == null or not _district_runtime.has_session():
 		return _failure("H7_SESSION_REQUIRED", "a committed district session is required")
 	var snapshot: ResolvedDistrictSnapshot = _district_runtime.get_snapshot()
@@ -49,6 +54,8 @@ func rebuild() -> Dictionary:
 	graph.initialize(snapshot.get_layout_id(), snapshot.get_fingerprint(), int(state.get("district_revision", -1)), h5_graph.zone_revision, _graph_revision, built.get("lanes", []), built.get("segments", []), built.get("intersections", []), built.get("crosswalks", []), built.get("stops", []), built.get("route_attachments", []), built.get("control_anchors", []), built.get("traffic_controls", []), built.get("outer_ring", {}))
 	var delta: RoadGraphDelta = _build_delta(_graph, graph, "initial" if _graph == null else "committed_district_delta")
 	_graph = graph
+	_last_built_district_revision = int(state.get("district_revision", -1))
+	_last_built_state = state.duplicate(true)
 	road_graph_published.emit(graph.duplicate_value())
 	road_graph_delta_published.emit(delta.duplicate_value())
 	return {"valid": true, "snapshot": graph, "delta": delta, "diagnostics": []}
@@ -69,6 +76,8 @@ func dispose() -> void:
 	_district_runtime = null
 	_public_realm_projection = null
 	_metrics = null
+	_last_built_district_revision = -1
+	_last_built_state = {}
 	_delta_handler = Callable()
 	_subscribed = false
 

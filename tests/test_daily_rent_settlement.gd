@@ -26,6 +26,8 @@ func _init() -> void:
 	_assert(economy.balance == 1, "duplicate settlement does not credit twice")
 	var missing := economy.settle_daily_rent(13)
 	_assert(not bool(missing.get("committed", false)), "missing current-day snapshot does not fabricate rent")
+	economy.free()
+	tenant_manager.free()
 	print("Daily rent settlement tests: %d passed, %d failed" % [_passed, _failed])
 	quit(0 if _failed == 0 else 1)
 
