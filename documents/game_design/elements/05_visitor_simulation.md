@@ -97,7 +97,7 @@ Each visitor tracks state needs on a 0–100 scale. Needs decrease by 1 point pe
 
 | Attribute | Description | Range |
 |-----------|-------------|-------|
-| **Patience** | Maximum queue position willing to accept | 3–20 people |
+| **Wait Tolerance** | Maximum expected service delay willing to accept when arriving at a tenant | Tunable time range by visitor profile |
 | **Willingness to Pay** | Maximum price multiplier for goal items | 100%–150% |
 | **Preferred Subtypes** | Specific business types within goal categories | Weighted preferences (e.g., 60% Fashion, 30% Electronics, 10% Home Goods) |
 
@@ -118,8 +118,8 @@ While visitor is in mall:
            FAIL → Continue to current goal
   3. Check: Is current goal reachable?
      YES → Navigate to business
-           If queue_position ≤ Patience → Join queue, purchase, mark progress
-           If queue_position > Patience → Leave queue, find alternative or drop goal
+            If expected_wait ≤ Wait Tolerance → Join queue and commit to service
+            If expected_wait > Wait Tolerance → Exclude this tenant for the current goal, then find an alternative or drop the goal
      NO  → Drop goal, pick next goal, or leave
   4. Check: Primary Budget = 0 OR all goals fulfilled OR satisfaction too low?
      YES → Leave
@@ -273,11 +273,11 @@ The district's **Visitor Experience** quality factor (see Prestige System) is ca
 
 ### Queue Mechanics
 
-- Each business has a maximum capacity (based on tile count)
-- Queue capacity: **3 visitors per tile** at the business entrance
-- Visitors join a queue if capacity is reached
-- Queue patience: visitor's Patience attribute (3–20 people they're willing to wait behind)
-- If queue position exceeds patience, visitor leaves the queue and makes a new decision
+- Capacity and throughput derive from the tenant's validated interior fixture program rather than raw parcel tile count.
+- Each safe exterior queue tile supports **2 visible visitors**, subject to subtype-specific caps.
+- Visitors discover the live expected wait only after reaching the tenant door.
+- A visitor joins only when expected wait is within their Wait Tolerance. After joining, normal waiting and ordinary needs are suspended until service completes; passage of time does not produce voluntary abandonment.
+- Invalidated service, tenant, door, or topology cancels the commitment safely. See [Tenant Interiors and Visitor Interactions](20_tenant_interiors_visitor_interactions.md).
 
 ---
 

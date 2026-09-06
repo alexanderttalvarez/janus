@@ -27,7 +27,7 @@ acceptance or release signoff.
 
 - H1 layout-definition suite: 60 passed, 0 failed.
 - H2 resolved-district suite: 74 passed, 0 failed.
-- H3 District Runtime: 32 passed, 0 failed.
+- H3 District Runtime: 42 passed, 0 failed.
 - H3 traversal topology: 7 passed, 0 failed.
 - H4 world projection: 22 passed, 0 failed.
 - H4 editor preview: 15 passed, 0 failed.
@@ -36,7 +36,7 @@ acceptance or release signoff.
 - H7 traffic topology: 38 passed, 0 failed.
 - H8 visitor arrival: 46 passed, 0 failed.
 - H9 Save/Load V2: 18 passed, 0 failed.
-- H10 legacy-removal test: 11 passed, 0 failed.
+- H10 legacy-removal test: 16 passed, 0 failed.
 - Properly launched zone/parcel and wall scene suites: 191 and 23 passed,
   respectively, with 0 failures.
 - Main scene started through GodotIQ; `GameManager.session_ready` was true,
@@ -45,8 +45,12 @@ acceptance or release signoff.
   orphan signals; asset audit reported 0 unused assets.
 - The RVR-1 headless authority workload completed with 200 immutable visitor
   records, 30 rebuild cycles, 20 V2 restore cycles, `valid=true`, a latest
-  targeted rebuild maximum of 81 ms, a latest save/load maximum of 115 ms,
-  and no application-owned warning/error/leak lines.
+  targeted rebuild maximum of 91 ms, a latest save/load maximum of 136 ms,
+  serialized state of 417 bytes, and no application-owned warning/error/leak
+  lines.
+- The local Archive Policy B manifest rerun produced valid production and
+  test-pack manifests with 324 and 614 files respectively and zero forbidden
+  production-content violations.
 
 ## Remaining acceptance work
 
@@ -57,7 +61,6 @@ acceptance or release signoff.
   `Script reload failed (error 22)` entries with no line information. Direct
   headless `--check-only` checks pass for all nine scripts, and the running
   main scene has no runtime or debugger errors.
-- The H8, H3 traversal, staff, tenant, visitor-proxy, rent-settlement, and
-  zone-tool suites were rerun after explicit lifecycle cleanup; they now exit
-  warning/leak-free. The state-machine negative-transition test still emits
-  its intentional diagnostic `ERROR:` line while returning 0.
+- The H8, H3 traversal, staff, tenant, visitor-proxy, rent-settlement,
+  zone-tool, and state-machine suites were rerun after explicit lifecycle and
+  diagnostic cleanup; they now exit warning/leak-free.

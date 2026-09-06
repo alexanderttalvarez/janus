@@ -296,9 +296,9 @@ The player does not manage tenants directly. Feedback comes through:
 
 ---
 
-## Deferred architecture note — tenant interiors and visitor interactions
+## Tenant interiors and visitor interactions
 
-Tenant interiors, furnishing, and visitor interactions are deliberately not specified by this design section yet. Since zones can create irregular tenant footprints and each subtype may require distinct service points, fixtures, circulation, and capacity, these concerns require a dedicated future architecture/design handoff. See [Future Tenant Architecture Topics](../../architecture/handoff/tenant/_future_topics.md). No current tenant lifecycle feature may assume a fixed rectangular interior layout or visitor interaction model.
+The agreed gameplay design is defined in [Tenant Interiors and Visitor Interactions](20_tenant_interiors_visitor_interactions.md). It introduces subtype-specific parcel feasibility, procedural fixture programs, capacity, queues, and abstract service without yet introducing revenue, viability, satisfaction, or tenant-derived Prestige. Architecture and implementation remain deferred pending a separate approved handoff. No current tenant lifecycle feature may assume a fixed rectangular interior or reinterpret existing MVP proxy outcomes as economic results.
 
 ## Integration with Other Systems
 

@@ -27,9 +27,21 @@
 | 17 | UI / HUD system | agreed | `17_ui_hud_system.md` |
 | 18 | Notifications system | agreed | `18_notifications_system.md` |
 | 19 | District layout & land expansion | agreed | `19_district_layout_land_expansion.md` |
-| 20 | Tenant interiors & visitor interactions | in-discussion | — |
+| 20 | Tenant interiors & visitor interactions | agreed | `20_tenant_interiors_visitor_interactions.md` |
 
 ## Current discussion
+
+Tenant interiors & visitor interactions is agreed and documented. Gameplay documentation only; no architecture handoff or implementation is approved. The next step, when requested, is final design review or later architecture preparation.
+
+Final user approval recorded: the consolidated design accurately represents the agreed direction. Numerical subtype and queue baselines are locked until playtest evidence justifies retuning. No further tenant-interior design discussion is currently open.
+
+Latest queue decisions: scheduled visitors reserve only the next batch; exterior queues use non-overlapping frontage positions, count as real corridor occupancy/congestion, and never exclusively block an entire circulation tile. Clarification in discussion: a tenant may have one active abstract batch inside while its liberated exterior queue forms the next batch; no later batch is reservable.
+
+Batch capacity decision: each tenant supports one active batch inside and one forming next-batch queue outside. New patience issue: normal waiting must not decrement a general emotional state after the visitor has committed. Recommended direction under discussion is an arrival-time expected-wait check followed by commitment, with cancellation only for invalidation/disruption; this may replace the older visitor definition of Patience as maximum people ahead with a common maximum acceptable expected-wait value.
+
+Takeaway food profile agreed: 6-tile minimum, 2x3 rotatable core, 6–12 target range, mandatory frontage counter/prep/back-of-house rows, repeatable 1x3 service-lane strips, shared FIFO counter queue, and maximum 6 waiting visitors. User delegated remaining subtype baselines for rapid playtest-oriented definition; only genuinely new service dynamics require consultation. Two newly identified decisions are shared counter-plus-seating behavior for food courts and whether anchors support multiple active visitor entrances in the first iteration.
+
+Remaining subtype baselines have been defined for Food & Beverage, Retail, Services, Entertainment, and Anchors. Agreed: cafés and food courts reserve a table before counter service; first-iteration anchors use one primary operational visitor entrance, with multi-entry service deferred. Newly identified queue questions: whether scheduled-batch visitors may reserve only the next batch, and whether exterior queues contribute to public-corridor congestion while retaining non-overlapping safe queue positions.
 
 Candidate-selection decision: feasible profiles receive Excellent/Good/Acceptable spatial ratings with 6/3/1 weighted tickets; all feasible profiles retain a chance. The detailed inspector shows the full compatible-profile list and the normal view summarizes the top three. Operational subtype is separate from tenant theme/profile; initial visuals may be shared except for signage, while richer thematic variants remain deferred. Sit-down restaurant is complete; takeaway food is the next subtype under discussion.
 

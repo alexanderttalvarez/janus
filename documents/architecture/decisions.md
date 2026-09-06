@@ -39,6 +39,7 @@ The cross-system district and arrival blueprint is [design_handoff.md](design_ha
 | 29 | Production District Content and Session Bootstrap | [29_production_district_content_bootstrap.md](decisions/29_production_district_content_bootstrap.md) |
 | 30 | Production Manual-Door Authority | [30_manual_door_authority.md](decisions/30_manual_door_authority.md) |
 | 31 | Door Endpoint Semantics Views | [31_door_endpoint_semantics_views.md](decisions/31_door_endpoint_semantics_views.md) |
+| 32 | H10 Engineering Completion and External Release Acceptance | [32_h10_engineering_completion_and_release_acceptance.md](decisions/32_h10_engineering_completion_and_release_acceptance.md) |
 
 ## Pending Decisions
 - Future player-facing production-layout selection policy is intentionally deferred; Decision 29 fixes only the explicit initial layout bootstrap.

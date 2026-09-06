@@ -1,12 +1,14 @@
-# Acceptance Signoff Register
+# H10 External Release Signoff Register
 
-The required H10 roles are Architecture, Design, QA, and Release. Their evidence scopes and required record fields are defined in `h10_release_evidence_contract.md` §5.
+Signoffs belong to Decision 32 **Gate R**, after Gate E produces a frozen candidate commit and evidence-manifest checksum. Unassigned names are expected during implementation and are not a coding blocker.
 
 | Role | Assigned signer | Status | Candidate commit | Evidence manifest checksum | UTC timestamp |
 | --- | --- | --- | --- | --- | --- |
-| Architecture | Unassigned | Not signed | — | — | — |
-| Design | Unassigned | Not signed | — | — | — |
-| QA | Unassigned | Not signed | — | — | — |
-| Release | Unassigned | Not signed | — | — | — |
+| Architecture | Deferred to Release owner | Pending Gate R | — | — | — |
+| Design | Deferred to Release owner | Pending Gate R | — | — | — |
+| QA | Deferred to Release owner | Pending Gate R | — | — | — |
+| Release | Deferred to Release owner | Pending Gate R | — | — | — |
 
-A row is valid only when the named person provides an explicit `approve` or `reject` decision against the exact candidate commit and evidence-manifest checksum. Four `approve` rows are necessary but not sufficient for H10 acceptance: all technical gates must also pass.
+The Release owner assigns four independent people after the candidate and evidence checksum exist. Implementation agents must not request these names as feature inputs or record approvals on another person's behalf.
+
+A valid signoff records explicit `approve` or `reject`, name, role, UTC timestamp, exact commit, and exact evidence checksum. Four approvals are necessary but not sufficient: every Gate R technical artifact must also pass.

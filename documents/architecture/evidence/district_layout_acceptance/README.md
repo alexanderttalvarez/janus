@@ -3,15 +3,14 @@
 ## Status
 
 This directory contains the **H10 evidence-preparation record**. It is not an
-H10 acceptance or release signoff. H10 implementation is in progress; the
+H10 acceptance or release signoff. H10 implementation is complete; the
 remaining acceptance evidence and formal signoffs are still outstanding.
 
 ## Scope
 
 - Record executable H1-H9 test results and current GodotIQ audit results.
 - Record current runtime/performance observations.
-- Identify evidence and policy gaps that still block H10 implementation or
-  acceptance.
+- Identify evidence and policy gaps that still block H10 acceptance.
 
 ## Artifacts
 
@@ -19,6 +18,8 @@ remaining acceptance evidence and formal signoffs are still outstanding.
 | --- | --- | --- |
 | Proof | `proof/h1_h9_test_results.md` | Ordered H1-H9 test commands and results. |
 | Audits | `audits/pre_h10_godotiq_baseline.md` | Static, signal, asset, scene, and runtime audit baseline. |
+| Audits | `audits/h10_coverage_matrix.md` | H10 coverage rows and named behavioral evidence. |
+| Audits | `audits/h10_policy_manifest.md` | Production and Archive Policy B manifest audit. |
 | Migration | `migration/readiness_blockers.md` | Missing approvals, evidence, and policy decisions. |
 | Migration | `migration/h10_implementation_progress.md` | Implemented H10 boundary removals and current validation status. |
 | Performance | `performance/runtime_baseline.md` | Initial runtime metrics; no release budget selected. |

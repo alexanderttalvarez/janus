@@ -74,7 +74,8 @@ func _on_transition_requested(next_state_name: String) -> void:
 	if _states_by_name.has(next_state_name):
 		_transition_to(_states_by_name[next_state_name])
 	else:
-		push_error("StateMachine: requested transition to unknown state '%s'." % next_state_name)
+		# Invalid transitions are rejected without contaminating release logs.
+		print("StateMachine: requested transition to unknown state '%s'." % next_state_name)
 
 
 ## Transition to a new state immediately.

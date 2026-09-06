@@ -19,10 +19,10 @@ godot --headless --path . --script tests/benchmarks/h10_rvr1_benchmark.gd
 ## Observed result
 
 - Benchmark exit code: `0`
-- Rebuild samples: approximately `70–81 ms`
-- Save/load samples: approximately `107–115 ms` (latest run maximum: `115 ms`)
-- Latest targeted rebuild maximum: `81 ms`
-- Serialized benchmark state: `392 bytes`
+- Rebuild samples: `80–91 ms` (latest run maximum: `91 ms`)
+- Save/load samples: `116–136 ms` (latest run maximum: `136 ms`)
+- Latest targeted rebuild maximum: `91 ms`
+- Serialized benchmark state: `417 bytes`
 - No `ERROR:`, `WARNING:`, ObjectDB leak, or resource-leak lines
 
 The harness intentionally exercises unchanged targeted rebuilds after the initial build; projection owners now return their committed immutable result when the relevant District Runtime revision is unchanged. Full RVR-1 acceptance still requires three clean release-export runs at 1080p with FPS, frame-time, draw-call, node-count, and VRAM sampling on the specified reference hardware.

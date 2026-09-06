@@ -90,7 +90,7 @@ func _ready() -> void:
 
 
 ## Configure the production wall path. It consumes detached H3 state and
-## ZoneManager records only; the archive GridManager path remains available to
+## ZoneManager records only; the archive legacy-grid path remains available to
 ## isolated test scenes.
 func configure_production(runtime: DistrictRuntime, floor_address: Dictionary) -> void:
 	_district_runtime = runtime

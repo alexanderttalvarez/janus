@@ -1092,7 +1092,7 @@ func delete_zone(zone_id: String, plot_id: String = "") -> void:
 
 ## Get the zone containing a specific tile position.
 ## Return only ZoneManager-owned endpoint semantics for a detached address.
-## This view contains no GridManager, GridTile, FloorGrid, or world data.
+## This view contains no retired grid authority, GridTile, FloorGrid, or world data.
 func get_manual_door_zone_view(address: Dictionary, candidate_state: Dictionary = {}) -> Dictionary:
 	var result: Dictionary = {
 		"resolved": true,

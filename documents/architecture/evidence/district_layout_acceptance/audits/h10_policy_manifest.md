@@ -1,6 +1,6 @@
 # H10 Archive Policy B Manifest Audit
 
-**Status:** deterministic source-manifest audit implemented.
+**Status:** deterministic source-manifest audit implemented and passing locally.
 
 ## Local command
 
@@ -10,8 +10,8 @@ python3 tools/h10/build_policy_manifests.py --output-dir build/h10
 
 ## Current result
 
-- Production manifest: 322 files, zero forbidden-content violations.
-- Archive Policy B test-pack manifest: 608 files.
+- Production manifest: 324 files, zero forbidden-content violations (`valid=true`).
+- Archive Policy B test-pack manifest: 614 files (`valid=true`).
 - Production excludes tests, documentation, tooling, editor/debug addons, fixture generators, editor preview scripts, and retired grid-authority files.
 - Production scan rejects `GridManager`, canonical legacy adapters, and the three proof-fixture IDs.
 

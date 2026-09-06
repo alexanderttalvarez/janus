@@ -37,9 +37,10 @@ inputs.
 
 - Project convention validation: 0 issues.
 - Signal orphan audit: 0 orphan signals.
-- Asset registry: 50 assets, 0 unused.
-- Main-scene runtime: session ready, 60 FPS, 128 draw calls, 0 runtime/debug
-  console errors, 0 orphan nodes.
+- Asset registry: 52 assets, 0 unused.
+- Previous main-scene runtime: session ready, 60 FPS, 128 draw calls, 0
+  runtime/debug console errors, 0 orphan nodes. A later GodotIQ snapshot
+  observed 50 FPS and 550 nodes; neither observation is RVR-1 release evidence.
 
 ## Outstanding evidence
 

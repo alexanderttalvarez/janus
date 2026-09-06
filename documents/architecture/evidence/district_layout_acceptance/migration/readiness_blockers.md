@@ -1,28 +1,37 @@
-# H10 Readiness Blockers
+# H10 Gate Status
 
-Executable adapter boundary removal is complete. H10 acceptance remains blocked by incomplete evidence, not by an unselected architecture.
+Decision 32 separates implementation-owned engineering completion from external release acceptance.
 
-## Defined release-evidence policy
+## Gate E — Engineering completion
 
-`../signoff/h10_release_evidence_contract.md` now fixes the Hybrid R1 target hardware, absolute and relative budgets, sampling protocol, warning/leak gate, Archive Policy B package/CI proof, GridManager classification, and signoff protocol.
+**Status: Complete, pending one frozen candidate revision.** Recorded evidence reports:
 
-## Evidence still required
+- H1-H10 and required regression suites pass.
+- H10 removal passes 16/16.
+- Headless RVR workload passes with 200 visitors, 30 rebuilds, and 20 V2 save/load cycles.
+- Production and test-pack policy manifests pass.
+- Project validation reports zero issues and signal audit reports zero orphan signals.
+- Main scene and state-machine suite pass cleanly.
+- Previously observed application-owned process-exit leak warnings are cleared in local reruns.
 
-- Run the RVR-1 benchmark and repeated-cycle workload; retain raw samples, console logs, baseline comparison, and derived report.
-- Fix and rerun every suite that emits ObjectDB/resource-leak warnings. The
-  previously observed H8, traversal, staff, tenant, visitor-proxy,
-  rent-settlement, and zone-tool leaks are cleared; the remaining broad-suite
-  warning audit includes the intentional state-machine negative-transition
-  diagnostic.
-- Implement/run CI proof for the separate production export and test pack, including checksums, manifests, zero-reachability audit, forbidden-content scan, and retained job logs.
-- Complete the H10 coverage matrix with named static/dependency/behavioral evidence for every row.
-- Record H4 lifecycle, H5 frontage/public-band, H7 Fixture C graph/cleanup/clock, H8 fault-boundary/cleanup, and H9 staged-failure/repeated-cycle evidence.
-- Assign independent Architecture, Design, QA, and Release signers and record approvals in `../signoff/README.md` against the final candidate manifest.
+Implementation agents may stop after committing the final evidence/tooling changes. They must report `Engineering complete; H10 release acceptance pending external Gate R` and must not treat missing hardware, export templates, CI credentials, or signer names as implementation blockers.
 
-## GridManager release status
+## Gate R — External release acceptance
 
-`GridManager` is archive-only retired legacy authority. It cannot remain in production reachability or supply omitted identity, geometry, mutation, or V2 fallback. Its retention is allowed only inside the separately packaged test pack while named regression suites require it.
+**Status: Pending external Release coordination.** Required remaining evidence:
 
-## Required next action
+- Official Godot 4.7 Linux export templates installed and version-matched.
+- Actual production/test-pack exports, checksums, included-file manifests, and retained CI logs/job URLs.
+- Release-export RVR-1 measurements on the specified physical reference hardware.
+- Evidence manifest bound to a frozen candidate commit.
+- Independent Architecture, Design, QA, and Release approvals for that commit/checksum.
 
-Produce the above evidence at one candidate commit, then run the final H10 acceptance gate. Do not mark H10 accepted based on policy definition alone.
+These items block H10 release acceptance only. Their ownership and process are defined by Decision 32 and `../signoff/h10_release_evidence_contract.md`.
+
+## GodotIQ advisory
+
+Nine low-confidence `Script reload failed (error 22)` diagnostics are non-blocking tooling advisories under Decision 32 when direct checks, affected suites, main-scene startup, and debugger/runtime logs remain clean. Any reproducible or located diagnostic becomes blocking.
+
+## GridManager status
+
+`GridManager` remains archive-test-pack-only and cannot supply production identity, geometry, mutation, or V2 fallback.

@@ -7,7 +7,7 @@ execution evidence, not approval signoff.
 | ---: | --- | --- |
 | H1 | `godot --headless --path . -s tests/test_district_layout_definition.gd` | **PASS — 60 passed, 0 failed** |
 | H2 | `godot --headless --path . -s tests/test_resolved_district_model.gd` | **PASS — 74 passed, 0 failed** |
-| H3 | `godot --headless --path . -s tests/test_district_runtime_h3.gd` | **PASS — 32 passed, 0 failed** |
+| H3 | `godot --headless --path . -s tests/test_district_runtime_h3.gd` | **PASS — 42 passed, 0 failed** |
 | H3 traversal | `godot --headless --path . -s tests/test_district_traversal_topology_h3.gd` | **PASS — 7 passed, 0 failed** |
 | H4 | `godot --headless --path . -s tests/test_world_projection_h4.gd` | **PASS — 22 passed, 0 failed** |
 | H4 editor preview | `godot --headless --path . -s tests/test_projection_editor_preview.gd` | **PASS — 15 passed, 0 failed** |
