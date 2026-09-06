@@ -1,6 +1,6 @@
 # Tenant Interiors Architecture Handoff Index
 
-**Status:** Draft program — awaiting architecture approval
+**Status:** Partially approved — H1–H3 approved 2026-09-06; H4–H5 awaiting architecture approval
 
 This program converts the agreed tenant-interior gameplay design into ordered contracts. It preserves Zone ownership of parcel/wall/door geometry, Tenant ownership of identity/lifecycle, Visitor ownership of visitor behavior, and the non-economic meaning of all legacy proxy results.
 
@@ -8,9 +8,9 @@ This program converts the agreed tenant-interior gameplay design into ordered co
 
 | Order | Handoff | Status | Scope |
 |---:|---|---|---|
-| 01 | [Content and Feasibility Contracts](01_content_and_feasibility_contracts.md) | Draft | Immutable profile/fixture/service content, deterministic layout planning, fit diagnostics, and suitability ratings. |
-| 02 | [Parcel Formation Integration](02_parcel_formation_integration.md) | Draft | Core/annex parcels, scale distribution, leftovers, anchors, queue-position candidates, preservation, and unsuitable units. |
-| 03 | [Interior Lifecycle and Candidate Selection](03_interior_lifecycle_and_candidate_selection.md) | Draft | Weighted feasible-profile selection, tenant provenance, final layout manifests, and lifecycle revalidation. |
+| 01 | [Content and Feasibility Contracts](01_content_and_feasibility_contracts.md) | Approved — 2026-09-06 | Immutable profile/fixture/service content, deterministic layout planning, fit diagnostics, and suitability ratings. |
+| 02 | [Parcel Formation Integration](02_parcel_formation_integration.md) | Approved — 2026-09-06 | Core/annex parcels, scale distribution, leftovers, anchors, queue-position candidates, preservation, and unsuitable units. |
+| 03 | [Interior Lifecycle and Candidate Selection](03_interior_lifecycle_and_candidate_selection.md) | Approved — 2026-09-06 | Weighted feasible-profile selection, tenant provenance, final layout manifests, and lifecycle revalidation. |
 | 04 | [Tenant Service and Visitor Interaction](04_tenant_service_and_visitor_interaction.md) | Draft | Runtime service authority, queue/admission transactions, service models, visitor states, congestion, and completion. |
 | 05 | [Persistence, Presentation, and Cutover](05_persistence_presentation_and_cutover.md) | Draft | V2-compatible persistence amendments, deterministic rebuild, projections/read models, legacy isolation, and Product MVP gate. |
 

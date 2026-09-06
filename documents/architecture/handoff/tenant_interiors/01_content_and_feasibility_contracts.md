@@ -1,6 +1,6 @@
 # Tenant Interiors Handoff 01 — Content and Feasibility Contracts
 
-**Status:** Draft — awaiting architecture approval  
+**Status:** Approved — 2026-09-06  
 **Implementation order:** 1 of 5
 
 ## Purpose

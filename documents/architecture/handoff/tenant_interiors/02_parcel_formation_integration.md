@@ -1,6 +1,6 @@
 # Tenant Interiors Handoff 02 — Parcel Formation Integration
 
-**Status:** Draft — awaiting architecture approval  
+**Status:** Approved — 2026-09-06  
 **Implementation order:** 2 of 5
 
 ## Purpose

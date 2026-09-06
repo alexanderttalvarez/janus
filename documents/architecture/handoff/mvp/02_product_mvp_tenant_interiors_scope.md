@@ -1,6 +1,6 @@
 # MVP Handoff 02 — Product MVP Tenant Interiors Scope
 
-**Status:** Draft — awaiting architecture approval  
+**Status:** Approved — 2026-09-06  
 **Depends on:** MVP H1 foundation sequence and Tenant Interiors H1–H5
 
 ## Purpose
