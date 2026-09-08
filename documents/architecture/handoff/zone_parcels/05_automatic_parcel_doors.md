@@ -4,6 +4,8 @@
 
 Approved — 2026-08-24
 
+**Revision:** 2026-09-08 delegated consistency pass. [Element 12](../../../game_design/elements/12_wall_system.md), element 19, ADRs 30/31/33 and Current MVP apply. Topology-backed active Pedestrian Band edges are legal real access under the district amendment; virtual/implicit/unzoned/inter-zone automatic access remains prohibited. Manual door records are District-owned through ADRs 30/31, not a restored legacy grid authority.
+
 ## Goal
 
 Every committed parcel receives deterministic physical doors to its eligible internal Transit or external CIRCULATION frontage. The generated wall geometry leaves a matching gap at each selected edge.
@@ -22,7 +24,7 @@ Every committed parcel receives deterministic physical doors to its eligible int
   - first unfilled slot: prefer internal Transit, with external circulation as fallback;
   - second unfilled slot: prefer external circulation; if unavailable, prefer a different connected internal Transit area;
   - later slots: prefer an as-yet-uncovered connected internal Transit area, then remaining external circulation, then canonical fallback candidates.
-- A one-door parcel therefore selects internal Transit whenever available and selects external circulation only when no internal Transit candidate exists.
+- When a one-door parcel has an **unfilled** slot, prefer internal Transit and use external circulation as fallback. A still-legal previously selected external door is retained even if internal Transit later appears; preference never displaces preservation.
 - “Different Transit area” means a distinct connected component of same-zone Transit tiles, identified by a stable key derived from that component’s minimum tile coordinate.
 - Sort ties canonically by parcel tile `y`, parcel tile `x`, then edge direction.
 - Persist selected edges in `Parcel.selected_door_edges` and restore them through parcel serialization. Transit-area keys are derived candidate metadata and are not separately serialized.
@@ -30,7 +32,7 @@ Every committed parcel receives deterministic physical doors to its eligible int
 
 ## Existing-door preservation invariant
 
-- A committed zone transaction must not invalidate any existing automatic parcel door or manual grid-door edge whose prospective state changes.
+- A committed zone transaction must not invalidate a retained parcel's existing automatic door or an affected manual door. Explicit authorized parcel retirement is the exception for that parcel's own automatic doors: remove them atomically with parcel/tenant retirement, with no replacement-door requirement for a nonexistent parcel. Manual doors remain separately protected except H6's explicit obsolete same-zone merge-boundary removal.
 - If zone creation, modification, an affected-zone split, or clearing tiles makes an existing door edge illegal, the entire transaction rejects atomically with `EXISTING_DOOR_INVALIDATED`.
 - Automatic parcel-door legality requires the old physical edge to remain legal on the matched persistent parcel. Replacement frontage does not compensate for a blocked automatic door.
 - Manual-door legality uses the prospective equivalent of manual placement rules: exterior zone doors require Transit; zone-to-circulation doors require Transit plus explicit CIRCULATION; different-zone doors require Transit on both sides; same-zone manual doors remain prohibited.
@@ -62,7 +64,7 @@ Every committed parcel receives deterministic physical doors to its eligible int
 
 - 1–10, 11–20, and 21–30 physical eligible positions select 1, 2, and 3 doors respectively.
 - No two selected doors originate on the same parcel tile.
-- One-door allocation prefers internal Transit over external circulation.
+- A new/unfilled one-door allocation prefers internal Transit; a legal prior external selection survives new internal frontage.
 - Two-door allocation prefers internal Transit first, then external circulation, then a different Transit area when external is unavailable.
 - Zone-to-zone frontage never produces an automatic door candidate.
 - Manual doors reject different-zone connections unless both tiles are Transit, and allow zone Transit to explicit external circulation.

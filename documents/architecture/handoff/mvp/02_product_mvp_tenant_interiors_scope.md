@@ -1,61 +1,58 @@
-# MVP Handoff 02 — Product MVP Tenant Interiors Scope
+# MVP Handoff 02: Product Completion Gate
 
-**Status:** Approved — 2026-09-06  
-**Depends on:** MVP H1 foundation sequence and Tenant Interiors H1–H5
+## Status
+
+Approved 2026-09-06; revised 2026-09-08 under delegated documentation approval to centralize scope in [Current MVP](../../../game_design/current_mvp.md) and expose draft dependencies. This is a completion contract, not permission to implement unapproved `tenant_interiors/H4-H5`.
 
 ## Purpose
 
-Distinguish the existing proxy-based technical foundation from Janus's Product MVP. The foundation remains a mandatory integration checkpoint, but Product MVP is incomplete until tenant spaces visibly and operationally respond to parcel geometry through the approved Tenant Interiors program.
+**Follow-on review, 2026-09-08:** The status paragraph above preserves the earlier consistency-pass boundary. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) now separately architecture-approves interior H4/H5; [MVP H4](04_product_delivery_and_acceptance.md) owns delivery and candidate-bound acceptance obligations. Implementation/cutover remain NOT VERIFIED; Product acceptance and external Gate R remain PENDING. Approval alone authorizes no activation.
 
-## Scope distinction
+Prevent a technically functioning proxy foundation from being described as the Janus Product MVP. Product completion requires the visible geometry-responsive service experience in current design.
 
-### Technical Foundation MVP — renamed integration gate
+## In-Scope Behavior
 
-The former proxy-only MVP behavior becomes the **Corridor Service Integration Gate**. It proves:
+The complete behavior set in Current MVP, with all nine element-20 service typologies and prospective session-wide replacement of proxy completion.
 
-- Tier-1 tenant identity/lifecycle and daily rent;
-- visitor arrival, cap, public routing, cancellation, exit, and save cleanup;
-- stable parcel-door proxy identity; and
-- strict non-economic proxy outcomes.
+## Out-of-Scope Behavior
 
-It is not a player-facing release definition and receives no additional proxy gameplay polish.
+Current MVP's deferred set. No visitor revenue, viability, satisfaction, tenant-derived Prestige, indoor navigation or post-cutover proxy fallback.
 
-### Product MVP
+## Authorities
 
-Product MVP additionally requires:
+[Current MVP](../../../game_design/current_mvp.md), [element 20](../../../game_design/elements/20_tenant_interiors_visitor_interactions.md), [ADR 33](../../decisions/33_documentation_consistency_and_minimum_contracts.md), [MVP H1](01_implementation_sequence_and_scope.md), and the [Tenant Interiors program](../tenant_interiors/_index.md).
 
-- subtype-specific parcel feasibility and automatic parcel-scale variation;
-- core/annex geometry and dedicated Anchor parcels;
-- unsuitable-unit feedback;
-- visible deterministic procedural interiors;
-- fixture-derived capacity and throughput;
-- real bounded exterior queues and corridor occupancy;
-- wait-tolerance admission at the door;
-- abstract service including cohorts, devices, and one-active/one-next scheduled batches;
-- deterministic save/load rebuilding with transient in-flight reset; and
-- atomic prospective replacement of placeholder proxy service.
+## Inputs and Outputs
 
-Revenue, tenant viability, satisfaction, tenant-derived Prestige, and indoor visitor navigation remain outside Product MVP.
+Inputs: approved foundation and interior contracts, versioned content and revision-bound acceptance records. Output: a combined Product acceptance disposition. No automatic promotion of a draft, engineering PASS or release signoff is an output.
 
-## Revised implementation order
+## State Ownership
 
-1. Complete and preserve evidence for MVP H1's foundation sequence through the Corridor Service Integration Gate.
-2. Implement Tenant Interiors H1 content/planning contracts.
-3. Implement H2 parcel integration against the current authority-local schemas.
-4. Implement H3 candidate/lifecycle integration.
-5. Implement H4 tenant service and visitor behavior.
-6. Implement H5 persistence, presentation, and cutover.
-7. Run both the original foundation acceptance scenario and H5 Product MVP scenario.
-8. Treat only the combined passing evidence as Product MVP completion.
+Retain program owner boundaries. Product acceptance owns no gameplay state. The approved H5 cutover contract must select a session capability explicitly, never infer it from a tenant mesh or individual save record.
 
-## Cutover rule
+## Invariants
 
-After Tenant Interiors H5 current-schema integration/cutover, the stable parcel-door identity remains but placeholder proxy completion is disabled session-wide. An invalid or missing interior/service is unavailable; it never falls back to proxy completion. Historical proxy outcomes already present in a valid current-schema save remain immutable and non-economic; older or schema-absent saves reject before staging and are not transformed.
+Foundation evidence remains independently reproducible. Product cannot pass with proxy-only tenants. Invalid/missing interior service is unavailable after cutover, never proxy completion. Historical proxy outcomes remain immutable and non-economic. Only explicitly supported authority-local schemas load; no implicit compatibility converter.
 
-## Acceptance requirements
+## Failure and Edge Cases
 
-- Foundation evidence remains independently reproducible.
-- Product MVP cannot pass using proxy-only tenants.
-- Interior cutover does not regress arrival/exit/cap/public-route contracts.
-- Product MVP introduces no real visitor revenue, viability, satisfaction, or Prestige effects.
-- All Tenant Interiors H1–H5 acceptance requirements and deterministic end-to-end evidence pass.
+Incomplete implementation or candidate-bound cutover evidence leaves Product acceptance pending. Rejected/mismatched content or staging leaves the previous session and slot intact. No failed load can hot-switch service capability. Required visual acceptance is separate from headless authority tests.
+
+## Dependencies
+
+MVP H1, H3 and H4; approved detached `tenant_interiors/H1-H3`; runtime H4 and persistence/presentation H5 architecture-approved separately on 2026-09-08 under ADR 34. Their implementation/candidate cutover remain NOT VERIFIED. `district_layout/H10` external Gate R remains a separate release obligation, not a reason to prevent approved staged implementation.
+
+## Ordered Outcomes
+
+1. Complete the Corridor Service Integration Gate and retain its evidence.
+2. Complete approved detached interior H1-H3 outcomes.
+3. Implement H4 runtime after detached H1-H3 pass; then implement H5 save/presentation and prove candidate cutover after H4 implementation passes. Live integration requires H5 candidate cutover passes, not architecture approval alone.
+4. Run foundation regression and the Product scenario against the same candidate. Record engineering results separately from external release acceptance.
+
+## Acceptance Criteria
+
+- All current-scope behaviors are exercised with actual committed source facts, no placeholder service.
+- Normal play can unlock the core vertical/category route without debug and show visible interior/queue/service consequences.
+- All nine typologies, safe non-overlapping queues, wait rejection/commitment, topology recovery and deterministic rebuild pass their approved contracts.
+- Arrival/exit/cap/rent/atomic restore foundation behavior remains intact.
+- Product completion stays pending until H4 implementation, H5 candidate cutover and same-candidate Product acceptance pass. District Gate R is separate and never inferred from Product tests.

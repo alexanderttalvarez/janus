@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, explicitly supersedes the 20-tile radial limit with the expanded Active-plus-selected Plot union and accepted `district_layout/H6` margin. Rig/navigation decisions otherwise remain.
+
 ### Context
 The game requires an isometric camera with 90° rotation, zoom, pan, and focus. Floor navigation allows moving between floors. Camera state affects wall rendering and visitor culling.
 

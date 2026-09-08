@@ -4,6 +4,10 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), ADR 33 and MVP H3 explicitly amend minimum progression/player intents and coherent transaction/restore boundaries. Content tables are explicit, versioned values from their design element authority, not runtime defaults.
+
+**Follow-on review, 2026-09-08:** [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md), [interior H5](../tenant_interiors/05_persistence_presentation_and_cutover.md) and [MVP H4](../mvp/04_product_delivery_and_acceptance.md) now approve the Product runtime/cutover architecture separately from the preceding consistency pass. Preserve foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance. Bootstrap must not activate interior capability from documentation approval alone. Implementation/cutover remain NOT VERIFIED; Product acceptance and separate external Gate R remain PENDING.
+
 Define the smallest deterministic gameplay-session composition: select validated immutable content, create or restore session authorities, deliver the [Decision 12](../../decisions/12_time_system_architecture.md) calendar, project committed state, then expose presentation only when the session is ready. This handoff coordinates owners; it creates no gameplay values or fallback content.
 
 ## Sources and boundaries
@@ -36,11 +40,13 @@ On V2 restore, `SaveManager` resolves `layout_ref.layout_id`, definition version
 
 ## Calendar and recurrence contract
 
-Decision 12 is the sole calendar source. At 1x, one simulation hour is one real second, one simulation day is 24 simulation seconds, a week is 7 days, a month is 30 days, and a visitor tick is every 5 simulation seconds. Visual time advances independently with a 600-real-second visual day; both clocks share pause and speed. `speed == 0` advances neither clock.
+Decision 12 as amended by ADR 33 establishes the sole calendar owner; element 01 owns units and numbers. A scaled elapsed second is one real second at 1x. A calendar hour/day/week/month is 1/24/168/720 scaled elapsed seconds respectively; a visitor decision tick is 5 scaled elapsed seconds, not 5 calendar minutes. The visual day is 600 scaled elapsed seconds. Both clocks share pause/speed; `speed == 0` advances neither.
 
 `TimeManager` accumulates `delta * speed` once per process frame. It must enumerate every crossed visitor-tick, hour, day, week, and month boundary, including when a single frame crosses multiple boundaries. Calendar identities are monotonic boundary ordinals derived from accumulated simulation time; consumers receive the boundary identity rather than reconstructing elapsed-time constants.
 
 Emission is chronological. For boundaries sharing the same simulation instant, emit `visitor_tick`, `sim_hour_passed`, `sim_day_passed`, `sim_week_passed`, then `sim_month_passed`; each signal is emitted once for that crossed identity before advancing to the next instant. This only fixes delivery order, not gameplay values. Recurring consumers subscribe to these signals and persist their own consumed-period markers for idempotency across replay/load.
+
+Within a day boundary, complete due Tenant lifecycle transitions before Economy captures Open-tenant rent. At a weekly boundary, capture and retain boundary employment before settlement as MVP H3 specifies. Registration/traversal order cannot choose these outcomes. These are coordinated existing-owner calls, not a second Time scheduler or EventBus query protocol.
 
 Existing approved recurrence policy remains unchanged: Economy consumes daily tenant-rent input, weekly paid-staff input, and monthly loan schedules (Economy H1); Tenant H1 schedules/evolves its lifecycle on day/week identities. No owner may use an independent timer or raw elapsed-time counter for those recurrences.
 

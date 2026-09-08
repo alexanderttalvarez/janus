@@ -2,6 +2,10 @@
 
 **Status:** Approved — 2026-09-05 (delegated architecture authority)
 
+**Revision:** 2026-09-08 delegated consistency pass. This is the technical Corridor Service Integration Gate, not Product release. [Element 05](../../../game_design/elements/05_visitor_simulation.md) now owns the explicit foundation-only admission/duration/retry baseline; Session compiles the immutable policy, Tenant supplies Open eligibility, Zone supplies the legal proxy and Visitor alone derives acceptance from its participation. This resolves the unspecified "provided acceptance fact" below without a new service manager. ADR 33 applies; draft `tenant_interiors/H4-H5` do not yet replace this live path.
+
+**Follow-on review, 2026-09-08:** The preceding draft boundary records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves interior H4/H5. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. The live proxy path changes only after those implementation/cutover gates pass, not on documentation approval. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
+
 ## Purpose
 
 Define the smallest operational visitor behavior after H8 realizes a pedestrian visitor: select a reachable parcel-door proxy from public corridors, navigate and recover from invalid routes, use a simple bounded proxy queue, record a non-economic outcome, and leave through an H8-eligible pedestrian source.
@@ -99,7 +103,7 @@ The daily average is an operational observation, not a demand input, balance inp
 3. It applies a deterministic ordering by NFC-normalized UTF-8 bytes of `parcel_door_proxy_id` and selects the first candidate. This is a tie-break only: it is not attractiveness, pricing, preference, weighting, fairness, or a new gameplay formula.
 4. VisitorManager requests a public-corridor route to the selected proxy anchor. If the path cannot be produced, the selected target is cancelled without a result and the next behavior decision may choose from a fresh snapshot.
 5. Before entering the proxy queue and before completing the interaction, VisitorManager revalidates the proxy and captured topology revisions. A stale, disabled, removed, or unreachable target cancels queue participation and target state without producing a purchase result.
-6. An accepting proxy records the visitor in its simple FIFO queue. The MVP policy has no invented numeric limit: its configured/provided acceptance fact is authoritative. If full or unavailable, the visitor does not reserve a slot, cancels the target, and returns to a later decision.
+6. Visitor evaluates the compiled element-05 foundation policy against committed Open/door/topology facts and its own participation. The single-entry FIFO accepts only when unoccupied. Full/invalid targets are excluded for that visit; no reservation is created, and bounded retry follows the explicit policy.
 7. At the public-side proxy anchor, VisitorManager removes the queue participation and commits exactly one visitor-side purchase result for the completed interaction. It then publishes the result after commit. Consumer faults are diagnostics and cannot roll back visitor state.
 8. When no valid target remains, cancellation policy ends the visit, or the visitor otherwise receives a leaving intent, VisitorManager asks H8 to validate/select an eligible exit source. It routes over public corridors, revalidates/repaths as required, and removes the visitor only after reaching that source.
 
@@ -116,7 +120,7 @@ No queue reservation, target, or route may survive a cancellation, stale revisio
 
 ## Queue and capacity policy
 
-The MVP proxy has a single simple FIFO admission policy. Capacity is represented only by the proxy's published acceptance state; this handoff does not derive it from parcel tile count, invent a queue limit, model staff throughput, reserve tenant interior space, or apply patience/priority/fairness behavior.
+The foundation proxy uses element 05's explicit single-entry FIFO and next-tick completion, followed by Leaving. Session owns immutable policy selection/validation; Visitor owns the revisioned acceptance projection from its committed participation plus Tenant/Zone facts. No parcel-area inference, staff throughput, interior capacity, patience or fairness simulation is introduced. Its historical non-goal of inventing values is satisfied by the now-approved design baseline, not a missing policy provider.
 
 Only VisitorManager writes queue participation. A queue entry is transient, single-visitor, and valid only while the associated proxy snapshot remains valid. A later tenant-service handoff may replace the policy with service-specific capacity and reservation authority; doing so must preserve stable proxy identity or explicitly migrate it.
 

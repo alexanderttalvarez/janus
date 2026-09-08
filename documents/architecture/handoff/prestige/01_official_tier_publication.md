@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-05
 **Prepared:** 2026-09-05
-**Implementation order:** 1 of TBD
+**Implementation order:** 1 of 2
+
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), ADR 33 and MVP H3 apply. Prestige still does not award Tech points; Progression now has an explicit element-08 award policy and must not infer it from rent/tenant tiers. Import-time eligibility is derived only after candidate Prestige exists.
 
 ## Purpose
 
@@ -48,12 +50,11 @@ Establish the smallest trustworthy Prestige authority: a detached, revisioned of
 - A future full Prestige-calculation handoff will submit a validated candidate official result to this authority; H1 does not prescribe its calculation algorithm.
 - Tier changes are infrequent and can be delivered synchronously as typed post-commit manager signals. Presentation may project them to EventBus separately.
 
-## OPEN QUESTIONS
+## Resolved Inputs and Deferred Work
 
-- Full official calculation input contracts, monthly calculation transaction, daily trend, loan-default multiplier, and initial numeric Prestige/Scale/Quality values.
-- Tech-point award policy; current unapproved runtime point behavior is not preserved by H1.
-- Whether a future visitor-demand handoff consumes tier, numeric Prestige, or within-tier attraction multiplier.
-- The operator/tool path through which a future calculation authority submits an official tier-result candidate.
+- H2 supplies the approved monthly baseline candidate through this handoff's commit boundary; authored initial Empty Lot has no fabricated score. MVP H3 supplies coherent source assembly.
+- Element 08/MVP H3 approve exactly-once Tech awards under Progression ownership. No generic achievement system or Prestige-owned point mutation is required.
+- Full Quality factors, loan-default effects, daily trend and visitor-attraction consumption remain deferred. Missing future inputs do not block the current baseline.
 
 ## Ownership and boundaries
 

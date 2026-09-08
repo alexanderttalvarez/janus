@@ -1,110 +1,66 @@
-# Handoff 07: Traffic Topology Migration
+# District Layout Handoff 07: Traffic Topology
 
 ## Status
 
-**Approved — 2026-09-03.** Implementation requires implemented H3 committed state and [H5](05_street_and_pedestrian_generation.md) public-realm/conversion inputs.
+Approved 2026-09-03; revised 2026-09-08 under delegated documentation authority and ADR 33. The connected-Plot-union assertion, 5T-offset/red-at-zero pair, absent pedestrian clearance and mandatory turn-extension hooks are superseded. Prior engineering evidence does not verify this revision.
 
 ## Purpose
 
-Own immutable `RoadGraphSnapshot`, graph deltas, lane/control anchors, traffic-control descriptors, and the stable invalidation identifiers and instructions consumed by transient traffic systems. H7 does not own reservations.
+Supply deterministic road topology and safe straight-through ambient traffic/midpoint crossings without creating a transport simulation or duplicating public pedestrian topology.
+
+## In-Scope Behavior
+
+Road graphs/deltas; stable lanes, intersections, controls and anchors; straight-through intersection reservations; phase/clearance control at segment midpoint crosswalks; invalidation after construction/conversion/load. Use active-slot components, not a filled geometric bounding box.
+
+## Out-of-Scope Behavior
+
+Intersection lights/crosswalks, turns or turn-framework hooks, bus facilities/economics/capacities, street purchase policy, persistent cars/reservations, pedestrian graph ownership, future transport cohorts, or authored Node-name topology.
+
+## Authorities
+
+[Element 19](../../../game_design/elements/19_district_layout_land_expansion.md) owns road dimensions, active-slot perimeter and exact crossing phase/clearance/speed rules. [ADR 27](../../decisions/27_district_layout_templates.md), [ADR 33](../../decisions/33_documentation_consistency_and_minimum_contracts.md), H2 resolution, H3 state, H5 public realm and element 01's clock apply. No duplicate timing table is authored here.
+
+## Inputs and Outputs
+
+Inputs: H2 resolved lane/segment/intersection descriptors; committed H3 Active Plot and segment state; H5 conversion/public-realm inputs; Time's scaled elapsed seconds for control evaluation. Progression-selected but unowned Plots do not count.
+
+Outputs: complete immutable `RoadGraphSnapshot` with source revisions and stable IDs for lanes, segments, intersections, crosswalks, stops, anchors and the permanent outer ring; `RoadGraphDelta` with canonically ordered added/changed/removed IDs, invalid routes/reservations and reason. Control identities are semantic, never Spawn/StopLine/Exit Node names. Runtime public-crossing consumers receive phase and occupancy admission facts, not a second graph.
+
+## State Ownership
+
+TrafficTopology alone publishes road topology/deltas and control descriptors. TrafficManager owns transient cars and vehicle/pedestrian crossing reservations, including occupancy holds; it reads the shared Time clock and never saves/restarts an independent timer. Visitor owns the crossing visitor's logical lifecycle/movement and releases its crossing reservation after clearing. H5 alone owns pedestrian links; H8 arrival allocation is independent of traffic, though actual later crossing traversal observes these controls. No observer writes another owner's state.
+
+## Invariants
+
+- Intersections are reservation-controlled and straight-through only, never traffic-light controlled. Midpoint crosswalks are the only pedestrian crossings.
+- Active-slot adjacency defines one or more valid components; Fixture C retains its exact three initial entry sections without inventing connecting ownership. Each component's bordering resolved roads supply its perimeter. Shared lane/control anchors deduplicate by stable identity; canonical order removes traversal-order dependence.
+- Selected/unowned Plots cannot extend controlled boundaries. Converted/inactive roads have no active anchors; the permanent outer ring is never removed.
+- Element 19's phase epoch, east-west offset, final-T clearance and mutual occupancy hold are exact. A vehicle and pedestrian cannot acquire conflicting crossing occupancy. Coarse visitor decision ticks do not delay safety release/hold checks.
+- Outer-ring midpoint lights remain vehicle-functional but never create H5 pedestrian links or permit visitor entry.
+- Rebuild replaces the whole graph atomically. Cars/reservations are transient; stale handles cannot cross revisions. Conversion never fails because ambient traffic would disconnect.
+
+## Failure and Edge Cases
+
+Missing/invalid initial graph disables ambient cars. A failed update retains the previous complete graph for diagnosis but closes controls affected by a newer District revision; never traverse stale converted roads. Stop new entries, release/invalidate affected reservations and remove ambient cars safely without rolling back valid District state. A pedestrian already crossing clears before conflicting movement resumes; if topology removes its route, use the approved Visitor topology recovery at a valid public anchor, never drop the visitor. At load, derive phases from restored Time and start with no transient reservations; no retroactive traffic work runs.
 
 ## Dependencies
 
-- H2 resolved road descriptors, H3 committed segment state, and [H5](05_street_and_pedestrian_generation.md) conversion/public-realm inputs.
-- H3 Active/owned Plot geometry; Progression-selected/unlocked but unowned Plots are excluded from controlled-area topology.
+Implemented H2/H3/H5 source ports. H6 is not needed for road topology; H8 is not needed for graph construction. Integration with public visitor traversal requires its existing movement lifecycle and the crossing admission facts above. No bus/runtime interior contract is a prerequisite.
 
-## Source-of-truth documents
+## Ordered Implementation Outcomes
 
-- [Decision 27](../../decisions/27_district_layout_templates.md)
-- [Handoff index](./_index.md)
+1. Produce complete deterministic graphs from resolved roads and active-slot components.
+2. Derive perimeter anchors, excluding selected/unowned and converted/inactive roads.
+3. Publish deltas and invalidate transient routes/reservations in stable order.
+4. Apply element-19 timing/occupancy holds to ambient cars and public crossing traversal using shared Time.
+5. Rebuild after load and demonstrate runtime/editor graph parity without persisted topology.
 
-## Current-state findings
+## Acceptance Criteria
 
-`TrafficManager` discovers `World/TrafficLayout/Lanes`, eight exact `Lane_*` names, six marker families, and NW/NE/SW/SE reservation zones from authored Nodes.
-
-## Target state
-
-TrafficTopology alone publishes complete immutable road graphs and ordered deltas. `TrafficManager` owns transient cars/reservations against one graph revision and cannot write topology or veto street conversion.
-
-## Scope
-
-Road graph generation, lane/intersection/crosswalk/route/control attachments, deltas, transient reservation invalidation, and authored-layout migration.
-
-## Explicit non-goals
-
-Public-realm geometry, pedestrian graph, conversion eligibility/state writes, persistence, traffic prices/rates/capacities, or bus-only lanes.
-
-## System ownership
-
-| Owner | Responsibility |
-| --- | --- |
-| H5 | Public-realm/conversion inputs and pedestrian graph authority. |
-| H7 TrafficTopology | Exclusive `RoadGraphSnapshot` and `RoadGraphDelta` authority. |
-| TrafficManager | Ambient cars plus fade/spawn/despawn presentation and transient reservations only. |
-
-## Data contracts
-
-`RoadGraphSnapshot` carries layout/resolver/district/graph revisions and stable lanes, segments, intersections, crosswalks, stops, route attachments, control anchors, traffic-control descriptors, and outer ring. `RoadGraphDelta` carries ordered added/changed/removed IDs, invalid routes/reservations, attachments, and reason. Control kinds replace Spawn/StopLine/Exit/SourceClear/IntersectionHold/IntersectionClear Node-name contracts without preserving scene identity.
-
-Initial routes are straight-through only. Turn-capable extension points remain in the contract, but no turn route is active. Existing intersection reservation behavior remains authoritative for straight crossings; intersections have no traffic lights or pedestrian crossings. The controlled area is the connected union of Active/owned Plot rectangles only. Progression-selected/unlocked but unowned Plots are camera-accessible and do not extend the controlled area, road perimeter, anchors, routes, or traffic-control state. District acquisition rules guarantee this invariant. H7 test fixture/load setup for Fixture C must use the approved initial ownership set `{market_entry,station_entry,garden_entry}`; TrafficTopology and TrafficManager must never compensate for a disconnected substitute setup.
-
-Every outward-facing lane at the controlled-area road perimeter has paired spawn and despawn anchors just outside the boundary intersection, oriented by lane direction. As the controlled area expands, topology moves active anchors outward. Converted or inactive roads have no active anchors. TrafficTopology owns anchors and graph state; TrafficManager owns only presentation and transient cars.
-
-Each midpoint crosswalk has two traffic-light poles, one centered in each Pedestrian Band opposite the other. Poles are compact dark-charcoal/black metal with rectangular heads and a signal center 2.5 tiles high; each provides vehicle green/yellow/red and pedestrian red/green faces. The shared traffic clock uses simulation-time scaling and pauses with simulation. Its 10T cycle is cars green for 5T, yellow for 1T, and red for 4T; pedestrians are red for 6T and green for 4T. North-south road crosswalks use offset 0; east-west use a 5T half-cycle offset. At shared-clock zero, north-south vehicle lights are green and east-west vehicle lights are red. During yellow, cars past their crosswalk stop line clear; cars not past it stop. Pedestrians enter only on green and otherwise wait. Canonical crossing time `T` is full carriageway crossing distance divided by canonical crosswalk speed, and every visitor uses that same canonical speed regardless of status. H7 distinguishes traffic-functional outer-crosswalk lights from H5 pedestrian-graph crossings.
-
-## Communication and event flow
-
-`H5 inputs + committed H3 Active/owned Plot and segment state -> complete graph -> delta -> release invalid reservations -> deterministic transient response`.
-
-## Persistence impact
-
-Graphs, deltas, anchors, routes, reservations, and cars are unsaved. Rebuild after H9 commit.
-
-## Editor/runtime behavior
-
-Atomic complete snapshot replacement; editor and runtime use identical graph generation.
-
-## Migration and compatibility requirements
-
-`LegacyAuthoredTrafficLayoutAdapter` validates/adapts exactly the current eight lanes, six marker families, and four reservation zones for the legacy fixture only; H10 removes it and all authored topology authority.
-
-## Expected affected files/systems
-
-Traffic manager, graph modules, composition, authored traffic Nodes, conversion subscribers, tests.
-
-## Acceptance criteria
-
-Deterministic graph IDs; immutable ring; selected/unowned Plots never extend the controlled area; conversion connectivity never vetoes; stale routes/reservations clear; no Node-name/coordinate authority; H7 is sole road graph owner; straight-only initial routes; connected controlled-area invariant; perimeter anchors; and the shared-clock control contract. H4 remains projection lifecycle only, so H7 traffic semantics do not retroactively change completed H4 work.
-
-## Required tests
-
-Profiles, graph goldens, straight-only routes with inactive turn extensions, conversion/deltas, route/reservation cleanup, missed-revision recovery, adapter exactness, save exclusion, connected controlled-area fixtures including Fixture C loaded with `{market_entry,station_entry,garden_entry}`, active-anchor migration, converted/inactive anchor exclusion, traffic-control placement, clock offsets/phases/pause/time-scale behavior, yellow clearing, and canonical pedestrian crossing speed. Prove that outer midpoint crosswalk controls are traffic-functional without becoming H5 pedestrian graph crossings.
-
-## Performance/scalability checks
-
-Graph work scales with topology; route lookup is indexed; incremental rebuild is checked against full rebuild oracle.
-
-## Failure and rollback behavior
-
-Invalid graph retains last complete graph or disables initial ambient traffic. A valid district conversion is never rolled back for ambient failure.
-
-## Technical risks
-
-Dual graph authority, unstable IDs, stale reverse indexes, and confusing ring validity with internal connectivity.
-
-## FACTS
-
-- H7 alone owns `RoadGraphSnapshot`.
-- **2026-08-31 Road & Intersection Addendum:** H7 owns traffic anchors, straight-through road routes, shared-clock traffic controls, and traffic-functional crosswalk semantics. H5 owns pedestrian crossings and public-realm descriptors; H4 remains projection lifecycle only.
-
-## ASSUMPTIONS
-
-- Ambient cars may despawn without gameplay-state loss.
-
-## OPEN QUESTIONS
-
-- Ambient routing/presentation tuning and incremental strategy after profiling.
-
-## GodotPrompter skills required by implementation agents
-
-- `ai-navigation`, `resource-pattern`, `gdscript-advanced`, `godot-optimization`, `godot-testing`.
+- Same inputs produce identical stable graphs/deltas; input order cannot change anchors or routes.
+- Single Plot, adjacent Plots, disconnected Fixture C components, selected-only Plots and conversion splits obey perimeter/ownership rules with no duplicate anchors or inferred connecting Plot.
+- Boundary tests at phases 0, 5, 6, 9 and 10 prove signal states; east-west is red at epoch zero. Pause/speed and restore preserve phase derivation.
+- Entry just before pedestrian cutoff clears before vehicle entry; a stalled pedestrian or late clearing car keeps the conflicting hold. No crossing conflict occurs during a large frame or skipped visitor-decision interval.
+- Outer midpoint controls remain traffic-functional but pedestrian-inaccessible. No intersection light/crosswalk or turn path exists.
+- Conversion, stale graph, missed delta and failed rebuild never restore obsolete traffic access or veto valid District state.
+- Graphs, routes, cars, controls and reservation state are absent from durable saves; post-load topology comes from committed authority.

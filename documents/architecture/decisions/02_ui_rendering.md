@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** Mandatory SubViewport implementation superseded by [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08. The body below is retained decision history; current heatmaps use the source-backed world mesh path.
+
 ### Context
 Heatmaps need to overlay the 3D world. We needed to decide between CanvasLayer and SubViewport.
 

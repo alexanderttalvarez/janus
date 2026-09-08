@@ -2,6 +2,8 @@
 
 This index records the ordered Economy architecture handoffs and their implementation gates.
 
+**Current revision:** 2026-09-08, delegated documentation pass. H1/H2 remain approved as explicitly amended by element 03, ADR 33 and [MVP H3](../mvp/03_foundation_integration_clarifications.md): complete pricing/no-refund policy, whole-week mandatory payroll and source-owned balance conditions. [Current MVP](../../../game_design/current_mvp.md) excludes loans/transport operation and playable multi-Plot expansion; no pending pricing question blocks the approved foundation.
+
 ## Ordered handoffs
 
 | Order | Handoff | Architecture status | Scope / gate |

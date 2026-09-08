@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-03
 **Prepared:** 2026-09-03
-**Implementation order:** 1 of 1
+**Implementation order:** 1 of 3
+
+**Revision:** 2026-09-08 delegated consistency pass. [Element 08](../../../game_design/elements/08_mall_levels_tech_tree.md) is the numerical authority; H2/H3 amend elevations/transport. [MVP H3](../mvp/03_foundation_integration_clarifications.md) approves the minimum normal-play Tech awards/intents. No achievements or full graph UI is required.
 
 ## Purpose
 
@@ -23,8 +25,8 @@ Define a single revisioned Progression authority that converts committed prestig
 |---|---|
 | Ground `G` | Initial Plot only; owned at game start. |
 | `F1`, `F2` | Requires existing `Multi-Floor` node. Ground is the first building level, making these the second and third floors. |
-| `U1`–`U3` | Requires existing `Underground` node, whose prerequisite remains `Multi-Floor`. |
-| `F3`–`F9`, `U4`–`U5` | Explicitly unavailable pending a future progression extension. |
+| `U1`–`U2` | Requires `Underground`, prerequisite `Multi-Floor`; H2 supersedes old U1-U3 wording. |
+| `F3`–`F9`, `U3`–`U5` | H2's explicit Vertical Expansion I/II/III and Deep Foundations gates, subject to physical caps and current playable scope. |
 
 Physical caps/templates and District ownership/buildability remain separate validations.
 
@@ -52,7 +54,7 @@ A selector may not choose diagonally, a non-adjacent Plot, a non-player-capable 
 ### Street conversion and transport
 
 - Street Segment conversion is progression-eligible at **Neighborhood Center** and above, subject to all District geometry/frontage/public-realm and Economy affordability checks.
-- Non-pedestrian transport facilities are explicitly unavailable until a dedicated transport/progression handoff approves them.
+- H3 approves Bus Stop eligibility only; facility placement, fees and arrivals remain unavailable. Other transport stays unavailable.
 
 ## Boundaries and ownership
 
@@ -60,7 +62,7 @@ A selector may not choose diagonally, a non-adjacent Plot, a non-player-capable 
 |---|---|---|
 | PrestigeManager | Computes and publishes committed tier changes. | Unlock state, Plot selections, District state. |
 | Progression authority (initially TechTreeManager) | Sole writer of unlocked nodes, earned/spent points, Plot Access grants, selected Plot IDs, and progression revision. | Prestige calculation, prices/balance, District mutations. |
-| District Runtime | Validates physical eligibility and commits selected Plot/section/floor/street state. | Spending/revoking progression grants or Tech state. |
+| District Runtime | Validates physical eligibility and commits section ownership/activation, floor and Street state. Reads selected Plot IDs from Progression. | Selected Plot IDs, spending/revoking grants or Tech state. |
 | Economy | Prices and captures an otherwise eligible action. | Progression eligibility. |
 | Camera/projection | Reads selected/unlocked and Active Plot state to build the envelope. | Progression/District writes. |
 
@@ -110,7 +112,7 @@ When `god_mode` is active in a non-release build, Progression is treated as full
 ## Explicit non-goals
 
 - New Tech nodes, Tech Point values, prestige thresholds, or tier names.
-- Progression for F3–F9/U4–U5, transport, maintenance, construction cancellation, or tenant eviction.
+- This H1 does not duplicate H2 elevation/H3 eligibility policy. Maintenance, cancellation and tenant eviction are not Progression ownership.
 - Prices, refunds, loans, or balances.
 - UI, camera implementation, localization, or selection presentation.
 
@@ -120,9 +122,9 @@ When `god_mode` is active in a non-release build, Progression is treated as full
 - Selection cap is nine total Plots including the initial Plot.
 - Selected Plot IDs are stable, unique, canonical, orthogonally reachable, and persist across save/load.
 - An unlocked Plot is camera-eligible but is not Active until a first owned section commits.
-- `Multi-Floor` enables only F1/F2; `Underground` enables only U1–U3; all higher listed elevations explicitly reject.
+- `Multi-Floor` enables F1/F2; `Underground` enables U1/U2; H2's extension nodes gate other elevations exactly. Missing nodes/physical rights reject.
 - Street conversion rejects below Neighborhood Center and may proceed only at/above it when all non-progression requirements succeed.
-- Transport explicitly rejects as unavailable.
+- Bus Stop can publish eligibility under H3 but cannot place/charge/realize a facility; every unapproved transport action rejects.
 - Stale snapshots, invalid selections, or rejected eligibility produce no Economy debit or District mutation.
 - God mode yields all progression eligibility and eight Plot Access selections immediately, but does not bypass the 9-Plot cap, adjacency, stable-ID, or physical-validity rules.
 
@@ -135,6 +137,5 @@ When `god_mode` is active in a non-release build, Progression is treated as full
 
 ## Follow-ups
 
-- Progression H2: F3–F9/U4–U5 extension and any new Tech nodes.
-- Transport/progression handoff: non-pedestrian transport gates and content.
+- Progression H2/H3 already approve vertical extension and Bus Stop eligibility; future transport operation still needs its own handoff.
 - District H3/H4/H5: consume this policy for transaction, camera, and Street conversion work.

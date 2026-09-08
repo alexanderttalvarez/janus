@@ -2,6 +2,8 @@
 
 This index is the implementation order and approval record for the zone-and-parcel handoff sequence.
 
+**Current revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md) and ADR 33 apply. H6 supersedes H1's full resplitting; approved `tenant_interiors/H2` adds staged core/annex feasibility, not live Service cutover. Read the [interior readiness matrix](../tenant_interiors/_index.md) before activating those changes. Manual-door authority is ADRs 30/31, not legacy grid flags.
+
 ## Approved handoffs
 
 | Order | Handoff | Status | Scope |
@@ -18,7 +20,7 @@ This index is the implementation order and approval record for the zone-and-parc
 
 - Implement only the first approved handoff that has not been completed.
 - Handoff 02 may begin only after Handoff 01 is verified complete; Handoff 03 may begin only after both Handoffs 01 and 02 are verified complete.
-- Handoff 04 may begin only after Handoff 03 is verified complete.
+- Handoff 04 requires committed parcel geometry, not H3 debug labels. H3/H7 are optional read-only tooling and never block gameplay walls/doors; this explicitly supersedes the old label-first gate.
 - Handoff 05 may begin only after Handoff 04 is verified complete.
 - Handoff 06 may begin only after Handoff 05 is verified complete. It amends the specified mutation rules in Handoffs 01 and 02 without reopening their other approved contracts.
 - Handoff 07 may begin only after Handoff 06 is verified complete. It adds a separate read-only debug projection and does not reopen Handoff 03 parcel-label ownership.

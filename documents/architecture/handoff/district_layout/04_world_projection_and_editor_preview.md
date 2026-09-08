@@ -2,7 +2,7 @@
 
 ## Status
 
-**Runtime projection approved and complete; editor-preview extension pending acceptance.** H4 runtime projection remains available to successor handoffs. Full H4 completion requires the opt-in editor-plugin capability and acceptance evidence in the 2026-08-31 addendum.
+**Approved contract; runtime and preview tests reported passing; formal full-preview acceptance not recorded.** The [proof summary](../../evidence/district_layout_acceptance/proof/h1_h9_test_results.md) reports runtime 22/22 and preview 15/15. These are claimed engineering results, not an inferred preview signoff. Runtime remains available to successor handoffs. Revised 2026-09-08 under delegated documentation authority and ADR 33 for the failure/input boundary below; new behavior needs its own verification.
 
 ## Purpose
 
@@ -86,7 +86,7 @@ Profile viable chunked/`MultiMesh`/`ArrayMesh` approaches and record node, draw,
 
 ## Failure and rollback behavior
 
-Projection failure never mutates or rolls back committed authority; retain old presentation and retry from authority.
+Projection failure never mutates or rolls back committed authority. Retain the prior valid root, dispose only the failed/stale candidate, expose a diagnostic and disable world picking/build intents until the displayed root matches committed authority revisions. Safe camera navigation, retry and save/load controls remain available; old geometry cannot authorize a mutation. Initial failure keeps session-ready false. A restore staging failure instead preserves the entire prior session under Session H2.
 
 ## Technical risks
 
@@ -103,11 +103,11 @@ Shared material mutation, stale async results, temporary double memory, and Node
 
 ## OPEN QUESTIONS
 
-- Renderer/profile budgets, safe worker-thread stages, and degraded-presentation input policy.
+- No policy blocker remains. Begin with main-thread detached preparation and existing descriptor/projection boundaries; off-thread work or a different renderer is optional only after profiling. Release budgets remain in the external H10 evidence contract, not invented here.
 
 ## 2026-08-31 Editor Preview Addendum
 
-**Status: new H4 completion requirement.** H4 runtime projection work may be complete independently, but H4 editor-preview acceptance remains pending until the optional editor-plugin capability and its tests exist. This addendum does not change H5 or H7 ownership.
+**Historical requirement, current disposition above.** Runtime and plugin tests are reported passing, while formal full-preview acceptance remains unrecorded. Reconcile evidence with the criteria below rather than inventing signoff. This addendum does not change H5 or H7 ownership.
 
 ### Editor tooling boundary
 
@@ -119,7 +119,7 @@ Shared material mutation, stale async results, temporary double memory, and Node
 ### Authority and lifecycle
 
 - Preview is non-authoritative: it never mutates immutable Resources/definitions, `DistrictState`, `SaveManager` data, economy/progression, scenes, or gameplay/runtime authority, and it never writes authoritative content into the live `main_game` scene.
-- Preview roots are plugin-owned, marked generated, isolated from authored nodes, and removed on explicit cleanup, plugin disable, scene close/change, and failed or stale rebuild. `_exit_tree` unregisters/frees plugin UI and preview roots.
+- Preview roots are plugin-owned, marked generated and isolated from authored nodes. Remove all roots on explicit cleanup, plugin disable and scene close/change. On failed/stale rebuild, remove the **candidate only**, retaining the prior valid root. `_exit_tree` unregisters/frees plugin UI and preview roots.
 - The safe lifecycle is `validate -> build detached candidate -> stale/revision check -> swap -> dispose old preview`. Invalid definitions expose validation diagnostics instead of a partial preview. A failed or stale rebuild keeps the prior valid preview.
 - All editor-only scripts use `@tool` and guard editor-only behavior. Runtime does not rely on `Engine.is_editor_hint()` for domain semantics.
 - Editor and runtime receive the same immutable `ProjectionMetrics` identity, revision, and value. Metrics are injected, never inferred from current Nodes or transforms; parity is required.

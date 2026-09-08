@@ -2,6 +2,8 @@
 
 This index records approved construction architecture handoffs and their implementation gates.
 
+**Current revision:** 2026-09-08, delegated documentation pass. H1 remains approved with its fixed 2x2 room footprint, element-03 no-post-commit-refund policy and ADR 33/MVP H3 gate/input clarifications. [Current MVP](../../../game_design/current_mvp.md) includes placed vertical links, not operational elevator trips/queues or escalators. Missing catalogue content is an error, not an unresolved footprint choice.
+
 | Order | Handoff | Status | Scope |
 | --- | --- | --- | --- |
 | 01 | [MVP Circulation, Vertical Links, and Operations Room](01_mvp_circulation_vertical_links_and_operations_room.md) | Approved — 2026-09-05 (delegated architecture authority) | Player construction intents, preview/confirm, authoritative placement, immutable costs, topology publication, persistence, and tests for corridors, stairs, elevators, and Operations Rooms. |

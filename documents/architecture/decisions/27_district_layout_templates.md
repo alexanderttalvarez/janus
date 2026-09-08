@@ -3,6 +3,8 @@
 **Date:** 2026-08-30
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, reconciles camera, proof-only ownership exceptions and transaction gates. The provisional hybrid-format question below was closed by frozen `district_layout/H1-H2` KEEP; do not repeat the format-selection exercise.
+
 ## Context
 
 The current runtime assumes one 25x25 plot and represents ownership, construction, and occupancy through closely coupled tile data. The approved game direction requires multiple rectangular plots, permanent streets, section-by-section horizontal and vertical acquisition, fixed structures, and data-driven layouts that can be previewed and saved safely. Shared authored definitions must not become mutable save state.

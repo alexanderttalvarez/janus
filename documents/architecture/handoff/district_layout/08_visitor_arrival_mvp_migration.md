@@ -6,6 +6,10 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. ADR 33 unifies this arrival barrier with the session mutation/save gate. Element 01 owns clock units and [Current MVP](../../../game_design/current_mvp.md) owns scope. `tenant_interiors/H1-H3` do not activate draft goal/category/runtime contracts here; the foundation arrival path remains until an approved H4/H5 cutover. H7 controls only later public crossing traversal, never demand/source allocation.
+
+**Follow-on review, 2026-09-08:** The preceding revision records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves `tenant_interiors/H4-H5`. Foundation -> detached interior H1-H3 -> interior H4 implementation passes -> interior H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Interior goals/categories do not activate on document approval. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING. District disposition is unchanged: Engineering complete; H10 release acceptance pending external Gate R.
+
 Separate demand, deterministic source selection, immediate cross-authority realization, and existing realized visitor lifecycle without source reservation state.
 
 ## Dependencies
@@ -77,7 +81,7 @@ Editor displays H6 eligibility and pass-through H2 pose without demand or mutati
 
 ## Migration and compatibility requirements
 
-`LegacyVisitorSpawnAdapter` bridges selected target source records to old `VisitorManager` behavior. It does not map persisted corner IDs; H9 detached migration owns persisted source mapping. Conforming saves write only `arrival_source_id`.
+Historical migration only: `LegacyVisitorSpawnAdapter` bridged selected target source records to old Visitor behavior and is removed by H10. There is no persisted corner/source mapping in H9: schema-absent/V1 saves reject. Conforming saves write only `arrival_source_id`; no mapping adapter is authorized.
 
 ## Expected affected files/systems
 

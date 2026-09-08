@@ -1,9 +1,11 @@
 # Tenant Handoff 03 — Candidate Policy and Catalog
 
 **Status:** Approved — 2026-09-05 (delegated architecture authority)
-**Implementation order:** 3 of TBD — after Tenant Handoffs 01–02
+**Implementation order:** 3 of 3 — after Tenant Handoffs 01–02
 
 ## Purpose
+
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md) and elements 06/20 govern current content. Uniform Tier-1/area-only selection below is the foundation contract; approved `tenant_interiors/H3` replaces it with feasible 6/3/1 selection and explicit provenance for detached interior work. Legal adjacency compares the customer-facing theme/subtype ID, not the shared operational profile. Follow its index before any live capability/save change.
 
 Provide the missing immutable candidate content required for Tenant H2 to produce real deterministic applications in an MVP. The policy turns H1/H2's seeded candidate contract into a small, inspectable, data-driven catalog without inventing tenant performance, brands, or final balancing.
 

@@ -2,7 +2,9 @@
 
 **Status:** Approved
 **Approved:** 2026-08-22
-**Implementation order:** 1 of 1
+**Implementation order:** 1 of 7; dependency gates in the program index
+
+**Current applicability, 2026-09-08:** H6/ADR 24 supersede full recalculation on mutation. Element 20 and approved staged `tenant_interiors/H2` supersede rectangular/min-max/ordinary-Anchor formation where stated. Read [Current MVP](../../../game_design/current_mvp.md) and the [interior readiness matrix](../tenant_interiors/_index.md); this historical base is not standalone Product parcel authority. Stable identity/frontage/preservation invariants remain.
 
 ## Purpose
 

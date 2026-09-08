@@ -1,5 +1,7 @@
 # Core Loop
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. Full-game revenue, needs, seasons and expansion below are deferred where not included there. This element is the numerical clock authority.
+
 ## Overview
 
 The fundamental cycle of play in Janus. The player designs spaces, watches them come alive, analyzes the results, and iterates. Time flows in real-time with player-controlled speed, creating a rhythm of active building and passive observation.
@@ -10,7 +12,7 @@ The fundamental cycle of play in Janus. The player designs spaces, watches them 
 
 ### Dual Timer Architecture
 
-Janus uses two independent timers that scale together with speed controls:
+Janus uses two elapsed-time accumulators that scale together with speed controls. A **scaled elapsed second** is one real second at 1x, half a real second at 2x, and one third at 3x. Calendar hours/minutes are labels derived from that elapsed time, not SI units: one calendar hour is one scaled second, a day is 24, a week is 168, and a 30-day month is 720 scaled seconds. The visual day is 600 scaled seconds. Both stop while paused.
 
 | Timer | Purpose | Speed (at 1x) | Drives |
 |-------|---------|---------------|--------|
@@ -27,15 +29,15 @@ Janus uses two independent timers that scale together with speed controls:
 
 ### Visitor Tick
 
-A third, faster clock drives individual visitor behavior (need decay, decision-making, movement updates).
+Visitor decisions use boundaries of the same simulation elapsed-time accumulator, not a third independent timer. Movement interpolates between decisions; future need decay uses these same visitor boundaries.
 
 | Tick | Duration | Real Time (1x) | Drives |
 |------|----------|----------------|--------|
-| **Visitor Tick** | 5 sim minutes | 5 seconds | Visitor need decay, decision triggers, pathfinding updates, queue position checks |
+| **Visitor Tick** | 5 scaled elapsed seconds (5 calendar hours) | 5 seconds | Decision triggers, path requests, queues and abstract service |
 
-**Need decay:** Each state need decreases by 1 point per visitor tick. A visitor starting at 40 hunger will reach the 30 threshold after 10 ticks (50 sim minutes).
+**Future need decay:** A one-point decay per tick takes 10 ticks, or 50 scaled seconds, to move from 40 to 30. Product MVP does not implement emotional/need decay; committed service never decrements patience.
 
-**Design rationale:** Visitor behavior updates faster than the simulation clock to create responsive, believable agents. The 5-minute interval is frequent enough to feel alive but infrequent enough to avoid performance issues.
+**Rationale:** Keep the approved five-real-second cadence at 1x and the 24-second calendar day without the contradictory five-calendar-minute conversion. Time supplies monotonic boundary ordinals and enumerates every crossed boundary; coincident order is visitor, hour, day, week, month. Traffic crossing occupancy/movement is not limited to this coarse decision cadence.
 
 ### Time Scale
 
@@ -98,7 +100,7 @@ Design → Populate → Observe → Analyze → Optimize → Expand → (repeat)
 
 | Phase | Duration (sim clock) | Duration at 1x | Player Action |
 |-------|---------------------|----------------|---------------|
-| **Vacant → Open** | 1 sim day | 24 seconds | Player can expand, resize, or re-zone before any tenant applies |
+| **Vacant → First evaluation** | 1 sim day | 24 seconds | Player can expand, resize, or re-zone before any tenant applies; opening follows lock and construction |
 | **First application** | Triggered after 1 sim day | After 24s | A tenant applies based on zone conditions |
 | **Exclusivity lock** | 1 sim week | ~2.8 minutes | No other tenant can apply. Player sees WHO is coming |
 | **Construction** | 0.3 sim weeks × tile count | Variable | Construction phases visible |
@@ -118,11 +120,13 @@ Construction has 3 visual phases, each representing ~33% of total build time:
 
 ### Construction Cancellation
 
-The player can cancel construction at any time using the bulldozer tool or by overwriting the zone with a different zone type or amenity.
+The player can cancel an unpaid tenant fit-out only while ExclusivityLocked or Constructing, through its explicit cancellation intent. This atomically clears the Tenant/Zone binding without changing parcel geometry. It is not paid floor-placement undo or fixed-structure demolition, and painting another zone type is not an implicit cancellation command.
 
 **Penalty:** A 1-week exclusivity lock starts over. No tenant can apply to that zone for 1 in-game week (~2.8 minutes at 1x).
 
 **Rationale:** This creates meaningful commitment stakes without being punitive. The player has freedom to change their mind, but the delay discourages frivolous re-zoning.
+
+Lifecycle deadlines are evaluated on authoritative day boundaries. Construction's exact duration is `21 * parcel_tile_count / 10` calendar days; publish completion at the first day boundary at or after that deadline. Process due Tenant lifecycle transitions before capturing that boundary's Open-tenant rent snapshot; a tenant opening there earns that day's rent. No callback registration order may change this outcome.
 
 ---
 

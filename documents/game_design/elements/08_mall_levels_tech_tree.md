@@ -1,5 +1,7 @@
 # Mall Levels & Tech Tree
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. This is the single authority for thresholds, node costs, grants and eligibility. The catalogue contains deferred nodes; its total is not an MVP requirement.
+
 ## Overview
 
 Progression in Janus is driven by prestige. As the district grows in prestige, it advances through named **Mall Levels**. Each level-up grants **Tech Points**, which the player spends in a branching **Tech Tree** to unlock new construction types, circulation options, amenities, and features.
@@ -29,6 +31,8 @@ The tech tree gives the player agency over *how* their district evolves. The pac
 | **City Destination** (6,500) | +10 | 25 |
 | **Megacity Mall** (9,000) | +15 | 40 |
 
+Start with zero earned/spent points. On a committed official tier, award every newly reached milestone at or below that tier once, in ascending threshold order. Persist awarded milestone IDs with earned/spent points. Tier loss revokes neither awards nor purchased nodes; regaining a tier, replaying a notification or loading a save never grants twice. On first reaching Neighborhood directly, grant 3 + 5 = 8, not only 5. Progression owns these mutations; Prestige only publishes official facts. This minimal award path is current MVP, resolving the older architecture deferral without adding achievements.
+
 ### Plot Access Rewards
 
 The initial Plot is already owned. The district supports at most **9 Plots**: the initial Plot plus eight player-selected unlocked Plots.
@@ -52,12 +56,12 @@ Each selection permanently unlocks one eligible Plot but grants no ownership. A 
 
 | Branch | Total Node Cost |
 |--------|-----------------|
-| **Construction** | 8 points |
+| **Construction** | 12 points |
 | **Circulation** | 6 points |
-| **Amenities** | 9 points |
-| **Total MVP** | **23 points** |
+| **Amenities** | 8 points |
+| **Total listed catalogue** | **26 points** |
 
-With 40 total points available by Megacity Mall, the player can unlock the entire MVP tree and still have 17 points for post-MVP additions.
+The listed catalogue costs 26 of the 40 eventual points, leaving 14. This corrects old 23/27/28 totals without inventing nodes. The current core route (Advanced Zoning, Anchors, Stairs, Multi-Floor, Elevators) costs 8; current baseline Prestige can grant exactly those 8 through Neighborhood Center. Deferred nodes are hidden/disabled in player-facing MVP purchase lists, even where future policy is approved. No points are spent on an unavailable feature.
 
 ### Construction Branch
 
@@ -66,7 +70,7 @@ With 40 total points available by Megacity Mall, the player can unlock the entir
 | **Basic Zoning** | Free (start) | None | Retail, Food & Beverage zones |
 | **Advanced Zoning** | 1 pt | None | Entertainment, Services zone types |
 | **Anchor Tenants** | 2 pts | Advanced Zoning | Anchor zone type (large-format tenants) |
-| **Multi-Floor** | 2 pts | Stairs | 2nd and 3rd floors |
+| **Multi-Floor** | 2 pts | Stairs | F1 and F2 (G is the first building level) |
 | **Underground** | 3 pts | Multi-Floor | Underground floors U1–U2 |
 | **Vertical Expansion I** | 1 pt | Multi-Floor | Floors F3–F5; requires Neighborhood Center |
 | **Vertical Expansion II** | 1 pt | Vertical Expansion I | Floors F6–F7; requires Regional Mall |
@@ -81,7 +85,7 @@ With 40 total points available by Megacity Mall, the player can unlock the entir
 | **Bus Stop** | 1 pt | Basic Corridors | Bus-stop eligibility; requires Small Market |
 | **Stairs** | 1 pt | None | Stair placement between floors |
 | **Elevators** | 2 pts | Stairs | Elevator placement |
-| **Escalators** | 2 pts | Elevators | Escalator placement |
+| **Escalators** | 2 pts | Elevators | Deferred, post-MVP escalator placement |
 
 ### Amenities Branch
 
@@ -94,6 +98,8 @@ With 40 total points available by Megacity Mall, the player can unlock the entir
 | **Rooftop Terrace** | 3 pts | Multi-Floor + Green Spaces | Terrace zones on upper floors |
 
 ### Available from Start (No Tech Required)
+
+This legacy full-game UI catalogue means no Tech gate, not that absent sources must be implemented. Current MVP exposes only the panels/metrics in current scope; no viability, history or unsupported heatmap value is fabricated.
 
 | Feature | Description |
 |---------|-------------|
@@ -152,7 +158,7 @@ By Regional Mall, the player has 15 points and can unlock most MVP nodes.
 
 **Points available: 15 → 40**
 
-All MVP nodes are accessible. The surplus points (40 - 23 = 17) are reserved for post-MVP additions:
+All listed full-game nodes become affordable. The catalogue surplus (40 - 26 = 14) leaves room for later approved additions:
 - Transportation facilities (bus stops, metro stations)
 - Advanced staff management
 - Maintenance systems
@@ -199,4 +205,4 @@ The tech tree is not a checklist — it's a menu of possibilities. The player's 
 - Plot Section acquisition requires a selected/unlocked Plot. Plot Access selections are granted by the Mall Level table above.
 - Street Segment conversion is available from **Neighborhood Center** onward, subject to all non-progression District and Economy requirements.
 - **Bus Stop** is the sole currently approved non-pedestrian transport capability. It costs 1 Tech Point, requires Basic Corridors and Small Market, and grants eligibility only; placement still requires the separate District road/route/frontage/cap validation.
-- All other non-pedestrian transport facilities remain unavailable until a dedicated transport/progression handoff approves them; these additions expand the tech tree to 28 points while retaining 12 of the 40 total available points for later content.
+- All other non-pedestrian transport facilities remain unavailable until a dedicated transport/progression handoff approves them. The corrected catalogue total is 26, with 14 of 40 points unallocated. Bus Stop is eligibility-only and deferred from player-facing MVP spending.

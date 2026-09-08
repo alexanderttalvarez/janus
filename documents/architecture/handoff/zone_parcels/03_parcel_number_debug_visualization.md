@@ -80,7 +80,7 @@ Floor (Node3D)
 - One larger `Label3D` per parcel.
 - Text is the Handoff 02 subtype catalog display name, for example `Fashion`.
 - If no subtype is assigned, text is `Unassigned Parcel`.
-- Position is the exact geometric center of the rectangular parcel, including centers between tiles when applicable.
+- Position is the arithmetic mean of all committed parcel cell centers, including core and annex cells, transformed through `district_layout/H4` projection metrics. This 2026-09-08 approved clarification reduces to the rectangle center for old parcels. It may lie outside a concave footprint because this is a read-only debug label, not a placement/navigation anchor.
 - It has a higher local vertical offset than tile-number labels to avoid overlap.
 - Opacity is **20%** (`alpha = 0.2`) at all times.
 

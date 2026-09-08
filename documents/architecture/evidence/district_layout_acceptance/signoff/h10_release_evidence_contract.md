@@ -2,6 +2,8 @@
 
 **Status:** Approved architecture/release-evidence policy. This defines what must be measured and signed; it does **not** claim that the measurements, package proof, warning cleanup, or signoffs have occurred.
 
+**Policy clarification:** 2026-09-08 delegated documentation pass resolves sampling and test-pack workload ambiguity only. No hardware run, artifact, signer, checksum or release approval is claimed. Actual feasibility and measurements remain Gate R work.
+
 ## FACTS
 
 - H10 uses the already selected **hybrid** performance policy and **Archive Policy B — separate test pack**.
@@ -30,6 +32,8 @@ RVR-1 is the H10 **regression reference**, not a published minimum-spec promise 
 
 Use the frozen `fixture.mixed_3x3`, with its required initial ownership, all generated district/public-realm/traffic projections enabled, and 200 realized MVP pedestrian visitors. Run the release build at 1080p with VSync disabled. The benchmark must also execute 30 topology/projection rebuild cycles and 20 V2 save/load cycles without restarting the process.
 
+This workload runs in a separately built **release-mode benchmark test pack** using the candidate's identical runtime modules, renderer and export toolchain. Fixture selection exists only in that test pack. The shipping production package stays fixture-free and is independently exported/scanned; do not add a production fixture selector or mount path to satisfy benchmarking. Bind both artifact checksums to the same candidate. The rebuild cycles change valid topology and verify rebuilt equivalence, not unchanged-revision no-ops; save/load cycles exercise the complete Session H2 registry, not District-only serialization. All 200 visitors are realized/rendered by the runtime, not merely immutable records.
+
 | Metric | Absolute acceptance limit |
 | --- | ---: |
 | Steady-state median FPS | >= 60 |
@@ -49,6 +53,8 @@ The existing observation baseline is not an acceptance baseline. On RVR-1, recor
 
 1. Start from a clean reboot; record commit, export checksum, engine version, driver, OS version, renderer, resolution, and benchmark configuration checksum.
 2. For each of three independent runs, launch the release export, load the benchmark fixture, wait 30 seconds, then capture a continuous 120-second steady-state sample at one-second cadence.
+
+   Capture every frame duration during that sample; one-second summaries retain frame count, maximum frame duration and the full per-frame distribution/raw timestamps needed for percentiles and the zero-slow-frame rule. One instantaneous FPS reading per second is insufficient. Timed rebuild/load operations are measured separately from the steady-state frame window, never discarded from their operation limits.
 3. During the same process, execute the rebuild and V2 save/load cycles above; capture operation durations, node count, draw calls, memory, path size, source count, and save size after every cycle.
 4. Save raw samples and a derived report containing median, 1st percentile, maximum, and minimum values. Report the worst qualifying run for each acceptance metric.
 5. Stop normally, capture the complete console, and run the leak gate below. Do not average away a failed run; any failed run fails the candidate.
@@ -57,7 +63,7 @@ The existing observation baseline is not an acceptance baseline. On RVR-1, recor
 
 Assertion success is insufficient. Every required headless suite, the RVR-1 benchmark, and the 30/20 repeated-cycle workload must exit 0 and emit **zero** application-owned `ObjectDB`-leak, resource-leak, orphan-node, or `ERROR:`/`WARNING:` lines after the test harness begins.
 
-A warning is attributed to the creating test/system before it can be suppressed. The evidence record must include the exact command, full console log, Godot version, occurrence count, owner, and fix commit. The currently observed H8 process-exit `ObjectDB`/resource warnings therefore block H10 acceptance until fixed and rerun cleanly.
+A warning is attributed to the creating test/system before it can be suppressed. The evidence record must include the exact command, full console log, Godot version, occurrence count, owner, and fix commit. Earlier H8 process-exit warnings are historical; the proof/readiness records claim clean local reruns. Gate R still requires warning-free candidate-bound logs, not a presumption that an old warning persists or that a local claim proves release cleanup.
 
 The only exception is a documented Godot-engine defect reproducible in a minimal project with no Janus objects, linked to an upstream issue and explicitly waived for this release by Architecture, QA, and Release. A local warning is never waived merely because assertions pass.
 

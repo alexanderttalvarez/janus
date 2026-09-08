@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md) and `mvp/H3`, 2026-09-08, require minimal exactly-once milestone rewards and purchase intents. Element 08 owns costs/awards; a full visual graph is deferred.
+
 ### Context
 Tech tree drives progression via Mall Levels. Three branches (Construction, Circulation, Amenities) with dependencies, costs, and unlock effects.
 

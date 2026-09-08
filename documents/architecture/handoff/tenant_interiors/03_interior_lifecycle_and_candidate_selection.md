@@ -3,7 +3,11 @@
 **Status:** Approved — 2026-09-06  
 **Implementation order:** 3 of 5
 
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), elements 01/06/20 and ADR 33 apply. The [readiness matrix](_index.md) permits detached candidate/lifecycle/local-schema proofs, not live Service activation or session schema cutover. `TenantServiceManager` references below describe gated future integration. Adjacency uses customer-facing subtype/theme identity; spatial ratings/default content follow element 20. Any eligible indeterminate profile defers the whole draw with the existing unavailable/retry outcome, not biased selection from a partial feasible pool.
+
 ## Purpose
+
+**Follow-on review, 2026-09-08:** The revision above records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves H4/H5. H3 remains detached-first after foundation and H1/H2; Open-to-Service activation and whole-session persistence require H4 implementation passes and H5 candidate cutover passes, then [Product acceptance](../mvp/04_product_delivery_and_acceptance.md). Implementation/cutover remain NOT VERIFIED; Product acceptance and separate external Gate R remain PENDING. Approval alone does not integrate the live path.
 
 Amend Tenant H1–H3 so candidates come from physically feasible operational profiles using deterministic 6/3/1 weighting. Keep commercial evaluation separate, bind final layout provenance to tenants, and preserve the existing construction-to-Open/rent timeline and application cadence.
 

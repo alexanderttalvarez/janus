@@ -2,6 +2,8 @@
 
 Decision 32 separates implementation-owned engineering completion from external release acceptance.
 
+**2026-09-08 documentation reconciliation:** Engineering complete; H10 release acceptance pending external Gate R. Statements below remain recorded claims, not this pass's implementation audit. Gate E's frozen-candidate qualification is retained; no commit binding or Gate R artifact is invented. New ADR-33 contract acceptance must be separately demonstrated.
+
 ## Gate E — Engineering completion
 
 **Status: Complete, pending one frozen candidate revision.** Recorded evidence reports:

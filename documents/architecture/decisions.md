@@ -2,7 +2,19 @@
 
 This directory contains individual architectural decision records for the Janus project.
 
-The cross-system district and arrival blueprint is [design_handoff.md](design_handoff.md).
+Start at [Architecture](./_index.md). The [old district blueprint](design_handoff.md) is historical context, not a competing implementation authority. Read [ADR 33](decisions/33_documentation_consistency_and_minimum_contracts.md) before older accepted bodies/examples; it records the 2026-09-08 consistency amendments.
+
+## Current Applicability
+
+**Design A1/A2 decisions and A3 reset acknowledgement: PENDING.** Architecture approval does not approve open gameplay interpretations; the [Product Design decision register](evidence/product_mvp/_index.md#design-decision-register) records the unresolved boundaries.
+
+- ADRs 01-06, 10, 12-23 and 27-28 retain only the boundaries not explicitly amended by ADR 33 and subsequent approved program contracts.
+- ADR 07 is a historical grid representation, superseded as district authority by 27/29. ADRs 08/09 are superseded target architecture; their stable-ID/parser history is not permission to restore legacy ownership or formats.
+- ADR 11's full-recalculation behavior is partly superseded by 24 and preservation-first `zone_parcels/H6`; approved `tenant_interiors/H2` adds core/annex feasibility within its staged boundary.
+- ADRs 24-26 remain zone interaction decisions. ADRs 29-31 retain production content, manual-door and owner-specific endpoint authority.
+- ADR 32 governs district Gate E/R only. Engineering complete; H10 release acceptance pending external Gate R. No whole-product completion follows.
+- ADR 33 retains the consistency-pass amendments for time units, walls, camera, minimal Godot patterns and coherent transactions/restore. Its earlier draft dependency disposition is historical after ADR 34.
+- [ADR 34](decisions/34_product_mvp_runtime_and_cutover.md) records the separate 2026-09-08 follow-on review approving `tenant_interiors/H4-H5` architecture. Foundation -> detached H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
 
 ## Decisions
 
@@ -40,7 +52,9 @@ The cross-system district and arrival blueprint is [design_handoff.md](design_ha
 | 30 | Production Manual-Door Authority | [30_manual_door_authority.md](decisions/30_manual_door_authority.md) |
 | 31 | Door Endpoint Semantics Views | [31_door_endpoint_semantics_views.md](decisions/31_door_endpoint_semantics_views.md) |
 | 32 | H10 Engineering Completion and External Release Acceptance | [32_h10_engineering_completion_and_release_acceptance.md](decisions/32_h10_engineering_completion_and_release_acceptance.md) |
+| 33 | Documentation Consistency and Minimum Contracts | [33_documentation_consistency_and_minimum_contracts.md](decisions/33_documentation_consistency_and_minimum_contracts.md) |
+| 34 | Product MVP Runtime and Cutover | [34_product_mvp_runtime_and_cutover.md](decisions/34_product_mvp_runtime_and_cutover.md) |
 
 ## Pending Decisions
 - Future player-facing production-layout selection policy is intentionally deferred; Decision 29 fixes only the explicit initial layout bootstrap.
-- (More to come)
+- Design A1/A2 decisions and A3 reset acknowledgement: PENDING. Unaffected engineering may proceed in the approved staged sequence, but A1 exterior-only expected wait and A2 shared cafe/food-court cohort counter semantics must be confirmed before locking affected implementation or acceptance. ADR 34 architecture approval is not that confirmation; predecessor implementation and candidate-bound acceptance evidence remain required.

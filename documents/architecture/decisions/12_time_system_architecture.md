@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted; amended 2026-09-03
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, replaces the inconsistent visitor-time conversion in the original body. Element 01 owns scaled elapsed seconds/calendar labels; `session/H1` owns chronological and coincident boundary delivery.
+
 ### Context
 Janus has independent simulation and visual clocks that scale together with speed controls. The simulation calendar drives gameplay periods; the visual clock drives atmosphere. We needed to decide on timer implementation, speed changes, and authoritative calendar boundaries.
 

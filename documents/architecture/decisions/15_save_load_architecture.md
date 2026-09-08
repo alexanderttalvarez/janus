@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted; district persistence amended by Decisions 27 and 28
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, and `district_layout/H9` plus `session/H2` govern supported schemas, reserved synergy payload and coherent capture/restore. The schema-absent example below is historical and unsupported, not a valid V2 sample.
+
 ### Amendment (2026-08-30)
 
 [Decision 27](27_district_layout_templates.md) requires saves to include district layout ID, definition version or fingerprint, stable runtime IDs, and mutable district/plot/section/floor/street/source state. Generated geometry, intersections, road graphs, and resolved topology are derived and must not be saved. Loading requires validation before commit and safe rejection of incompatible layouts without partial runtime mutation. [Decision 28](28_visitor_arrival_architecture.md) leaves the pending-arrival/cohort persistence policy open; it must be resolved before pending arrivals ship. These requirements amend the illustrative `grid` payload below without changing JSON, slot, or SaveManager orchestration decisions.

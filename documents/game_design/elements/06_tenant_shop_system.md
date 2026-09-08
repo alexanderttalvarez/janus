@@ -1,5 +1,7 @@
 # Tenant / Shop System
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. Application, lock, construction, Open and daily rent are current; viability, revenue, financial closure, upgrades and satisfaction below are full-game deferred design. Element 20 owns geometry and spatial selection.
+
 ## Overview
 
 Tenants are the businesses that populate the player's zones. The player does not manage individual tenants — they create attractive conditions and tenants respond automatically. The system is built on transparency: tenants apply, operate, succeed, or fail based on visible, calculable factors.
@@ -48,11 +50,11 @@ Tenants apply automatically to vacant zones. The player has no direct control ov
 
 Each evaluation generates a seeded-random tenant candidate matching the zone type. Its tier is selected by immutable candidate-tier policy but can never exceed the currently supported district Prestige tier. The Tenant authority persists its session seed and a stable per-parcel evaluation ordinal, so save/load and input ordering cannot change an already scheduled result. The candidate has a **Selectivity** attribute (-10 to +20) that modifies their application threshold.
 
-Candidate subtype selection must respect the existing parcel adjacency graph-color constraint: edge-adjacent parcels cannot receive the same subtype. Randomness selects only among legal eligible subtype candidates; it never bypasses size/type eligibility or assigns a conflicting subtype.
+Candidate selection preserves the parcel adjacency graph-color constraint on **customer-facing tenant subtype/theme ID**, not operational interior-profile ID. Thus different restaurant themes can be adjacent while sharing one operational program. Randomness never bypasses zone type, tier, geometry or this legal-color constraint.
 
 ### MVP Candidate Policy
 
-MVP candidate content is an immutable, versioned catalog. A candidate profile is selected uniformly from eligible entries matching the zone type, legal subtype, and a tier no higher than the supported Prestige tier. Selectivity is selected uniformly from the inclusive integer range -10 to +20. The initial MVP catalog contains Tier 1 profiles for the existing five legal subtype examples in each zone type; later content may add authored brands, tier weights, and subtype-specific size ranges through a policy revision.
+Candidate content is immutable and versioned. The Corridor Service Integration Gate uses the historical uniform legal Tier-1 catalog. Approved `tenant_interiors/H3` replaces selection with element 20's feasible-profile pool and 6/3/1 spatial tickets; it retains uniformly drawn integer Selectivity from -10 through +20 and the supported-tier cap. Catalogs may share operational programs across distinct legal theme IDs. No new runtime service or save cutover follows merely from this selection amendment.
 
 ### Application Score Formula
 
@@ -67,7 +69,7 @@ Score = Prestige Match + Rent Attractiveness + Location Score + Synergy Bonus + 
 | **Location Score** | 0 | 50 | Floor level and circulation quality |
 | **Synergy Bonus** | -10 | 20 | Adjacency with complementary/clashing zones |
 | **Competition Penalty** | -20 | 0 | Similar zone types nearby |
-| **Total** | **-100** | **200** | |
+| **Total, supported candidate without hard decline** | **70** | **200** | Hard-decline branches are not numeric acceptance scores. |
 
 #### Prestige Match
 
@@ -83,10 +85,12 @@ Score = Prestige Match + Rent Attractiveness + Location Score + Synergy Bonus + 
 | Rent vs Recommended | Score |
 |---------------------|-------|
 | Rent ≤ Recommended | +30 |
-| +1% to +10% above | +20 |
-| +11% to +20% above | +10 |
-| +21% to +30% above | 0 |
-| >+30% above | -20 (won't apply) |
+| Greater than recommended, up to and including 10% above | +20 |
+| Greater than 10%, up to and including 20% above | +10 |
+| Greater than 20%, up to and including 30% above | 0 |
+| Greater than 30% above | Hard decline (no scored acceptance) |
+
+For integer centi-Kred rate `r` and recommendation `q > 0`, test in order: `r <= q`, `10*r <= 11*q`, `5*r <= 6*q`, `10*r <= 13*q`, otherwise decline. This covers fractional percentage premiums without rounding gaps. For `q = 0`, `r = 0` receives +30 and any positive `r` hard-declines. Use checked integer arithmetic. Below-supported-tier Prestige branches are defensive validation only: normal candidate generation never selects those candidates.
 
 #### Location Score
 
@@ -97,16 +101,16 @@ Location Score = max(0, 50 - (4 - elevator_bonus - stairs_bonus) × floor_distan
 Where:
 - `elevator_bonus = 1` if elevator present on floor, `0` otherwise
 - `stairs_bonus = 1` if stairs present on floor, `0` otherwise
-- `floor_distance = abs(floor_level - 1)` (Ground = 0 distance)
+- `floor_distance = abs(signed_elevation)` (`G = 0`, `F1 = +1`, `U1 = -1`)
 
 | Floor | Circulation | Score |
 |-------|-------------|-------|
-| F1 (Ground) | Any | 50 |
-| F2 | Nothing | 46 |
-| F2 | Both | 48 |
-| F3 | Nothing | 42 |
-| F3 | Both | 44 |
-| F5 | Nothing | 34 |
+| G | Any | 50 |
+| F1 or U1 | Nothing | 46 |
+| F1 or U1 | Both | 48 |
+| F2 or U2 | Nothing | 42 |
+| F2 or U2 | Both | 46 |
+| F4 or U4 | Nothing | 34 |
 
 #### Synergy Bonus
 
@@ -298,7 +302,9 @@ The player does not manage tenants directly. Feedback comes through:
 
 ## Tenant interiors and visitor interactions
 
-The agreed gameplay design is defined in [Tenant Interiors and Visitor Interactions](20_tenant_interiors_visitor_interactions.md). It introduces subtype-specific parcel feasibility, procedural fixture programs, capacity, queues, and abstract service without yet introducing revenue, viability, satisfaction, or tenant-derived Prestige. Architecture and implementation remain deferred pending a separate approved handoff. No current tenant lifecycle feature may assume a fixed rectangular interior or reinterpret existing MVP proxy outcomes as economic results.
+The agreed gameplay design is defined in [Tenant Interiors and Visitor Interactions](20_tenant_interiors_visitor_interactions.md). `tenant_interiors/H1-H3` approve staged content, geometry and candidate/lifecycle work; runtime H4 and cutover H5 remain drafts. No current tenant lifecycle feature may assume a fixed rectangular interior or reinterpret proxy outcomes as economic results. Follow the [program's readiness boundary](../../architecture/handoff/tenant_interiors/_index.md).
+
+**Follow-on review, 2026-09-08:** The preceding draft disposition records the earlier consistency pass. [ADR 34](../../architecture/decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves H4/H5, without changing gameplay. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING. No live Service/save activation follows from document approval alone.
 
 ## Integration with Other Systems
 

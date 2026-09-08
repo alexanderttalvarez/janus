@@ -2,6 +2,8 @@
 **Date:** 2026-08-26
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, explicitly incorporates later Tenant coordinated-retirement ownership while retaining this pure geometry/preservation policy. The old statement excluding Tenant lifecycle from every zone transaction is superseded only for participating bound-tenant cancellation/retirement.
+
 ### Context
 The prior edit contract re-split an entire zone after every tile mutation, then spatially matched parcels. That is computationally acceptable, but it changes established parcel geometry, subtype assignments, and doors when players merely add nearby space or merge compatible zones. This conflicts with the intended stable-business experience.
 
@@ -20,7 +22,7 @@ A localized pure planning pass is slightly more complex than a global re-split b
 - `ZoneManager` must resolve a prospective `ZonePaintIntent` into one mutation plan shared by preview and commit.
 - The parcel solver needs an immutable locked-parcel input/boundary model for additive and affected-removal calculations.
 - Handoff 02 assignment becomes fixed-constraint assignment for locked neighboring parcels rather than a complete reassignment.
-- Handoff 01's full-recalculation policy and this decision's prior full-recalculation choice are superseded only for additive paint, merges, and partial removal under Handoff 06. The original pure splitter remains the baseline for new zones and mutable-space solving.
+- Handoff 01's full-recalculation policy and **ADR 11**'s prior full-recalculation choice are superseded only for additive paint, merges, and partial removal under Handoff 06. The original pure splitter remains the baseline for new zones and mutable-space solving. (Reference attribution corrected 2026-09-08; no historical behavior change.)
 - Future tenant lifecycle consumes retirement outcomes but is not part of the zone-edit transaction.
 
 ### References

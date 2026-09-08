@@ -1,5 +1,13 @@
 # Wall System
 
+**Revision:** Approved 2026-09-08 consistency pass. [Current MVP](../current_mvp.md) governs scope. This element owns visible dimensions; ADR 33 amends ADR 04 to match.
+
+## Dimension Authority
+
+All dimensions are multiples of the horizontal tile unit, converted once by the grid-to-world scale. Full height is 3.0 tile units; structural thickness is 0.10, thin parcel thickness is 0.05. A clipped wall retains exactly 10% height (0.30 tile units) plus its non-gameplay cap, never 5%. Cutaway clips front structural walls and all thin parcel walls; Partial clips both profiles on all sides; Full clips neither. Thin parcel walls clip symmetrically so camera orientation never hides the interior plan.
+
+Walls are mandatory in MVP; per-zone No Walls is deferred. Door count is `ceil(eligible parcel tile positions / 10)`, not one door per business. A profile may designate just one of those physical doors as its operational service entrance. Preserve legal selected doors before filling new slots. Explicit retirement removes a vacant retired parcel's owned automatic doors atomically; surviving parcels retain door protection, and manual-door validity still applies. Topology-backed active public Pedestrian Bands count as real access; implicit/unzoned or virtual corner access never does. ADRs 30/31 and `zone_parcels/H5` define authority and endpoint legality.
+
 ## Overview
 
 Walls define the architectural boundaries between spaces in Janus. They operate at three scales: business, zone, and floor. Walls are primarily aesthetic (Pillar 1: Physical Representation) but have functional implications for visitor flow and zone identity. They are built automatically based on tile placement and player settings.
@@ -18,18 +26,18 @@ Walls define the architectural boundaries between spaces in Janus. They operate 
 ### Corners (Corner Cubes)
 
 - Walls are **centered on the boundary line** — half the thickness on each side, **shared between the two adjacent tiles** (a building perimeter wall overhangs the floor edge by half a thickness).
-- **Every wall junction gets a corner cube** (`0.1 × 3.0 × 0.1`, full wall height), centered on the junction lines (also shared between its four adjacent tiles):
+- **L-corners and true crossings get a profile-sized corner cube**, height 3.0, thickness equal to the thickest participating wall, centered on the junction lines:
   - **Convex corners** (both wall runs end at the same point): the cube fills the corner square where the two bodies would overlap; both runs are trimmed flush against its faces.
   - **Concave (inner) corners** (both runs end at a notch): the cube fills the open notch between the end caps.
-  - **T-junctions** (one run ends at another run's line while the other runs through — e.g. a zone wall meeting the building perimeter): the short run is trimmed flush against the cube and the long run is **split** so both sides butt the cube cleanly.
+  - **T-junctions:** no redundant cube; trim the terminating run against the continuous run. A thin run meeting a structural boundary terminates there and never creates a full-height false pillar.
 - Consequence: wall boxes **never overlap** — no coplanar faces, no z-fighting, and all walls render at the full `3.0` height. The wall outline is always continuous.
 - Cubes are **axis-aligned** (their faces match the wall lines) and use a per-corner material whose baked "outward" direction points away from the room's interior, along the corner diagonal.
-- In Cutaway mode the shader opens only the corner facing the camera (front-face threshold `0.5` — side corners sit perpendicular to the camera and stay solid). The other **three corner cubes are always visible**, so the building outline always reaches the exact edge of the floor.
+- In Cutaway, structural corner visibility follows participating structural wall directions; thin-only corners follow symmetric parcel clipping. A general floor/zone can have any number of corners; there is no invariant of exactly three solid corners. Partial clips all corners, Full clips none, and every mode retains a continuous base outline.
 
 ### Zone Perimeter Walls
 
 - A wall surrounds the zone boundary.
-- If the zone is set to **"No Walls"** (open-plan mode), perimeter walls are hidden. Doors remain as visual markers at transit connections.
+- Per-zone "No Walls" is deferred; current zones retain their perimeter and parcel walls.
 - **Gaps** are created automatically at:
   - External Transit tile connecting to internal Transit tile (open passage)
   - Building corridor bordering the zone (door opening)
@@ -46,7 +54,7 @@ Walls define the architectural boundaries between spaces in Janus. They operate 
 |-----------------|----------------|
 | **Zone ↔ Corridor** | Automatic |
 | **Internal Transit ↔ External Transit** | Automatic |
-| **Business ↔ Transit/Corridor** | Automatic (1 door per business) |
+| **Business ↔ Transit/Corridor** | Automatic count from eligible frontage; one primary operational entrance in interior MVP |
 | **Floor ↔ Terrace** | Manual (player places door tile) |
 | **Terrace ↔ Non-built tile** | No door (open edge) |
 
@@ -112,7 +120,7 @@ Wall rendering follows the isometric camera system used in games like *The Sims*
 ## Cost & Maintenance
 
 - Walls are **free** to build. They are part of the floor construction and require no additional Kreds.
-- Walls add **no maintenance cost**. Maintenance is calculated per tile, not per wall segment.
+- Walls add **no maintenance cost**. No recurring per-tile maintenance charge exists either; later condition/repair design is separate.
 - This keeps walls as a pure aesthetic/structural choice, not an economic one.
 
 ---
@@ -123,7 +131,7 @@ Wall rendering follows the isometric camera system used in games like *The Sims*
 |--------|---------------|
 | **Add zone tiles** | Walls extend automatically to the new boundary |
 | **Remove zone tiles** | Walls retract automatically |
-| **Change Walls ↔ No Walls** | Instant visual change. No cost. No eviction. |
+| **Change Walls ↔ No Walls** | Deferred; no current per-zone toggle |
 | **Delete zone** | All zone walls removed |
 | **Add/remove corridor tiles** | Shared walls update automatically |
 
@@ -134,7 +142,7 @@ Wall rendering follows the isometric camera system used in games like *The Sims*
 | System | Connection |
 |--------|------------|
 | **Building & Structure** | Walls are generated based on tile placement and floor boundaries |
-| **Zone Design** | Zone perimeter walls, "No Walls" mode, door placement at transit connections |
+| **Zone Design** | Mandatory perimeter/parcel walls and legal door gaps; per-zone No Walls deferred |
 | **Transit & Circulation** | Wall gaps at corridor doors and transit connections |
 | **Terrace System** | No perimeter walls on terrace edges facing non-built space |
 | **UI / Visualization** | Wall rendering modes (Cutaway, Partial, Full) controlled by camera system |

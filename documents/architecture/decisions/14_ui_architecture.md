@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, amends layering and session dependency injection. The original globally accessed Economy example and "HUD always on top" statement below are superseded.
+
 ### Context
 Janus has a layered UI system: HUD bar, bottom toolbar, informational panels, notifications, and thought bubbles. We needed to decide on scene structure, panel lifecycle, and data flow.
 

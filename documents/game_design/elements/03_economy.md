@@ -1,5 +1,7 @@
 # Economy
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. This element owns monetary values; future transport/loan sections are not operational MVP requirements.
+
 ## Overview
 
 The economy drives the tension between creative ambition and financial reality. The player needs Kreds to build, but Kreds come from the district performing well. It's a self-reinforcing (or self-destructing) loop.
@@ -51,6 +53,8 @@ Recommended Rent = min(Rent Ceiling, Unclamped Recommendation)
 Unclamped Recommendation = 18 × 1.05 × 1.00 × 1.15 = 21.74 Kreds/tile/day
 Recommended Rent = min(18, 21.74) = 18 Kreds/tile/day
 ```
+
+The implementation value is integer centi-Kreds: multiply the captured ceiling by all basis-point factors, divide by `10000^3`, **floor once**, then clamp to the centi-Kred ceiling. Do not round intermediate factors or display text. Thus 4.025 Kreds becomes 402 centi-Kreds. Element 06 uses this same integer recommendation for every premium comparison; daily integer-Kred settlement is a separate final rounding.
 
 The player sees this as the **recommended rate**. A newly created zone initializes its committed daily rate to the currently calculated recommended rate. The player can set any non-negative rate; rate changes take effect for the next application evaluation and next daily settlement only, never retroactively. Setting above recommended increases tenant dissatisfaction risk. Setting below increases tenant happiness but reduces income.
 
@@ -108,7 +112,7 @@ One-time cost for placing zones, amenities, and circulation elements. Prices var
 
 Economy is the sole balance authority. Purchases use the approved quote → reserve → guaranteed capture → cancel transaction contract. Prices and progression eligibility are immutable policy inputs; they are not invented by Economy.
 
-A reservation is short-lived transaction state only: it is not saved and creates no committed balance change. Cancelling before capture is free. Completed Street Segment conversion is irreversible in MVP and completed demolition has no refund. Construction-cancellation refunds remain unapproved policy.
+A reservation is short-lived transaction state only: it is not saved and creates no committed balance change. Cancelling before capture is free. Completed Street conversion, acquisition, placement and eligible demolition create no refund. There is no cancellable paid construction job in current scope: post-commit undo/refund requests reject without change; previews may always be cancelled for free. Unpaid Tenant fit-out cancellation is the state-only unbind in element 01, with no charge/refund. This minimum policy resolves the old construction-refund question without a new job system.
 
 When debug cost bypass is active, every player-paid action is free. It still performs normal gameplay validation and commits normally, but its economic quote and captured debit are zero.
 
@@ -116,13 +120,15 @@ When debug cost bypass is active, every player-paid action is free. It still per
 
 Flat rate per employee. **500 Kreds/week/employee** (MVP). Post-MVP: wages may scale with prestige.
 
+All employees employed at the weekly boundary are due the full wage; no hire/fire fee or proration. Mandatory payroll may drive balance negative; purchases may not. The whole week's validated employee snapshot settles atomically once by week identity. Missing/stale/invalid payroll input settles nothing, exposes a diagnostic, and retains that same due week for retry before later payroll weeks. Insufficient balance is not an invalid payroll input. Economy owns the below-zero condition and clears it on committed recovery to non-negative balance; UI dismissal never resolves it.
+
 ### Maintenance
 
 Maintenance is handled through the Maintenance System **post-MVP**. There are no recurring maintenance charges, repairs, repair costs, or maintenance staff in MVP.
 
-### Transportation Fees
+### Transportation Fees (Historical Tuning Proposals, Deferred)
 
-Transportation facilities are physical structures the player builds. They charge a monthly fee to the transportation authority and boost visitor attraction.
+Transportation facilities remain future physical structures. The table below is a non-authorizing tuning proposal, not approved pricing: element 19 and current scope defer facilities, fees and attraction. Bus Stop eligibility alone authorizes none of these transactions.
 
 | Transport Type | Construction Cost | Monthly Fee | Visitor Attraction Bonus |
 |----------------|-------------------|-------------|-------------------------|

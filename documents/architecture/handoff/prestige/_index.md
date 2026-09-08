@@ -2,6 +2,8 @@
 
 This program defines Prestige as a committed cross-system authority. It does not reopen Tenant, Progression, Economy, Visitor, or Save ownership.
 
+**Current revision:** 2026-09-08, delegated documentation pass. Both handoffs remain approved under element 02, ADR 33 and [MVP H3](../mvp/03_foundation_integration_clarifications.md). The calculation producer assembles one coherent developed-tile union with the full District/Zone/Tenant revision tuple. Fixed Quality 20 remains; Progression, not Prestige, now awards the explicit element-08 milestone points. No SynergyManager/six-factor prerequisite or daily trend is current.
+
 ## Handoffs
 
 | Order | Handoff | Status | Scope |

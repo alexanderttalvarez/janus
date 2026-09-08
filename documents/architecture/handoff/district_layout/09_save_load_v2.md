@@ -6,6 +6,8 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. ADR 33 and Session H2 require coherent whole-session capture/candidate restore; `authorities.synergy` is exactly `{"schema_version":1,"mode":"derived_only"}` validated by Session, not a new stateful manager. MVP H3's due-payroll input is Staff-owned durable data. Root V2 keys stay unchanged; unsupported local payloads reject before staging, with no implied compatibility adapter. Current design scope is [Current MVP](../../../game_design/current_mvp.md).
+
 Define Save V2 and detached, validated, atomic session replacement while preserving JSON monolithic slots, five slots, and `SaveManager` orchestration.
 
 ## Dependencies

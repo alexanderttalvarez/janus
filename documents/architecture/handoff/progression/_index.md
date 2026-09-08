@@ -1,5 +1,7 @@
 # Progression Handoff Index
 
+**Current revision:** 2026-09-08, delegated documentation pass. H1-H3 remain approved with element-08 numerical corrections (26-point full catalogue), Progression-only selected IDs, and [MVP H3](../mvp/03_foundation_integration_clarifications.md) exactly-once normal-play Tech awards/intents. [Current MVP](../../../game_design/current_mvp.md) gates available player purchases; Bus Stop is policy-only and has no operational facility. No achievement system or full graph UI is required.
+
 ## Ordered handoffs
 
 | Order | Handoff | Architecture status | Scope / gate |

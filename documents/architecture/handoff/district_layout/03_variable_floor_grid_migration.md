@@ -6,6 +6,8 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. ADR 33 supplies the one non-reentrant session gate, proof-only Fixture C ownership exception and superseding camera/traffic semantics. Element 08 and Progression H2/H3 replace all old U1-U3/higher-unavailable acceptance wording with exact current gates. Progression alone writes selected Plot IDs; District only consumes them. Read [Current MVP](../../../game_design/current_mvp.md) before implementing future expansion UI.
+
 Own the session District Runtime lifecycle and migrate the fixed grid to sparse, explicit-address, transactional district state.
 
 ## Dependencies
@@ -61,9 +63,9 @@ Prices/formulas, public-realm conversion (H5), generated Nodes (H4), or zone wri
 
 - A Plot becomes Active only when any section is owned. A Progression-selected/unlocked Plot is camera-accessible but is not Active and is not stored as mutable District state.
 - The first acquired section of an inactive Plot requires a committed Progression Plot Access selection for that stable Plot ID. The selected Plot must already have passed Progression's orthogonal adjacency rule; District Runtime still validates resolved topology and the designated entry-eligible section. Diagonal/corner contact is insufficient.
-- The initial Plot is the sole initially owned Plot. Progression permits at most eight additional selected Plots, for a maximum of nine total Plots.
+- The production initial Plot is the sole initially owned Plot. Proof Fixture C's explicit entry-section set is the ADR-33 test-only exception. Production Progression permits at most eight additional selected Plots, for a maximum of nine total Plots.
 - Later section acquisition follows resolved section adjacency and captured Economy/Progression policy results.
-- Vertical space is acquired one tile at a time in sequential elevation order. No full-volume allocation is permitted; normal Progression permits only F1/F2 through Multi-Floor and U1–U3 through Underground, while F3–F9/U4–U5 reject as unavailable. A valid non-release god-mode Progression snapshot instead treats the full physical range F1–F9/U1–U5 as eligible; District physical limits still apply.
+- Vertical space is acquired one tile at a time in sequential elevation order. No full-volume allocation is permitted. Normal Progression uses element 08/H2: Multi-Floor F1/F2, Underground U1/U2, explicit extension nodes for F3-F9/U3-U5; missing unlocks reject. Non-release god mode may make the full physical range eligible, but cannot bypass rights/caps. This does not expand current playable scope.
 - Construction requires ownership/right, availability, buildability, acquired vertical space, no incompatible fixed occupancy, and current caps.
 - Each constructed upper or underground floor footprint may extend by at most two orthogonal tile steps beyond the constructed footprint at the adjacent comparison elevation, and every cell of the extended footprint must remain inside owned/acquired vertical rights. For an upper elevation `n`, the immediately lower supporting elevation is `n-1`. Underground acquisition is sequential from `0` to `-1` to `-2` and onward; for elevation `-n`, the adjacent geometric comparison elevation is one step toward ground. This comparison defines only the two-tile geometric rule and does not invent underground structural-engineering semantics. Overhang grants no new rights.
 
@@ -116,7 +118,7 @@ District Runtime/state/transactions, legacy grid/floor boundaries, zone coordina
 
 ## Required tests
 
-Lifecycle/isolation; explicit-address migration; Progression-selected Plot eligibility, selection cap, orthogonal adjacency, unlocked-versus-Active separation, and selected-Plot persistence ownership; section adjacency; vertical sequence and F1/F2/U1–U3 eligibility with explicit higher-elevation rejection; caps; upper `n` versus `n-1` and underground `-n` versus the adjacent elevation toward ground two-orthogonal-tile footprint limits, including owned/acquired-right rejection; detached candidates; stale revisions; Economy H1/H2 quote/reserve/guaranteed-capture/cancel and policy-revision staleness; `ZoneManager` prepare/swap/undo; notification/save/input barrier exclusion; append-capability preflight; non-throwing journal append; exact commit-point semantics; synchronous ordered envelope fan-out while the gate remains held; subscriber-fault isolation and diagnostics; no intervening transaction/save; adapter isolation. Inject failure at every pre-append boundary and subscriber faults during flush; prove either unchanged pre-commit authority with no envelope or one complete ordered committed envelope with no rollback or reordering.
+Lifecycle/isolation; explicit addresses; Progression-only selected Plot IDs, cap, adjacency and unlocked-versus-Active separation; section adjacency; exact element-08/Progression H2 elevation gates including rejection without the required extension; physical caps and two-step footprint/rights limits; detached candidates; stale revisions; Economy quote/reserve/capture/cancel; Zone prepare/swap/undo; ADR-33 shared-gate exclusion; append preflight and non-failing commit point; protected ordered fan-out with isolated subscriber faults. Inject every pre-append fault and attempted callback reentrancy; prove unchanged authority with no envelope or one complete envelope with no rollback/reordering. Temporary-adapter checks are historical H10 evidence, not new production dependencies.
 
 ## Performance/scalability checks
 

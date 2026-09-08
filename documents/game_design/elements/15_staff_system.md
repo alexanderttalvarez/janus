@@ -1,5 +1,7 @@
 # Staff System
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. Only room employment, coverage and payroll are current; agents, tasks, dirt/security scores and their effects below are deferred full-game rules. No missing task producer blocks employment or wages.
+
 ## Overview
 
 Staff are the employees who maintain and secure the district. They are a recurring expense but directly impact visitor satisfaction, tenant viability, and prestige. Staff are managed through **Operations Rooms** — physical facilities placed on floors that serve as their base of operations.
@@ -91,12 +93,12 @@ Garbage Spawn Rate = floor(floor_visitor_count / 50) per visitor tick
 - **Dirtiness Formula:** `Dirtiness = (Visitor Uses × 2) - (Cleaner Visits × 50)`
 - Capped at 0–100.
 - At 50+: visible grime appears. At 80+: visitors actively avoid the area.
-- Cleaners are dispatched to clean bathrooms when dirtiness exceeds threshold.
+- Future cleaners dispatch when dirtiness is at least 50; a bathroom counts as dirty at the same threshold.
 
 ### Cleanliness Score
 
 ```
-Cleanliness = max(0, 100 - (Uncollected Garbage Items × 3) - (Dirty Bathrooms × Penalty))
+Cleanliness = max(0, 100 - (Uncollected Garbage Items × 3) - (Dirty Bathrooms × 10))
 ```
 
 | Cleanliness Range | Effect on Visitor Experience |
@@ -113,10 +115,11 @@ Cleanliness = max(0, 100 - (Uncollected Garbage Items × 3) - (Dirty Bathrooms �
 ### Insecurity Formula
 
 ```
-Insecurity Score = max(0, (Corridor Tiles × 1 + Zone Tiles × 3) / (Security Staff × 4) - Decorative Tiles × 0.5)
+Insecurity Score = max(0, (Corridor Tiles × 1 + Zone Tiles × 3) / (max(Security Staff, 1) × 4) - Decorative Tiles × 0.5)
 ```
 
 **Logic:**
+- Zero guards use denominator 4, not division by zero; this finite conservative baseline and the bathroom constant are documentation-pass defaults for later tuning, not current simulation requirements.
 - **Corridor tiles (×1):** Movement areas need monitoring but are low-risk.
 - **Zone tiles (×3):** High-activity areas need more security coverage.
 - **Security staff (÷4):** Each guard effectively covers 4× the area weight.

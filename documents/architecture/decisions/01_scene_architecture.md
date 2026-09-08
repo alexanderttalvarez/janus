@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** Amended by [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08. Preserve scene composition; universal EventBus wiring below is historical guidance, not a mandate.
+
 ### Context
 The game has many interconnected systems (economy, visitors, tenants, UI, grid). We needed to decide between few large scenes vs. many smaller scenes.
 

@@ -1,8 +1,10 @@
 # District Layout and Visitor Arrival Architecture Blueprint
 
-**Status:** Architecture approved
+**Status:** Historical approved blueprint, superseded as the central implementation entry point on 2026-09-08.
 **Date:** 2026-08-30
 **Authorities:** [Decision 27](decisions/27_district_layout_templates.md), [Decision 28](decisions/28_visitor_arrival_architecture.md)
+
+**Read instead:** [Architecture index](_index.md), [ADR registry](decisions.md), [ADR 33](decisions/33_documentation_consistency_and_minimum_contracts.md), and the [program handoffs](handoff/_index.md). This body is retained without erasing its 2026-08-30/31 decision history. Its current-runtime observations, provisional formats, unresolved APIs, ownership/connectivity descriptions, old crossing phases and pending-preview wording are not current instructions or evidence. Later accepted decisions and dated handoff revisions explicitly supersede them. No implementation audit was performed during this cleanup.
 
 ## Purpose
 

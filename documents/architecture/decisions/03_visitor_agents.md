@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted; spawning architecture amended by Decision 28
 
+**Current applicability:** Clock units and centralized state ownership are clarified by [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08. Read element 01 for cadence; no per-agent generic FSM is required.
+
 ### Amendment (2026-08-30)
 
 [Decision 28](28_visitor_arrival_architecture.md) supersedes the plot-owned four-corner spawn model in the implementation details below. Visitor demand is separate from arrival allocation and realization; pedestrian MVP sources are derived from resolved district topology and identified by stable source IDs. The Node3D/data representation, centralized behavior tick, leaving lifecycle, and visibility/culling rules in this decision remain accepted after a visitor is realized.

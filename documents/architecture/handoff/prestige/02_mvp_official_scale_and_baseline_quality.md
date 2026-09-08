@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-05 (delegated architecture authority)
 **Prepared:** 2026-09-05
-**Implementation order:** 2 of TBD
+**Implementation order:** 2 of 2
+
+**Revision:** 2026-09-08 delegated consistency pass. Element 02 is the single calculation authority. ADR 33/[MVP H3](../mvp/03_foundation_integration_clarifications.md) name the coherent developed-tile read assembler and complete source revision tuple. The calculation producer reads District/Zone/Tenant state without adding an owner or saved cache; Progression alone applies element-08 Tech awards.
 
 ## Purpose
 
@@ -71,7 +73,7 @@ The candidate is valid only when its captured source revision and H1 policy revi
 
 ```text
 monthly Time authority boundary
-  -> capture District/zone/parcel developed-tile snapshot + source_revision
+  -> calculation producer captures coherent District/Zone/Tenant developed-tile union + full revision tuple
   -> calculate Scale x fixed Quality 20
   -> resolve tier through H1 policy
   -> submit detached candidate to PrestigeManager

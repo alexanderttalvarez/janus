@@ -2,7 +2,9 @@
 
 ## Status
 
-Agreed gameplay design. This document does not approve implementation or an architecture handoff.
+Agreed gameplay design; numerical/terminology completion approved 2026-09-08 under delegated documentation authority. [Current MVP](../current_mvp.md) is the sole scope definition. Architecture `tenant_interiors/H1-H3` is approved for staged work; H4/H5 remain drafts, not approved by this design revision.
+
+**Follow-on review, 2026-09-08:** The preceding status records the earlier consistency pass. [ADR 34](../../architecture/decisions/34_product_mvp_runtime_and_cutover.md) now separately approves H4/H5 architecture; it changes no gameplay or numerical values here. Foundation -> detached H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING. The authoring-values disclaimer below still correctly records that design approval itself did not approve runtime architecture.
 
 ## Purpose
 
@@ -84,7 +86,7 @@ An unsuitable unit remains visible and identifies the most actionable one or two
 
 ### Feasible profile pool
 
-Candidate selection begins by listing every profile that passes zone type, tier, adjacency, and physical-layout requirements. An empty pool creates the unsuitable-unit state. Incompatible candidates are never presented and no repeated fit attempts occur.
+Candidate selection begins by listing every profile that passes zone type, tier, adjacency, and physical-layout requirements. An empty pool creates Unsuitable only when every otherwise eligible profile is conclusively infeasible. If any relevant search is indeterminate, preserve geometry, expose an inconclusive diagnostic and defer selection/retry; never absorb, decorate, label Unsuitable or silently bias selection by discarding that profile. Incompatible candidates are never presented and no repeated random fit attempts occur.
 
 Each feasible profile receives a qualitative spatial rating:
 
@@ -97,6 +99,14 @@ Each feasible profile receives a qualitative spatial rating:
 A seeded weighted draw selects the candidate profile. Every feasible profile retains a chance. The full compatibility list and ratings appear in detailed parcel information; the normal view summarizes the top three.
 
 Spatial selection remains separate from the commercial application score. Rent, Prestige, location, synergy, competition, and Selectivity decide whether the selected candidate applies; they do not enter spatial suitability.
+
+Adjacency legality compares the stable customer-facing subtype/theme ID from element 06, not the operational profile ID. Distinct restaurant themes can share the restaurant program without forbidding all restaurant neighbors.
+
+### Initial Rating and Planning Policy
+
+The following baseline completes the qualitative bands. For a repeatable-bearing subtype, the initial comfort target is **two capacity modules beyond its mandatory minimum**, subject to the occupied-area ceiling below. A valid layout is **Excellent** when area is within target, annex area is at most one quarter of usable area, and both extra modules fit. It is **Good** when area is within target and at least one extra capacity module fits, but Excellent fails. A subtype with no repeatables is Excellent within area/annex targets and otherwise Good within its area target. All other valid layouts, including minimum-only layouts of repeatable-bearing subtypes, are **Acceptable**. Failure/indeterminacy has no rating/tickets. Commercial inputs never participate.
+
+For repeatables, stop before adding a module would take occupied fixture area above 75% of usable parcel area; mandatory programs may exceed that ratio but may not violate access/clearance. Enumerate rotations 0/90/180/270 and candidate cells row-major, mandatory fixtures before repeatables, using stable fixture ID as the final tie-breaker. Stop at 10,000 candidate-placement validations per parcel/profile/phase; exhaustion is indeterminate, not proof of unsuitable geometry. These authored revision-1 constants are deterministic work limits, not elapsed-time budgets; changing them requires a policy revision and regenerated acceptance cases.
 
 ## Fixture Content Contract
 
@@ -131,7 +141,7 @@ Each operational subtype has one mandatory operational program. Visual variants 
 
 Repeatable placement prioritizes circulation, coherent rows/groups, low unusable waste, and preservation of useful open areas. It never maximizes capacity by sacrificing clarity or access. Not every tile must be occupied.
 
-Back-of-house blocks are mandatory where specified even though logistics are not simulated. Attraction/display fixtures are visual-only in this iteration.
+Back-of-house blocks are mandatory where specified even though logistics are not simulated. Explicit decorative/attraction fixtures are visual-only. Operational retail browse fixtures supply abstract occupancy as defined below, never revenue or attraction scoring.
 
 ## Visitor Service Loop
 
@@ -257,6 +267,32 @@ Appointments and calendars are not simulated; service bays continuously take the
 
 First-iteration anchors have one primary operational visitor entrance. Additional visual entrances and multiple active queues feeding shared capacity are deferred.
 
+## Initial Service Content Values
+
+These are design-approved authoring values, not a runtime H4 approval. All durations are positive integer **visitor ticks** as defined in element 01. Definitions must serialize the values explicitly; missing runtime content rejects rather than filling a fallback.
+
+| Typology | Duration/stages | Capacity source |
+|---|---|---|
+| Host/seating | Seated 6 ticks | Sum of authored 2/4-person table capacities |
+| Counter | Counter 2 ticks | One token per counter/service station |
+| Browse/checkout | Browse 4, checkout 2 | Occupancy: 2 per display/shelf/department module; one checkout token per checkout station |
+| Service bay | Service 6 ticks | One visitor per bay/consultation/treatment module |
+| Scheduled batch | Active 6, turnover 1, cadence 8 | 4 per activity-room or auditorium-row module; capped by subtype exterior queue cap; minimum one module |
+| Device pool | Pre-device 1, device 4 | One per device/VR module; total occupancy twice device capacity |
+| Cohort/device | Activity 6 | Four per bowling-lane module; partial FIFO cohorts permitted |
+| Open flow | Occupied 6 | Two per activity/equipment/exhibit module |
+| Counter then seating | Counter 2, seated 6 | Table reserved before counter; table capacities 2/4, one token per counter/vendor station |
+
+Kiosk uses Counter; jewelry uses Browse/checkout with its secure counter also a checkout station; bank/repair use Counter; travel agency/clinic/salon use Service bay. Jewelry displays, Fashion racks, Bookstore shelves, Electronics demonstration tables, Home-goods displays, supermarket shelves and department modules are **operational browse modules**, each adding two occupancy places. Fitting, storage and decorative modules add none. Other subtype-to-typology mappings follow the table above. Every minimum program must yield positive service capacity. Batch start reserves only the next batch and may run partly filled; a no-show model is not required.
+
+Visitor wait tolerance is uniform over inclusive integers 2-8 ticks. Goal count remains 1/2/3 with 40/45/15 percent weights under `tenant_interiors/H1`; each operational category in the captured eligible-category set has equal selection weight, draws are with replacement, and each goal can use any operational tenant in its selected zone category. Empty categories use H1's explicit Browsing-then-Leaving exception. Estimates equal to tolerance are acceptable. No state need decays during committed service.
+
+Unspecified **individual physical fixture** footprints use one tile; a named row/strip spans the selected core width with depth one. Compound programs expand into modules: auditorium block = one 1x2 capacity row; shared table pool = one 1x2 two-person table; checkout bank = one checkout station; vendor frontage = one counter; prep blocks = one prep fixture; activity/equipment/exhibit/department zones = one module of that subtype's repeatable size. Circulation, aisles and circulation loops are **free clearance/connectivity requirements**, never occupied fixtures. A required loop contains a cycle of four-connected free cells reachable from the entrance and reaches each mandatory customer interaction face; a simple 2x2 free-cell cycle is sufficient.
+
+Back-of-house and staff-only fixtures require no visitor access; customer interaction faces require a connected one-tile-wide clearance route or direct frontage access. Occupied masks never overlap; customer clearance may share free circulation tiles but not occupied fixtures. Optional visuals contribute zero capacity and may be omitted. Every authored subtype must prove a minimum-program fit in at least one listed-core orientation with a legal entrance; content failure cannot silently increase the locked minimum. The generic one-tile rule never replaces the explicitly sized tables, devices, rooms or compound-module expansion.
+
+The initial catalogue contains at least one Tier-1 candidate for every listed operational subtype, with stable distinct theme IDs where repeated themes are needed for adjacency. The earlier five-examples-per-zone catalogue is foundation-only, not a restriction on interior content. Visible theme variants beyond signage remain deferred.
+
 ## Layout Validation and Fallback
 
 For each profile, deterministic bounded layout search must prove:
@@ -275,7 +311,7 @@ Outcomes degrade as follows:
 2. Mandatory layout plus reduced repeatables fits: open at reduced capacity.
 3. Only the explicit minimum program fits: open as a valid minimum-capacity tenant.
 4. Mandatory program fails: profile is excluded before candidate selection.
-5. Unexpected generation failure after commitment: show a closed fit-out state and block service; never fabricate inaccessible interactions.
+5. Unexpected generation failure after commitment: report `SERVICE_UNAVAILABLE` and block service, never fabricate interactions or add a "closed" Tenant lifecycle state. Per approved `tenant_interiors/H3`, existing deadlines still publish Open/rent eligibility; layout freshness/service availability are independent. A malformed or incompatible saved layout instead rejects load before staging. A visual/service fault never silently stops rent or retroactively changes lifecycle.
 
 ## Deferred Decisions
 
@@ -287,7 +323,7 @@ Outcomes degrade as follows:
 - Shared vendor ownership inside food-court anchors.
 - Theme-specific model sets beyond basic signage/visual variants.
 - Revenue, purchases with amounts, pricing, viability, closures, upgrades, satisfaction, attraction scoring, and tenant-derived Prestige.
-- Performance, persistence, authority boundaries, and implementation contracts, which require a later architecture handoff.
+- Performance, persistence, authority boundaries, and implementation contracts are owned by the [architecture-approved Tenant Interiors handoffs](../../architecture/handoff/tenant_interiors/_index.md) and [Product delivery contract](../../architecture/handoff/mvp/04_product_delivery_and_acceptance.md), not deferred architecture work. Implementation and acceptance evidence remain pending.
 
 ## Player Mental Model
 

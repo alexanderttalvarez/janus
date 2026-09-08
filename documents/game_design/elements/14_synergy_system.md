@@ -36,7 +36,7 @@ Synergy rewards thoughtful zone placement. When complementary zone types are nea
 ### Proximity Range
 
 - Synergy is calculated for zones within **5 tiles** of each other.
-- Distance is measured **boundary-to-boundary** (shortest distance between any tile of zone A and any tile of zone B).
+- Distance is same-floor Manhattan **boundary gap** in canonical district tile coordinates: minimize `max(abs(ax-bx) + abs(ay-by) - 1, 0)` over occupied cells in the two zone footprints. Edge-adjacent cells have distance 0; diagonal-only cells distance 1. Compare only equal signed elevations, including distinct Plots translated through the district grid. No cross-floor synergy or competition applies. This 2026-09-08 default avoids an unrequired 3D influence simulation.
 - Zones beyond 5 tiles have no synergy interaction.
 
 ### Zone Synergy Score
@@ -70,11 +70,7 @@ For tenant application evaluation, same-zone-type effects are represented exclus
 
 ### Prestige
 
-Synergy contributes to the **Synergy Score** quality factor in the Prestige System:
-
-- Maximum contribution: **15 points** (out of 100 Quality)
-- Calculated as the average synergy across all zones
-- Zones with positive synergy raise the district average; zones with negative synergy lower it
+There is no seventh "Synergy Score" Quality factor. Element 02's six factors already total 100. Cohesive zone layout may be a future input to its existing Design & Architecture factor, not an extra 15 points. Current fixed Quality 20 has no synergy effect; application synergy remains active independently. This resolves the duplicated quality budget without adding a calculation system.
 
 ### Tenant Revenue
 
@@ -106,7 +102,7 @@ Synergy visualization is planned for post-MVP and will include:
 | System | Connection |
 |--------|------------|
 | **Tenant System** | Application Score bonus/penalty affects tenant attraction |
-| **Prestige System** | Synergy Score quality factor (max 15/100 Quality) |
+| **Prestige System** | No current effect; future layout input within existing Design & Architecture budget |
 | **Economy** | Tenant revenue modifier affects overall district income |
 | **Zone Design** | Encourages thoughtful zone placement and diversity |
 | **Metrics & Visualization** | Heatmap and inspector tools (post-MVP) |

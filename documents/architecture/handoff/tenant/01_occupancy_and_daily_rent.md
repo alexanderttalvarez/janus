@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-05
 **Prepared:** 2026-09-05
-**Implementation order:** 1 of TBD
+**Implementation order:** 1 of 3
+
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), elements 01/06/20 and ADR 33 apply. Tenant H2 supersedes automatic commercial acceptance; approved `tenant_interiors/H3` supersedes uniform/area-only selection in its detached stage, without live runtime or save cutover. Retain state-only unpaid fit-out cancellation and explicit coordinated retirement; no financial eviction penalty is introduced.
 
 ## Purpose
 
@@ -48,17 +50,15 @@ Create the smallest authoritative tenant loop: a valid vacant parcel waits for i
 
 ## ASSUMPTIONS
 
-- H1 accepts a legal candidate automatically because the full application-score inputs have no approved authority snapshot contract. Candidate Selectivity is content data retained for later scoring but has no H1 acceptance effect.
+- Historical H1-only behavior accepted legal candidates automatically. Tenant H2 and Spatial H1 now approve score inputs/evaluation and supersede that behavior; Selectivity participates in H2's threshold.
 - A valid daily zone rate can be read from the committed zone configuration when settlement occurs. A missing/invalid rate is a diagnostic and creates no fallback rate.
 - A single persisted session seed plus a stable per-parcel evaluation ordinal is sufficient randomness for H1. This is deterministic randomness, not a mutable call-order-dependent RNG stream.
 
-## OPEN QUESTIONS
+## Resolved Inputs and Deferred Work
 
-- Initial/default zone daily rate, rate-authoring ownership, and rent-setting UI.
-- Final candidate catalog, subtype-specific size ranges, weights, brands, and whether Selectivity requires persistence beyond a deterministic profile reference.
-- Full application score authority/cadence for prestige, rent, location/circulation, synergy, and competition.
-- Construction visuals, player cancellation UI, and any later construction economics.
-- Closure/eviction consequences, locks after normal zone edits, notifications, tenant performance, and Prestige contributions.
+- Tenant H2/Spatial H1 define Zone-owned rates, recommendations and commercial evaluation; H3 defines foundation candidates. Element 20 and staged interior H3 amend size/weights/provenance.
+- Presentation H1/MVP H3 expose rent and state-only fit-out cancellation; element 01 fixes deadlines. Existing cancellation/retirement below is the complete current consequence, not permission to invent eviction costs or new locks on ordinary edits.
+- Revenue/viability/financial closure, upgrades, tenant-derived Prestige and richer construction visuals remain future scope. Interior default visuals/capacity/cutover follow their explicitly gated program.
 
 ## System boundaries and ownership
 
@@ -122,6 +122,8 @@ any lifecycle-bound state
 ```
 
 `Retired` is terminal historical state retained only as necessary for current-session diagnostics; it is not an active tenant, does not receive rent, and must not preserve a binding to a non-existent parcel after the commit. Persisted H1 state contains only live tenant records; retired records are excluded.
+
+Element 01 fixes daily deadline rounding and first-rent order: the exact construction delay is `21 * tile_count / 10` days, completed on the first day boundary at or after its deadline. Apply all due lifecycle transitions before Economy captures that boundary's Open tenants. An opening at that boundary is rent-eligible then; missed boundaries process chronologically, not by subscriber order.
 
 A candidate is automatically accepted on successful scheduled evaluation. There is no H1 player accept/reject UI, score threshold, or applicant queue.
 

@@ -7,7 +7,7 @@ production implementation.
 
 Approval recorded: 2026-08-31.
 
-**2026-08-31 Fixture C Initial Ownership Decision:** The frozen Fixture C semantic contract defines initial ownership as exactly `{market_entry,station_entry,garden_entry}`. These are section IDs selected for a connected initial controlled area; `market_hall` and `garden_plot` are whole plot IDs, not ownership values.
+**2026-08-31 Fixture C Initial Ownership Decision:** The frozen Fixture C semantic contract defines initial ownership as exactly `{market_entry,station_entry,garden_entry}`. These are section IDs; `market_hall` and `garden_plot` are Plot IDs, not ownership values. **2026-09-08 rationale correction, ADR 33:** the old connected-area assertion was incorrect; H7 accepts active-slot components. This correction changes none of the semantic fixtures or literal fingerprints recorded here.
 
 **2026-09-04 H1 Fingerprint Addendum:** The approved Fixture C initial ownership remains exactly `{market_entry,station_entry,garden_entry}` and remains semantic fingerprint input. The previously recorded Fixture C fingerprint was generated before that ownership decision and is replaced by the reviewed H2 fingerprint below. Fixture A and Fixture B fingerprints are unchanged.
 

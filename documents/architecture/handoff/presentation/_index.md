@@ -2,6 +2,10 @@
 
 This program defines the MVP presentation boundary: UI read models, intent routing, diagnostics, HUD metrics, source-gated panels and heatmaps, and notification delivery. It preserves the existing `game_ui.tscn` multi-CanvasLayer decision and never creates simulation authority in UI.
 
+**Current revision:** 2026-09-08, delegated documentation pass. H1 remains approved under [Current MVP](../../../game_design/current_mvp.md), ADR 33 and MVP H3. Minimal Tech purchase/room staffing/unpaid fit-out-cancel actions are required; full Tech/Staff dashboards are not. Conditions resolve at their source, not by toast dismissal. Draft `tenant_interiors/H5` does not authorize live interior presentation/cutover here.
+
+**Follow-on review, 2026-09-08:** The preceding revision records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves interior H4/H5. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Live interior read views/capability activation require those implementation/cutover passes; approval supplies no source facts. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
+
 ## Handoffs
 
 | Order | Handoff | Status | Scope |

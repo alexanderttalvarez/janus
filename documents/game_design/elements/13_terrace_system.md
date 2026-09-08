@@ -1,5 +1,7 @@
 # Terrace System
 
+**Status:** Agreed full-game design, entirely deferred from [Current MVP](../current_mvp.md). Clarified 2026-09-08; no terrace implementation handoff is approved.
+
 ## Overview
 
 Terraces are open-air floor sections that provide visitor amenities, prestige value, and architectural variety. They are distinct from indoor zones and have specific placement rules.
@@ -10,7 +12,7 @@ Terraces are open-air floor sections that provide visitor amenities, prestige va
 
 ### Adjacency Requirement
 
-A terrace tile **must be adjacent to at least one non-built tile**. This means:
+A four-connected terrace area must have at least one exposed boundary edge adjacent to non-built space or the plot edge, and every terrace tile must have unobstructed sky above it. Interior tiles may connect through other terrace tiles; the exposure requirement applies to the area, not every tile. This means:
 
 | Valid Placement | Invalid Placement |
 |-----------------|-------------------|
@@ -68,7 +70,7 @@ A terrace tile **must be adjacent to at least one non-built tile**. This means:
 | **Wall System** | No perimeter walls on open edges. Manual door placement. |
 | **Prestige** | Contributes to Design & Architecture quality factor |
 | **Visitor Simulation** | Amenity tiles that improve visitor satisfaction |
-| **Economy** | No rent generation. Maintenance cost applies (per tile). |
+| **Economy** | No rent and no recurring per-tile maintenance charge; future condition repair is separate |
 
 ---
 
@@ -76,4 +78,4 @@ A terrace tile **must be adjacent to at least one non-built tile**. This means:
 
 ### MVP Scope
 
-MVP includes basic terrace placement, open-edge rendering, and manual door placement. Post-MVP adds terrace furniture (benches, planters, seating), railings, and prestige bonuses.
+The older terrace-specific "MVP" label is superseded. Placement, open-edge rendering, access, furniture, railings and Quality bonuses all remain deferred from current Product MVP. The future Design & Architecture factor, not a new independent Prestige bonus, owns any quality effect.

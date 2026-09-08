@@ -1,5 +1,7 @@
 # UI / HUD System
 
+**Revision:** Approved 2026-09-08 consistency pass. [Current MVP](../current_mvp.md) owns delivered UI: one primary detail panel plus optional summary drawer, source-backed HUD/diagnostics and minimal build/zone/rent/unlock/hire/fire/fit-out-cancel actions. The seven named panels below are a full-game catalogue (five information panels plus Tech and Staff management), not seven concurrent MVP requirements. Hide unavailable actions/sources or show an explicit reason; never fabricate satisfaction, viability or revenue. Text input consumes character keys before gameplay shortcuts.
+
 ## Overview
 
 The UI serves the creative fantasy. It provides information without cluttering the view. The build view should feel clean. The world is the focus, not panels and numbers. Informational windows are toggled on demand. Contextual feedback appears near relevant elements.
@@ -80,7 +82,7 @@ Contextual toolbar at the bottom of the screen. Changes based on current mode.
 |------|-------------|
 | **Tile Typology** | Tenant, Decoration, Transit paint tools |
 | **Zone Name** | Edit zone name field |
-| **Walls Toggle** | Walls / No Walls |
+| **Walls Toggle** | Deferred per-zone option; current global control cycles Cutaway / Partial / Full |
 | **Finish Zone** | Confirm and exit Edit Zone mode |
 
 ---
@@ -148,7 +150,7 @@ Warnings and information appear directly on the 3D view near the relevant elemen
 | **Escape** | Close open panel / Exit Edit Zone mode / Cancel current action |
 | **B** | Toggle Build Mode |
 | **O** | Toggle Observe Mode |
-| **E** | Enter Edit Zone mode (when zone is selected) |
+| **Z** | Enter Edit Zone mode (when zone is selected); E remains camera rotation |
 | **Delete** | Activate Bulldozer tool |
 
 ---
@@ -183,7 +185,7 @@ The player should understand: "I build in a clean view. I open panels when I nee
 
 ### MVP Scope
 
-MVP includes HUD bar, bottom toolbar, 5 informational panels, contextual indicators, keyboard shortcuts, and camera controls. Post-MVP adds customizable layouts, advanced graph types, and additional heatmap modes.
+Current MVP includes the HUD, build controls, one source-backed primary detail panel, optional summary drawer, contextual indicators and camera/wall/time controls. Tech purchase and room staffing can use simple action lists; a full Tech graph, Staff dashboard, unsupported metrics and history/heatmaps remain deferred. This supersedes the old five-panel delivery count without deleting the full-game catalogue.
 
 ### Tuning Targets
 

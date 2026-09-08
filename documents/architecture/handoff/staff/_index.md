@@ -2,9 +2,11 @@
 
 This index records the approved Staff architecture handoffs and their implementation gates.
 
+**Current revision:** 2026-09-08, delegated documentation pass. H1 is revised/approved under ADR 33 and [MVP H3](../mvp/03_foundation_integration_clarifications.md): employment/coverage records, durable due rosters and whole-week mandatory payroll. Cleaning-task facts and task-specific acceptance are deferred; no task/agent system blocks this handoff. `construction/H1` already approves physical Operations Room placement.
+
 | Order | Handoff | Status | Scope |
 | --- | --- | --- | --- |
-| 01 | [Cleaning, Security, and Wages](01_cleaning_security_and_wages.md) | Approved — 2026-09-05 (delegated architecture authority) | Smallest testable staff authority: Operations Room hiring gate, Cleaner/Security records, source-backed coverage and cleaning facts, weekly payroll input, and V2 persistence. |
+| 01 | [Employment, Coverage and Wages](01_cleaning_security_and_wages.md) | Approved 2026-09-05; revised 2026-09-08 | Operations Room hire/fire, independent Cleaner/Security capacities, coverage, durable due-week payroll input and atomic V2 restore; no cleaning tasks. |
 
 ## Program boundary
 

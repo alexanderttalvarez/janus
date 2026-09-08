@@ -8,6 +8,10 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md) and [MVP H3](../mvp/03_foundation_integration_clarifications.md) add minimal non-debug Tech purchase and room hire/fire action lists, not full graph/Staff panels. Include unpaid fit-out cancellation while Locked/Constructing through the existing Tenant/Zone intent. Sources own condition active/resolved facts; dismissal is presentation-only. ADR 33 amends old global-singleton/UI-layer examples. Missing sources stay unavailable; interior-specific read views/cutover remain draft H5.
+
+**Follow-on review, 2026-09-08:** The preceding draft disposition records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves interior H4/H5. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Interior presentation remains source-backed and requires those implementation/cutover passes before live integration. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING. Documentation approval fabricates no read facts.
+
 Define the smallest useful player-facing architecture without creating a second simulation model. The existing UI decision remains intact: `game_ui.tscn` is instanced by `main_game.tscn`, uses HUD, Toolbar, Panel, Notification, and Overlay CanvasLayers, and `PanelManager` manages panel lifecycle. This handoff replaces direct mutable-manager UI access with stable read models and a single intent gateway.
 
 The MVP communicates committed district state, lets the player request approved actions, shows rejected-action diagnostics immediately, and routes committed conditions to transient toasts and a durable in-session log. UI never writes an authority field, executes a transaction, resolves a gameplay condition, or persists as game state.

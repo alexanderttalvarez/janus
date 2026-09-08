@@ -1,6 +1,8 @@
 # Progression Handoff 03 — Bus-Stop Eligibility
 
 **Status:** Approved — 2026-09-03
+
+**Revision:** 2026-09-08 delegated consistency pass. Eligibility remains approved future policy; Current MVP disables its player-facing purchase while facility placement/operation is deferred. Element 08 corrects total arithmetic without changing this node's cost.
 **Prepared:** 2026-09-03
 **Implementation order:** 3 of 3 — after Progression H1–H2
 
@@ -52,7 +54,7 @@ In non-release god mode, this capability is eligible regardless of Tech Points o
 - No other transport capability becomes eligible through this handoff.
 - Snapshot changes are revisioned and stale snapshots reject before any future placement/economy transaction commits.
 - God mode grants only the progression bypass; physical placement still rejects until its owning systems exist.
-- The added node raises the complete Tech Tree cost to 28 of 40 points.
+- The full listed catalogue, including this node, costs 26 of 40 points per element 08; 28/40 was an arithmetic error, not two unnamed nodes.
 
 ## Follow-up handoffs
 

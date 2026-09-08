@@ -2,9 +2,11 @@
 
 **Status:** Approved — 2026-09-05
 **Prepared:** 2026-09-05
-**Implementation order:** 2 of TBD — after Tenant Handoff 01
+**Implementation order:** 2 of 3 — after Tenant Handoff 01
 
 ## Purpose
+
+**Revision:** 2026-09-08 delegated consistency pass. [Element 06](../../../game_design/elements/06_tenant_shop_system.md) supplies exhaustive fixed-point premium bands, zero-recommendation behavior and canonical-elevation Location Score; element 03 supplies recommendation flooring and element 14 the same-floor relation metric. ADR 33 and staged `tenant_interiors/H3` apply. These explicitly supersede the rounded percentage wording below; no extra calculator authority is introduced.
 
 Replace Tenant H1's eligibility-only automatic application with the designed, transparent application evaluation loop. Players set a committed daily rent for each zone, view the calculated recommendation and score inputs, and influence whether seeded candidates apply. This handoff establishes score snapshots and rate policy without implementing tenant performance, visitor spending, closure, or Prestige contribution.
 
@@ -51,13 +53,12 @@ Replace Tenant H1's eligibility-only automatic application with the designed, tr
 - Candidate tier distribution is authored as immutable policy. H2 defines its cap and consumption contract, but content must provide explicit weights/selection policy before production tuning; implementation tests may inject a fixture policy.
 - Every score source can provide a detached snapshot keyed to the exact parcel/zone and authoritative calendar identity. Missing or stale input never receives a guessed score.
 
-## OPEN QUESTIONS
+## Resolved Inputs and Deferred Work
 
-- Candidate-tier weights and final candidate catalog/profile content.
-- Whether all designed circulation/adjacency inputs are available in the first playable slice, or whether their owning systems need separate prerequisite handoffs.
-- Initial-session Prestige tier/value and rent-ceiling policy content.
-- Rent panel visual design and whether score detail is a panel, inspector, or debug overlay.
-- Later tenant satisfaction effects from above-market rent, which are excluded until performance/viability work.
+- Tenant H3 supplies the foundation catalogue; staged `tenant_interiors/H1-H3` and element 20 supply interior content/weights. Tier 1 is explicit authored initial content, not a runtime fallback.
+- `spatial_evaluation/H1` supplies required circulation/relations after `prestige/H1`; missing implementation is a predecessor gate, not an unresolved design choice.
+- `prestige/H1-H2` define initial Empty Lot, ceiling and monthly baseline. `presentation/H1` exposes rent/score details in the single primary panel.
+- Satisfaction, revenue and viability remain explicitly deferred. No current evaluation depends on them.
 
 ## Ownership and dependency direction
 
@@ -124,8 +125,8 @@ threshold = 80 + (candidate_tier - 1) * 10 + selectivity
 ```
 
 - Prestige Match: `+100` when supported; `-50` one tier below; two or more tiers below is a hard decline.
-- Rent Attractiveness: `+30` at/below recommended; `+20` at 1–10% above; `+10` at 11–20%; `0` at 21–30%; more than 30% above is a hard decline.
-- Location Score, Synergy Bonus, and Competition Penalty use their documented tables/formula; their source snapshots provide facts, not scores.
+- Rent Attractiveness: use element 06's exhaustive integer inequalities in order; +30 at/below recommendation, +20 through 10% premium, +10 through 20%, 0 through 30%, otherwise hard decline. For zero recommendation, only zero rent gets +30; any positive rent hard-declines. No percentage rounding gaps.
+- Location Score uses element 06 with `abs(signed_elevation)`; Synergy/Competition use element 14's same-floor Manhattan boundary gap. Source snapshots provide facts, not scores. Unsupported-tier Prestige penalties are defensive only; normal candidate selection never generates them.
 - A hard decline does not bypass diagnostics and follows the normal three-day retry.
 
 A passing score prepares the existing H1 candidate subtype selection and atomic Zone/Tenant bind. Before bind, the coordinator revalidates the parcel/zone/rate/context revisions and subtype legality. Any staleness aborts the binding and reschedules; a rate or score result from an old context cannot bind a tenant.

@@ -1,132 +1,105 @@
 # Tenant Interiors Handoff 05 — Persistence, Presentation, and Cutover
 
-**Status:** Draft — awaiting architecture approval  
-**Implementation order:** 5 of 5
+**Status:** Architecture approved, 2026-09-08 follow-on request under [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md). Replaces the former draft. Order: 5 of 5; H4 and foundation implementation evidence precede live candidate cutover. Implementation, visual acceptance and Product completion are NOT VERIFIED.
 
-## Purpose
+## Requirement and scope
 
-Integrate strict current-schema validation, deterministic rebuild, transient service reset, presentation, historical-result isolation, and Product MVP cutover without a new root authority key or economic meaning.
+Integrate [Current MVP](../../../game_design/current_mvp.md) interiors without mixed proxy/live service, partial saves, rerolled goals or invented economic outcomes. Preserve Session H2 and District H9 root V2, exact owner registry and atomic slot/session replacement. No executable compatibility adapter, Save V3, durable Service root, indoor navigation, revenue or historical-result conversion.
 
-## Save strategy and durable amendments
+FACTS: current design explicitly requires deterministic rebuild, transient in-flight service reset and no proxy fallback. ASSUMPTIONS: loss of queue position/elapsed service at load is the accepted MVP simplification, not exact resume. OPEN QUESTIONS: exact in-flight continuity is future scope requiring new approval; it is not silently promised by this schema. The H4 wait/cohort interpretations require explicit Design acceptance with actual behavior.
 
-Product MVP does not persist queue occupants/FIFO or service/batch/token state. Exact in-flight restore requires future durable Tenant Service persistence/likely Save V3.
+## Data ownership and schema
 
-- Zone persists parcel tiles/core, geometry/doors, committed queue-envelope IDs and door/topology/QueueGeometryPolicy provenance.
-- Tenant persists operational profile, policy revisions, primary proxy, layout fingerprint.
-- Visitor persists service capability, visitor policy, behavior seed domain/creation ordinal even with zero visitors. Each visitor persists policy, captured-category fingerprint/empty marker, consumed seed domain/ordinal, generated goals/progress, wait tolerance, exclusions, results, resume facts.
+Root stays exact V2. Fixed registry: district -> zone_parcel -> economy -> progression -> prestige -> staff -> synergy -> tenant -> visitor -> time. `synergy` retains ADR 33's exact derived-only reserved payload. No Service root or additional Time origin is introduced.
 
-## Current authority-local schema contract
+| Authority | Exact local discriminator | Durable extension |
+|---|---|---|
+| Zone | state_schema_id = zone_parcel_core_annex; state_schema_version = 1 | H2 core/annex geometry, doors, exclusive committed queue envelopes and graph/queue-policy provenance |
+| Tenant | state_schema_id = tenant_operational_interior; state_schema_version = 1 | H3 exact profile/variation/policy/proxy/layout provenance; no fixture meshes or generated manifest |
+| Visitor | state_schema_id = visitor_interior_service; state_schema_version = 1 | Capability, generation provenance, goals/progress, exclusions, result families and valid resume facts |
 
-Root remains exact Save V2. This handoff freezes the three amended authority-local discriminators:
+Visitor manager requires `service_capability_id = interior_service_v1`, revision 1, visitor-policy identity/revision, behavior seed domain/value and next creation ordinal, including when zero visitors exist. Every visitor retains stable identity, consumed creation ordinal/seed provenance, complete captured canonical category array, empty marker, H4 generation fingerprint, visitor-policy identity/revision, generated goals/wait, progress/drop/current-goal state, excluded tenant IDs, historical/current result records and permitted public resume facts. Creation ordinals are unique in their domain and less than the manager's next ordinal. Existing owner fields remain required; these are not partial replacement schemas.
 
-| Authority | `state_schema_id` | `state_schema_version` |
-|---|---|---:|
-| `zone_parcel` | `zone_parcel_core_annex` | 1 |
-| `tenant` | `tenant_operational_interior` | 1 |
-| `visitor` | `visitor_interior_service` | 1 |
+H4's generation fingerprint hashes exactly category_ids, empty, visitor_policy_id and visitor_policy_revision. Current operational categories are NEVER substituted for historical captured categories. Runtime availability source revisions/fingerprint are diagnostic runtime data, not mandatory durable generation inputs. Integrity fingerprints establish consistency, not trusted proof against malicious edits. Pure deterministic validation recomputes expected generation without consuming RNG or replacing saved state.
 
-Both fields are required with exact string/integer type and value. Visitor additionally requires `service_capability_id = "interior_service_v1"` and `service_capability_revision = 1`. Unknown/missing/older values reject before staging. Other authority snapshots retain their already-approved schemas; this handoff does not add fields to them.
+Time already persists simulation and visual elapsed values under Session H1. Save must preserve enough numeric precision to recover the visitor ordinal and fractional time until the next boundary exactly in the implementation's clock representation. Reject nonfinite/negative/inconsistent clocks. Prove before/at/after boundary round-trips; do not reconstruct from day/hour labels. Current authority-local schema must reject missing required precision/state rather than silently reset time. No clock-policy change is authorized here.
 
-## Save barrier and canonicalization
+## Coherent export and canonicalization
 
-SaveManager freezes all mutations/events for complete registry export.
+Capture the complete detached owner set at a safe boundary under ADR 33's gate; finish all due boundary phases/settlement chains first. Release the gate before validation, canonicalization and file I/O. Canonicalization changes ONLY detached export records, never the live session, queues, tokens, results or clock.
 
-- DECIDING/LEAVING export existing durable facts.
-- TRAVELING exports approved current public/source anchor and destination intent; never teleports to unreached door.
-- EVALUATING/WAITING/IN_SERVICE remove transient service/queue/token/batch identity and export target proxy as resume anchor with `DECIDE_AT_PUBLIC_PROXY`.
-- Export never completes/drops a goal or fabricates a result.
+| Live Visitor state | Saved/resumed state |
+|---|---|
+| DECIDING | DECIDING at validated current logical public anchor; durable goal state unchanged |
+| LEAVING | LEAVING with valid current public anchor and existing exit intent/retry facts |
+| TRAVELING_TO_SERVICE | Current reached public/source anchor plus destination intent; no teleport to an unreached door |
+| EVALUATING_AT_DOOR / WAITING_EXTERIOR / IN_ABSTRACT_SERVICE | DECIDING at validated reached target public proxy; retain goals/wait/exclusions/results, remove all service commitments |
 
-Invalid required anchors fail export and preserve previous slot. Service has no root snapshot. Cross-authority invariants prove no one-sided commitment.
+Paths, transforms, interpolation, queue positions held by visitors, FIFO ordinals, tokens, cohorts, stages, active/next batches and scheduler marker are transient and excluded. Zone's legal queue envelopes remain durable. Service is rebuilt empty. Saving cannot complete/drop a goal, append a result, release live capacity, or alter the active cap. Invalid required anchors fail export and preserve the previous slot. Later live mutation after coherent capture cannot change the detached save.
 
-## Exact detached validation and restore
+Write validated JSON through existing H9 temporary-file/flush/atomic-replacement protocol under user storage. Serialize save writes so an older in-flight capture cannot overwrite a newer successful capture. Malformed/untrusted data is parsed as data only: no Resource/script loading or object instantiation from save-controlled paths. Validate bounds, types, exact keys, IDs and cross-references before candidate creation/import. No new file format or encryption is required.
 
-Session H2 registry order remains:
+## Detached validation and atomic restore
 
-```text
-district -> zone_parcel -> economy -> progression -> prestige
--> staff -> synergy -> tenant -> visitor -> time
+1. Parse and enforce exact V2 root, registered owner keys, current local discriminators and capability. Resolve immutable layout/content identities from the approved registry, not save-supplied paths.
+2. Obtain the COMPLETE detached saved authority set. Owner validation and pure derived validation use only that set plus immutable content, never the current live session or a partially imported owner.
+3. Derive a temporary validation graph from saved District/Zone/Construction facts; derive legal envelopes and H1/H3 layouts from saved geometry/provenance. These are detached validation values, not globally registered Nodes or live authority.
+4. Validate every owner and then cross-owner references in registry order: geometry, preserved door/envelope IDs, layout fingerprints, bindings, unique IDs, captured visitor generation and resume anchors, cap, payroll/milestone markers and Time consistency. Recompute captured generation independently of current operational categories.
+5. Create an isolated candidate and import ALL durable snapshots in fixed registry order. Import emits no gameplay events, awards, rent, payroll, service results or boundary ticks.
+6. Rebuild derived candidate eligibility, indexes, public graph, spatial facts, layouts, empty Service state, Visitor logical state and projections in dependency order. Compare candidate graph/envelope/layout manifests to detached validation results. No envelope is synthesized to repair missing saved data.
+7. Initialize Service's last-consumed marker to restored Time visitor ordinal. Derive batch phase from stable service/policy identity and epoch zero. No retroactive completions/batches run. Next boundary occurs after the saved fractional remainder; reset is not a new cadence epoch.
+8. Prepare all bindings/projections before Session H2's single publication barrier. Atomically replace active session only when every participant is ready, dispose old roots after publication succeeds, emit exactly one game_loaded, then allow input/calendar.
+
+Any parse, validation, import, derived rebuild, projection or pre-publication failure destroys only the candidate and preserves the complete old session/projections/slot. Failed load never hot-switches service capability. Post-commit observer failures are diagnostics; no mixed rollback or second loaded event. Check old-session generation when publishing so a cancelled or superseded load cannot replace a newer session.
+
+## Compatibility and reset guarantees
+
+Reject V1, missing/older/unknown local schemas, mismatched content and proxy-capability saves before staging; no automatic converter. The reproducible proxy foundation remains a test checkpoint, not a runtime branch in Product sessions. Historical proxy records may exist only as explicitly typed immutable non-economic records inside an otherwise valid current Visitor schema. New tenant-service results remain a separate kind; neither affects Economy or Prestige.
+
+Reload guarantees unchanged durable goals/results, deterministic layout, stable calendar/cadence and valid public resume. It deliberately does NOT preserve FIFO position, occupied seats, elapsed service, active/next batch membership or commitments. A reset can change subsequent queueing; do not advertise an exploit-proof exact service continuation. Repeated reload cannot manufacture completion/results or advance time. Any stronger guarantee requires a new persistence decision.
+
+## Presentation and content pipeline
+
+H1/H3 Resources and layout manifests are the sole content source. Asset authors provide bounded default fixture visuals for every mandatory fixture and operational module; theme variants/signage must preserve footprints/capacity. Optional decoration may be absent. No AI-generated or editor-created asset is delivered by this document. Missing mandatory content is a validation failure, not a proxy substitution.
+
 ```
-
-Before candidate import SaveManager:
-
-1. enforces root V2/exact keys, the three exact current discriminators, and current content/layout;
-2. validates detached Zone core/annex geometry plus persisted envelope IDs/provenance against freshly derived legal candidates;
-3. validates detached Tenant operational-profile/policy/proxy/layout provenance and derives H1 Phase B layouts;
-4. derives canonical operational service-category availability from validated Open tenants;
-5. validates Visitor capability and manager policy/seed/ordinal plus every visitor's policy, category fingerprint/empty marker, consumed ordinal, goals, wait, progress, exclusions, results, anchors without reroll;
-6. lets every owner validate its current snapshot detached;
-7. runs fixed-order cross-authority validation, including envelope legality, graph/layout fingerprints, visitor provenance/anchors;
-8. imports candidates only in exact registry order;
-9. rebuilds candidate graph/layouts/empty services/scheduler marker/projections and verifies parity;
-10. publishes through Session H2 barrier, then exactly one `game_loaded`.
-
-Committed envelopes are required current Zone fields. Restore never synthesizes them. Failure destroys candidate and preserves session/slot. Staging emits no gameplay events or retroactive scheduler work. Service initializes its transient last-consumed marker to restored current Time boundary; batch phase uses H4's exact Time-origin/hash/cadence equation.
-
-## Compatibility boundary
-
-No executable runtime/offline compatibility layer or save transformation is authorized. V1/schema-absent and older/incompatible authority-local snapshots reject before staging. Historical proxy result records may remain immutable/non-economic only inside an otherwise valid current Visitor schema; they do not select legacy capability, regenerate behavior, or provide service. Nothing is silently dropped/remapped or served by proxy.
-
-## Result families
-
-Historical Visitor H1 purchase result is a non-economic proxy observation. New tenant-service result is a non-economic abstract completion. Explicit schema/kind separates them; neither reaches Economy, viability, satisfaction, demand, or Prestige.
-
-## Presentation
-
-```text
-Projection
+Projection (Node3D)
 ├── TenantInteriorProjectionRoot
-│   └── TenantInteriorView (pooled/culled)
+│   └── TenantInteriorView (Node3D; reusable PackedScene)
 │       ├── StructuralVisuals
 │       ├── FixtureVisuals
 │       └── AbstractOccupancyVisuals
-├── QueuePresentationRoot
+├── QueuePresentationRoot (real public-side visitor views)
 └── VisitorProjectionRoot
+UI (existing CanvasLayer/Control scenes)
+└── Existing primary detail panel + contextual diagnostics
 ```
 
-Views consume snapshots only. Fixture scenes obey H1 restrictions and require default visuals; themes may fall back. Culling/pooling cannot alter simulation; MultiMesh/LOD follows profiling.
+Views consume immutable facts, own no simulation and need no per-fixture processing. Use ordinary instancing first; pooling, culling or MultiMesh are profiling choices that must preserve behavior. A visual failure marks freshness/unavailability visibly; it cannot change Tenant rent/lifecycle or fabricate service. World picking remains disabled for stale geometry under ADR 33.
 
-Presentation exposes freshness separately from suitability, full ratings/top three, profile/theme/sign, fixtures/capacity, queue/wait, occupancy/batch countdown, unsuitable diagnostics. UI never reruns planning/selection/scheduling. EventBus only prompts snapshot refresh.
+| Display | Source | Required behavior |
+|---|---|---|
+| Profile/theme/sign and current suitability/top three/full list | Tenant + H1/H3 read model | Distinguish suitability from stale/unavailable planning; never show indeterminate as Unsuitable |
+| Fixture-derived capacity and occupancy cues | Validated manifest + Service snapshot | Same token/occupancy facts as runtime; no mesh counting |
+| Exterior queue/current expected wait | Service + Visitor logical positions | No overlapping claimed position; UI never estimates service itself |
+| Active/next batch and countdown | Service + Time read facts | Clearly separated batches; no third booking |
+| Build/zone/rent/unlock/staff and save/load controls | Existing presentation intent gateway | Stable target IDs/revisions, source-backed success/rejection, no debug-only Product route |
+| Load reset/incompatibility/error | Session/Save result | Explain queue/service reset and preserved/failed save; do not claim progress was resumed exactly |
 
-## Capability and scope gates
+Use existing Control containers/themes/input focus and one detail panel; no new dashboard framework, UI-owned simulation or EventBus query layer. World culling must not hide state from logical service. Respect floor and wall modes in visual acceptance.
 
-1. **Corridor Service Integration Gate:** Visitor H1 foundation evidence; not Product MVP.
-2. **Interior shadow validation:** H1–H3 detached diagnostics only.
-3. **Bootstrap capability:** every Product MVP save/session requires the exact current Visitor capability before readiness. Historical result records do not select proxy capability. No live switch/mixed fallback.
-4. **Product MVP:** foundation plus Tenant Interiors H1–H5 headless and visual evidence.
+## Risks, alternatives and extensibility
 
-After approval, MVP H1 proxy loop becomes historical foundation evidence and its interior exclusion is superseded for Product MVP. Revenue/viability/satisfaction/Prestige/indoor-navigation exclusions remain.
+Transient rebuild is simpler than persisting every commitment but visibly resets service on load. Exact continuation is deferred, not partially supported. Strict rejection avoids a migration subsystem at MVP but breaks older snapshots; document that compatibility boundary before release. Layout/content identity must be frozen for acceptance, since changing authored footprints requires a policy revision and new proof. File I/O and derived work remain outside the mutation gate; optional asynchronous work must carry session-generation tokens and cannot expose candidates.
 
-## Acceptance evidence
+## Required acceptance (NOT RUN)
 
-Headless: content; scale/core/annex/Anchor; absorption/unsuitable; 6/3/1 vs commercial evaluation; unchanged Open/rent; fingerprints; representative services; wait/goals; congestion; current-schema saves; schedule phase; strict rejection; envelope history; result isolation; no fallback/economics; committed-only read models.
+- Exact-key/schema/type/content rejection matrix; zero and 200 visitors; category capture changed/empty since arrival; no reroll or ordinal advancement; historical result-family isolation.
+- Save each Visitor/service state, including simultaneous completion/catch-up/payroll; prove save leaves live commitments unchanged and load restores canonical records only.
+- Before/at/after visitor/day/week/month boundaries and batch/turnover boundaries at every speed; fractional-time round-trip, stable phase, no retroactive completion or duplicate rent/payroll/Tech awards.
+- Envelope/legal-door/layout byte parity; candidate-only sources; all imports before derived runtime; every validation/import/projection/write/publication-precondition fault preserves old session/slot.
+- Repeated save/load/destroy, superseded loads and serialized writes; no retained roots/subscriptions/caches or duplicate loaded events.
+- Visual proof: minimum/preferred/oversized/annex and Anchor layouts, walls/doors/default bounds, safe exterior queues, capacity/occupancy cues, countdown, unsuitable versus indeterminate feedback and stale-source diagnostics.
+- Foundation regression plus all nine H4 typologies on the same candidate, then normal-play vertical/category unlock route; no proxy fallback or debug completion. Use [delivery and acceptance](../mvp/04_product_delivery_and_acceptance.md). District Gate R remains separate.
 
-Visual/editor: minimum/preferred/oversized/annex interiors, wall/door fit, comfort density, default bounds, occupancy cues, queues, unsuitable diagnostics, compatibility views. Numeric retuning requires playtest evidence.
-
-## Acceptance requirements
-
-- Root V2/order exact; exact current discriminators load; rejection preserves slot/session.
-- Owner/cross-reference validation completes detached before import.
-- Persisted envelopes round-trip/remain legal; restore synthesizes none.
-- Detached/candidate graph, envelope, layout results are byte-equivalent.
-- Capability/policy/seed/ordinal persist with zero visitors.
-- Per-visitor goal provenance validates without reroll, including empty category.
-- Canonicalization never teleports first-trip travelers/replays completion.
-- Save barrier prevents torn state; schedule cannot reset.
-- Results remain disjoint/non-economic; bootstrap prevents mixed service.
-- Product MVP requires headless and visual evidence.
-
-## Required tests
-
-- Exact current/missing/older/incompatible discriminators and capability; pre-staging rejection preservation.
-- Zero/active visitor manager/per-record provenance and no-reroll round trip.
-- Envelope history, missing/illegal provenance rejection, detached/candidate parity.
-- Fault injection before import/publication.
-- Save matrix for every visitor/service state, invalid anchors, simultaneous completion, visitor 200.
-- First-trip traveling versus reached-proxy canonicalization.
-- Batch boundary/reload exploit tests.
-- Presentation freshness/suitability/projection isolation.
-- Capability/no-fallback, historical results, complete Product MVP gates.
-
-## Required implementation skills
-
-`save-load`, `scene-organization`, `resource-pattern`, `event-bus`, `godot-ui`, `hud-system`, `assets-pipeline`, and `godot-testing`.
+Implementation skills: `save-load`, `resource-pattern`, `scene-organization`, `godot-ui`, `hud-system`, `assets-pipeline`, `godot-testing`. Generic skill migration examples do not override this approved strict-rejection policy.

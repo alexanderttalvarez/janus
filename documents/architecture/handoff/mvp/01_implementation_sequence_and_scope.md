@@ -1,96 +1,67 @@
-# MVP Handoff — Implementation Sequence and Scope Lock
+# MVP Handoff 01: Implementation Sequence
 
-**Status:** Approved — 2026-09-05 (delegated architecture authority)
+## Status
+
+Approved 2026-09-05; revised 2026-09-08 under delegated documentation approval. The original flat/proxy release definition is superseded by [Current MVP](../../../game_design/current_mvp.md) and MVP H2. This revision corrects predecessor order and adds MVP H3's minimum progression/input integration. No implementation evidence is asserted.
 
 ## Purpose
 
-Turn the approved handoffs into one testable MVP delivery sequence. This does not replace any owner contract. It defines the smallest playable slice: build a legal district, populate Tier-1 tenants, collect daily rent, observe corridor-door-proxy visitors, pay staff weekly if hired, save/load safely, and inspect outcomes through presentation read models.
+**Follow-on review, 2026-09-08:** [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately approves interior H4/H5 architecture after the earlier consistency-pass revision above. [MVP H4](04_product_delivery_and_acceptance.md) extends this sequence through candidate cutover and Product acceptance. Implementation/cutover remain NOT VERIFIED; Product acceptance and external Gate R remain PENDING.
 
-## Mandatory implementation order
+Order the approved technical foundation, detached interior stages, runtime implementation, candidate cutover and Product acceptance. The Corridor Service Integration Gate is a technical checkpoint, not a Product MVP release.
 
-1. **Foundation:** District H1–H3; Zone/Parcel H1–H6; Economy H1–H2; Progression H1–H3.
-2. **Session/content/time:** Session H1, including the exact calendar and immutable content registry.
-3. **Construction/topology:** District H5–H8 contracts, Construction H1, Zone/Parcel doors/walls H4–H5, Spatial Evaluation H1.
-4. **Tenant economy:** Prestige H1–H2; Tenant H1–H3; daily Economy rent settlement.
-5. **Visitors/staff:** Visitor H1; Staff H1; weekly Economy wage settlement.
-6. **Presentation and persistence:** Presentation H1; District H9 plus Session H2 atomic restore/acceptance gate.
-7. **Cutover evidence:** District H4 editor-preview only if tools are required; District H10 only after all prior implementation evidence passes. H10 is a release/cutover gate, not a prerequisite for isolated authority tests.
+## In-Scope Behavior
 
-No layer may substitute legacy grid, navigation, mutable scene nodes, ad-hoc timers, direct UI mutation, or fallback policy values while a prerequisite is absent.
+Build one legal district, paint zones, form parcels/doors, accept and construct tenants, collect rent, exercise pedestrian proxy arrival/service/exit, optionally employ staff/pay wages, expose committed state and safely save/load. Then build detached interior planning/geometry/lifecycle outcomes, followed by H4 runtime and H5 persistence/presentation/candidate cutover under the gates below.
 
-## MVP player loop
+## Out-of-Scope Behavior
 
-```text
-new/load session
-  -> acquire/build valid floor cells and circulation
-  -> paint valid zones and create parcels/doors
-  -> spatial/rent context initializes
-  -> seeded Tier-1 candidates evaluate
-  -> lock -> construct -> open tenant
-  -> daily rent credited
-  -> pedestrian visitors arrive, use corridor-door service proxies, and exit
-  -> optional Operations Room staff hire -> weekly wages
-  -> HUD/panels expose committed facts and diagnostics
-  -> V2 save/load reproduces the session atomically
-```
+Everything deferred by Current MVP; in particular no proxy gameplay polish and no live interior Service/Visitor/save capability activation from documentation approval alone. Debug-only zone visualizations are optional tooling, not prerequisites for player behavior.
 
-Visitor proxy outcomes are deliberately non-economic in this MVP. The economic loop is tenant rent, not simulated visitor purchases. This keeps the slice truthful until the deferred interiors/service/revenue handoff exists.
+## Authorities
 
-## Required content at test start
+- [Current MVP](../../../game_design/current_mvp.md), [element register](../../../game_design/elements/_index.md), [ADR registry](../../decisions.md) and [ADR 33](../../decisions/33_documentation_consistency_and_minimum_contracts.md).
+- Each program's current handoff and explicit supersession record; IDs below are program-local and qualified.
+- [MVP H3 integration clarification](03_foundation_integration_clarifications.md) for previously incomplete owner/failure boundaries.
 
-The immutable registry must ship coherent versions of:
+## Inputs and Outputs
 
-- one approved district layout definition and fingerprint;
-- Economy H2 prices plus Construction H1 circulation/vertical-link/Operations Room prices;
-- Prestige H1 tier/rent-ceiling policy and H2 baseline policy;
-- Spatial Evaluation H1 factors/relationship matrix;
-- Tenant H3 Tier-1 candidate catalog; and
-- any approved zone subtype catalog required by legal candidate selection.
+Inputs are explicit validated production content, immutable policies, stable IDs/revisions and calendar identities. Outputs are committed domain state, detached read facts, deterministic tests and acceptance records. Missing policy/input is unavailable with diagnostics, never a guessed substitute. Test fixtures may stand in for declared ports in isolated tests; they cannot be production fallback content.
 
-Missing/incompatible content is a structured startup/evaluation rejection, never a default value.
+## State Ownership
 
-## Explicit MVP exclusions
+District owns district state; Zone owns zones/parcels/automatic doors/rates; Tenant owns candidate/lifecycle/rent inputs; Economy owns money/settlement; Progression owns points/unlocks; Prestige owns official snapshots; Visitor owns realized visitors; Staff owns employment; Time owns clocks; Session/Save owns lifecycle and atomic orchestration. Projection/UI owns no gameplay state. ADRs 30/31 retain District ownership of manual door records.
 
-The following remain intentionally deferred and require new handoffs before implementation:
+## Invariants
 
-- tenant interiors, furniture, real purchases/revenue, viability, closures, upgrades, satisfaction, and tenant-derived Prestige;
-- full Prestige Quality factors, loan-default effects, daily trend, visitor attraction, and Tech-point awards;
-- buses/parking/taxis/metro, arrival capacities, pending cohorts, transport economics, and congestion weighting;
-- escalators, terraces, decorative amenities, dynamic columns, structural simulation, material themes, and maintenance/repair systems;
-- staff agents/visuals, garbage/bathroom spawn formulas, scoring effects, and staff-driven tenant/visitor effects;
-- advanced dashboards/history, unbacked heatmaps, panel comparison, preferences, localization, and notification conditions not emitted by an authority;
-- playable multi-plot expansion/street conversion beyond the target-compatible District foundations.
+One writer per fact; canonical G/F1/U1 addresses; no legacy grid or Node-derived authority; coherent snapshots; exactly-once calendar effects; no economic proxy outcomes; no unsupported metrics. History does not satisfy a revised contract without new evidence.
 
-## Conflict resolutions for MVP
+## Failure and Edge Cases
 
-### 2026-09-05 Spatial Evaluation ordering addendum
+Reject missing/stale/invalid inputs before mutation. Use the common session gate for multi-owner commit/save. Failed staging preserves the old session/slot; stale visuals disable world intents until rebuilt. Authoritative optional features absent from content are explicitly unavailable. Runtime/cutover-dependent acceptance rows do not block the approved detached stages, but cannot be marked passed there.
 
-Spatial Evaluation H1 requires implemented H3/H5 topology providers,
-ZoneManager geometry revisions, Prestige H1, and frozen Tenant H2 contract
-types. It does not require Tenant H2 implementation. Prestige H1 is therefore
-implemented before Spatial Evaluation H1. Prestige H2 may follow or proceed in
-parallel. Tenant H1/H2 production implementation follows Spatial Evaluation
-H1; Tenant H2 may be unit-tested earlier only against immutable fixture
-snapshots. Missing or stale inputs remain unavailable and never receive a
-fallback score, rate, tier, or accessibility value.
+## Dependencies and Ordered Outcomes
 
-- Approved Zone/Parcel wall/door handoffs win over the older per-zone `No Walls` design option: parcel divider walls and legal parcel doors are mandatory committed facts. Per-zone wall removal is deferred.
-- Canonical elevation is `G`, then `F1` upward and `U1` downward; F1 is the first level above ground.
-- No recurring maintenance cost exists in MVP. Any older corridor/terrace maintenance wording is deferred with maintenance.
-- Same-type zone effects use the Spatial H1 competition bands, not application-synergy double counting.
-- The presentation MVP has one primary detail panel plus optional summary drawer; it does not implement every historically listed panel concurrently.
+1. Freeze/read `district_layout/H1-H2` KEEP and current content identities. Implement the `session/H1` content/calendar spine and Economy/Progression policy ports; isolated fixtures avoid circular startup dependencies.
+2. Establish `economy/H1-H2`, `progression/H1-H3` policy contracts and `district_layout/H3` transactions. Bus eligibility is policy-only; no facilities required. MVP H3 supplies the minimal Tech award rule.
+3. Establish `zone_parcels/H1/H4/H5/H6` geometry/mutation and required debug-assignment isolation from H2. Parcel/zone label tooling H3/H7 is optional and does not block walls/doors. Apply ADRs 24-26 and 30-31.
+4. Establish `district_layout/H4` runtime projection, then H5 public realm and `construction/H1`. H6 camera/gateways follows H5. H7 ambient traffic and H8 immediate arrivals are separate branches after H5; H8 additionally uses H6. Public crossing traversal consumes H7 controls; arrival allocation does not.
+5. Establish `prestige/H1`, then `spatial_evaluation/H1` with frozen Tenant H2 input types (not a running Tenant evaluator). Establish `prestige/H2` using the coherent developed-tile read source. No circular dependency on tenant evaluation.
+6. Establish `tenant/H1-H3`, then `visitor/H1` proxy lifecycle and `staff/H1` employment/payroll. Integrate exactly-once rent/payroll and normal-play Progression awards/intents under MVP H3.
+7. Establish `presentation/H1` source-backed intents/read views, `district_layout/H9`, and `session/H2` coherent capture/atomic restore. Prove the Corridor Service Integration Gate below.
+8. Preserve/reconcile `district_layout/H4` preview and H10 engineering evidence without rerunning an implementation audit in this documentation pass. External Gate R does not block isolated follow-on engineering, nor count as passed.
+9. Implement approved detached `tenant_interiors/H1`, then H2, then H3 per their [readiness matrix](../tenant_interiors/_index.md). Detached acceptance does not activate live Service/Visitor/persistence integration.
+10. Implement architecture-approved `tenant_interiors/H4` runtime and prove its implementation acceptance after detached H1-H3 pass.
+11. Implement `tenant_interiors/H5` persistence/presentation and candidate cutover after H4 implementation passes. Live integration requires H5 candidate cutover passes, not document approval.
+12. Perform same-candidate Product acceptance under [MVP H4](04_product_delivery_and_acceptance.md). External district Gate R is a separate pending release obligation, never inferred from Product tests.
 
-## End-to-end acceptance gate
+## Acceptance Criteria
 
-A headless deterministic scenario must prove:
-
-1. registry/layout validation and legacy-free new-session bootstrap;
-2. calendar catch-up order across speed/pause and daily/weekly/monthly identities;
-3. a successful and rejected construction/zone/rent intent with no partial authority mutation;
-4. a legal Tier-1 tenant application through Open and exactly-once daily rent;
-5. pedestrian arrival/service-proxy/exit under the global active cap;
-6. optional staff hire and exactly-once weekly wage;
-7. presentation receives only committed snapshots/results/diagnostics; and
-8. V2 save/load plus injected failure at each restore stage leaves the old session intact or restores one coherent new session.
-
-Implementation is not MVP-ready until this scenario, unit suites for every referenced handoff, and District H10 cutover evidence all pass.
+- New session uses an explicit validated production layout and has no legacy fallback.
+- Clock catch-up, pause/speed and coincident boundaries are deterministic.
+- Successful/rejected construction, zone and rent intents prove all-or-nothing state.
+- A Tier-1 tenant reaches Open and receives exactly-once daily rent; arrivals/proxy service/exit respect the active cap and stay non-economic.
+- Optional employment proves whole-week wages, negative-balance behavior and replay safety.
+- Source-backed UI receives only committed facts; required normal-play build/unlock/hire actions are available, not debug-only.
+- V2 round-trip and faults at every restore stage preserve one coherent session and the old slot on rejection.
+- Detached interior stages prove only their approved outcomes; tests requiring H4/H5 are explicitly gated, not skipped-and-counted-as-passing Product acceptance.

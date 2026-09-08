@@ -50,7 +50,7 @@ Upper and underground floor-space tiles are purchased individually and sequentia
 - Upper and underground floors may be smaller than the adjacent floor.
 - A floor may overhang up to 2 tiles beyond the immediately lower floor.
 - No floor may extend beyond the combined vertical-rights mask of owned Plot Sections.
-- Exact acquisition prices and progression requirements are open in element 19.
+- Acquisition prices are approved in element 03; exact elevation and Plot Access gates are approved in element 08. Element 19 owns physical eligibility. Design approval does not bring deferred multi-Plot play into current MVP.
 
 ### Floors
 
@@ -83,7 +83,7 @@ Upper and underground floor-space tiles are purchased individually and sequentia
 
 | System | Connection |
 |--------|------------|
-| **Economy** | Authoritative purchase constraints; exact district-expansion prices remain open in element 19 |
+| **Economy** | Element 03 owns approved prices/refunds; element 08 owns progression gates; element 19 owns geometry |
 | **Zone Design** | Plots and floors define where zones can be placed. Tile composition affects zone layout. |
 | **Transit & Circulation** | Vertical movement (stairs, elevators, escalators) connects floors. Connections link plots. |
 | **Wall System** | Floor perimeter walls, terrace gaps, skybridge connection points |

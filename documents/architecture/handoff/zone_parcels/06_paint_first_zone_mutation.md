@@ -6,6 +6,10 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), element 20, ADR 33 and the staged `tenant_interiors/H2` amendment apply. Explicit retirement atomically removes the retired parcel's automatic doors and any authorized Tenant binding, but never relaxes surviving-parcel or unrelated manual-door protection. Live occupied-interior edits requiring Service/Visitor swaps remain gated; detached prospective tests do not activate draft H4/H5. Ordinary paint must not infer eviction merely from changed area.
+
+**Follow-on review, 2026-09-08:** The preceding revision records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves interior H4/H5. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Live occupied-edit Service/Visitor integration requires those implementation/cutover passes; detached tests and document approval activate nothing. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
+
 Replace the separate Edit Zone workflow with one paint-first Build Zone workflow.
 
 The player paints a zone type to create, extend, or merge zones. The player paints **None** to remove selected zone tiles and return them to built external circulation. The implementation must preserve unaffected established parcels instead of globally reshuffling them when zones expand or merge.

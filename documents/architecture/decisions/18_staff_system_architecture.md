@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, scopes current Staff to employment/coverage/payroll records. Agent Nodes, simulated tasks and score providers below are deferred, not dependencies.
+
 ### Context
 Staff (Cleaners and Security) are hired through Operations Rooms. Cleaners handle garbage and bathroom cleaning via task queues. Security provides passive coverage. Bins reduce garbage spawn rate.
 

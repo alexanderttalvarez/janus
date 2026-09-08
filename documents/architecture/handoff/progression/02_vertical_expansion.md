@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-03
 **Prepared:** 2026-09-03
-**Implementation order:** 2 of 2 — after Progression H1
+**Implementation order:** 2 of 3 — after Progression H1
+
+**Revision:** 2026-09-08 delegated consistency pass; element 08 is the only Tech cost/award authority. This corrects arithmetic, not node costs. Current scope and MVP H3 govern playable availability and normal-play awards.
 
 ## Purpose
 
@@ -23,7 +25,7 @@ It provides eligibility only. Economy H2 prices acquired tiles; District H3 owns
 
 A node is eligible only when both its Tech prerequisite chain is unlocked and its Mall Level threshold is reached. Unlocking a node grants eligibility for its complete listed elevation range, subject to existing District physical caps, acquired vertical rights, sequential acquisition, construction, and Economy affordability.
 
-The extension adds 4 Tech Points to the existing 23-point tree: 27 of 40 total available points, leaving 13 points for later content.
+The four extension nodes cost 4 points. Use element 08's corrected complete catalogue total, 26 of 40 including Bus Stop; the former 23-plus-4 subtotal double-counted the old branch budget and is not authoritative.
 
 ## Scope
 
@@ -63,7 +65,7 @@ Persist existing unlocked node IDs and earned/spent Tech Point state. Elevation 
 
 - Underground grants exactly U1–U2; U3–U5 require Deep Foundations plus Regional Mall.
 - Each Vertical Expansion node grants exactly its listed F range, with prerequisite chain and tier gate both enforced.
-- Node costs total four additional Tech Points; full tree total is 27/40.
+- Extension nodes total four Tech Points; the complete listed catalogue matches element 08 (26/40 including Bus Stop).
 - District H3 rejects ineligible elevations before Economy capture and revalidates snapshot revisions atomically.
 - Normal unavailable elevation requests produce deterministic diagnostics and no mutation.
 - God mode permits the full physical elevation range without bypassing District constraints.

@@ -1,5 +1,7 @@
 # Transit & Circulation
 
+**Scope clarification, 2026-09-08:** [Current MVP](../current_mvp.md) includes public corridors and placed stairs/elevator links, not operational elevator trips/queues/capacity simulation or escalators. Below, capacities and mechanical transit timing are deferred design. `construction/H1` supplies current fixed placement footprints; element 03 owns costs.
+
 ## Overview
 
 Transit & Circulation governs how visitors and staff move through the district. It covers horizontal movement (corridors, plazas) and vertical movement (stairs, elevators, escalators). Effective circulation is essential for visitor satisfaction, tenant viability, and prestige.
@@ -14,7 +16,7 @@ Transit & Circulation governs how visitors and staff move through the district. 
 
 - **Definition:** Any tile marked as "Transit" type. These tiles are designated for visitor movement.
 - **Width:** Any width allowed. The player places corridor tiles freely, creating paths of any shape or size.
-- **Cost:** Free to place on purchased tiles. No additional cost beyond tile purchase and maintenance.
+- **Cost:** Free to place on purchased, constructed tiles. No additional corridor cost or recurring maintenance.
 - **Tenant interaction:** Corridors inside a tenant zone act as internal circulation. They provide door access points for businesses and allow visitors to move through the zone without disrupting shop layouts.
 - **External corridors:** Corridors outside zones connect different zones, floors, and transit points.
 
@@ -78,7 +80,7 @@ The pathfinding graph is **layered by floor**. To move between floors, visitors 
 | Tile Type | Vertical Access | Horizontal Access |
 |-----------|----------------|-------------------|
 | **Corridor tile** | No | Yes |
-| **Zone tile** | No | Yes |
+| **Zone-internal Transit tile** | No | Yes; Tenant and Decoration tiles are not public routes |
 | **Stairs** | Yes (adjacent floors only) | Yes |
 | **Elevator lobby** | Yes (all connected floors) | Yes |
 | **Escalator** | Yes (adjacent floors only) | Yes |

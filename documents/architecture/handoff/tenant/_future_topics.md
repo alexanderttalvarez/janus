@@ -5,7 +5,9 @@ This register preserves important design-preparation concerns without turning th
 ## Tenant interiors, furnishing, and visitor interactions
 
 **Recorded:** 2026-09-05
-**Status:** Deferred — not designed
+**Status:** Historical preparation list, superseded in part. Element 20 is agreed design and `tenant_interiors/H1-H3` are approved for detached content/geometry/lifecycle work. Runtime H4 and persistence/presentation H5 remain drafts. Reviewed 2026-09-08; the questions below are preserved history, not active blockers or permission to reopen settled choices. Use [the current program index](../tenant_interiors/_index.md).
+
+**Follow-on notice, 2026-09-08:** The preceding status preserves the earlier consistency-pass disposition. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves H4/H5. Current order is foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING. This historical question list does not override current approval or authorize live activation.
 
 ### FACTS
 

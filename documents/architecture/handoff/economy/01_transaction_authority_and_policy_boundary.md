@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-03
 **Prepared:** 2026-09-03
-**Implementation order:** 1 of 1
+**Implementation order:** 1 of 2
+
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), element 03, ADR 33 and [MVP H3](../mvp/03_foundation_integration_clarifications.md) supersede the old unresolved pricing/refund, payroll and notification-resolution clauses. Loans and transport fees are deferred; their examples are not current requirements.
 
 ## Purpose
 
@@ -47,7 +49,7 @@ This handoff makes approved charges safely quoteable, reservable, cancellable, a
 - One simulation day is 24 real seconds at 1×. TimeManager emits authoritative day, week, and month boundaries.
 - Rent is a player-set daily zone rate and is credited daily once tenant lifecycle provides active tenant data.
 - Staff wages are 500 Kreds per employee per week in MVP.
-- The MVP plot is initially owned. District expansion prices and gates remain unapproved.
+- The MVP Plot is initially owned. Economy H2/element 03 approve expansion prices and Progression H1-H3/element 08 approve gates; playable multi-Plot expansion remains deferred.
 - District Handoff 03 requires Economy reservation, guaranteed capture, cancellation, revision safety, and no partial cross-authority commit.
 - Debug cost bypass makes every player-paid action free while normal gameplay validation and successful state changes continue.
 - Committed balance below zero creates a high-priority financial condition. Insufficient funds is an immediate rejected-action diagnostic.
@@ -206,11 +208,11 @@ H1 requires stable structured rejection categories at least for:
 
 ```text
 TimeManager.sim_day_passed
-  -> future tenant lifecycle supplies immutable active-tenant rent snapshot
+  -> Tenant H1/H2 supplies immutable Open-tenant rent snapshot after due lifecycle transitions
   -> Economy credits daily rent once per zone/tenant contract
 
 TimeManager.sim_week_passed
-  -> future staff authority supplies immutable paid-staff snapshot
+  -> Staff H1 supplies the immutable boundary-employed roster
   -> Economy debits 500 Kreds per eligible MVP employee
 
 TimeManager.sim_month_passed
@@ -218,6 +220,8 @@ TimeManager.sim_month_passed
 ```
 
 H1 defines the calendar subscription and read-snapshot boundaries. It does not implement missing tenant or staff lifecycle systems. Every recurring source must be idempotent per authoritative calendar period and must record the consumed period in committed Economy state or another approved persistent authority so save/load cannot duplicate a settlement.
+
+Weekly payroll uses element 03 and MVP H3: validate the complete due-week roster, debit its total atomically even below zero, and consume that week exactly once. No per-entry partial success. On invalid/stale input or a pre-commit fault, retain the original due-week input for retry; later weeks cannot overtake it. `INSUFFICIENT_FUNDS` applies to discretionary reservations, not mandatory wages. Monthly loan processing remains deferred from current scope.
 
 ## Debug cost-bypass rules
 
@@ -238,7 +242,7 @@ On load, Economy validates and stages only its committed snapshot. It must not r
 
 - Economy publishes committed financial results only after the authoritative commit point.
 - HUD reads committed balance/results and must not treat a reservation as a balance mutation.
-- NotificationManager owns presentation and resolution of the below-zero financial condition.
+- Economy owns active/resolved `economy.balance_below_zero` facts and clears the condition when committed balance becomes non-negative; Presentation owns display/dismissal, not resolution.
 - Callers own player-facing copy for rejected quotes; Economy returns stable categories and context, not localized text.
 - No direct EventBus emission is required by H1 unless the existing event architecture needs the post-commit result projection. The transaction coordinator remains responsible for coordinated envelope ordering.
 
@@ -284,7 +288,7 @@ On load, Economy validates and stages only its committed snapshot. It must not r
 
 - **Predecessor:** none; this is the first Economy handoff.
 - **Direct consumer:** District Layout H3 requires this handoff's reservation-to-guaranteed-capture contract before production transaction implementation.
-- **Future Economy H2:** expansion pricing, refund/demolition policy, and approved charge catalogs.
-- **Future tenant lifecycle handoff:** active-tenant/rent snapshot, daily rent settlement inputs, revenue and viability.
-- **Future staff handoff:** paid-staff snapshot and weekly wage inputs.
+- **Economy H2:** approved expansion pricing; element 03 and MVP H3 close current refund/payroll defaults.
+- **Tenant H1-H3:** approved lifecycle/rent inputs; visitor revenue/viability remain deferred.
+- **Staff H1:** approved employment/payroll inputs, amended by MVP H3 for atomic failure/restore behavior.
 - **Future maintenance/transport handoffs:** approved recurring and one-time charges.

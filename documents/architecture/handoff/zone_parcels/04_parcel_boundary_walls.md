@@ -4,6 +4,8 @@
 
 Approved — 2026-08-24
 
+**Revision:** 2026-09-08 delegated consistency pass. [Element 12](../../../game_design/elements/12_wall_system.md) owns the explicit 3.0-height, 0.10 structural/0.05 parcel thickness and 10% strip dimensions; ADR 33 amends ADR 04. Existing edge/junction invariants remain; H3 debug labels are not a prerequisite. Current scope is [Current MVP](../../../game_design/current_mvp.md).
+
 ## Goal
 
 Render a thin interior wall along every shared edge between two distinct committed parcels in the same zone.

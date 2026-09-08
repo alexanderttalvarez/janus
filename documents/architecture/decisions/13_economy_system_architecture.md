@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted; amended 2026-09-03
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md) and [MVP H3](../handoff/mvp/03_foundation_integration_clarifications.md), 2026-09-08, clarify the shared session gate, whole-week mandatory payroll, and source-owned balance conditions. Loans remain deferred by current scope.
+
 ### Context
 The economy drives tension between creative ambition and financial reality. It handles money balance, approved charges, rent collection, loans, and expenses. We needed to decide on money ownership, transaction scheduling, loan management, and the transaction boundary required by district acquisition.
 

@@ -2,7 +2,9 @@
 
 **Status:** Approved — 2026-09-05 (delegated architecture authority)
 **Prepared:** 2026-09-05
-**Implementation order:** 1 of TBD
+**Implementation order:** 1 of 1
+
+**Revision:** 2026-09-08 delegated consistency pass. Elements 03/06/14 own numerical recommendation, location and relation rules; ADR 33 and MVP H3 govern coherent captures/restore. This handoff introduces no mutable Synergy authority.
 
 ## Purpose
 
@@ -104,7 +106,7 @@ A future circulation handoff may improve these bands only through an approved po
 `ZoneManager` supplies a detached canonical set of other committed zones with stable IDs, type, footprint/boundary geometry, floor identity, and geometry revision. The pure evaluator then returns for the target zone:
 
 - application adjacency classification: `positive`, `neutral`, or `negative`;
-- nearest other zone of the same type using boundary-to-boundary tile distance, excluding the target zone itself;
+- nearest other same-type zone using element 14's same-elevation Manhattan boundary-gap metric in canonical district coordinates, excluding the target zone itself; no cross-floor relation applies;
 - competition band: within 10, within 20, or none; and
 - policy and source revisions plus the selected relationship provenance.
 

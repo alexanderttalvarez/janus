@@ -2,6 +2,8 @@
 
 This is the implementation order, authority ledger, and cutover gate for the district-layout program. It refines the [architecture blueprint](../../design_handoff.md), [Decision 27](../../decisions/27_district_layout_templates.md), and [Decision 28](../../decisions/28_visitor_arrival_architecture.md).
 
+**Current revision:** 2026-09-08, delegated documentation approval. [ADR 33](../../decisions/33_documentation_consistency_and_minimum_contracts.md) and [Current MVP](../../../game_design/current_mvp.md) govern amendments and scope. Migration observations/adapters below are historical, not work to recreate. Implementation claims come from [existing evidence](../../evidence/district_layout_acceptance/_index.md), not a new audit. New contract clarifications require new verification; historical PASS records do not prove them.
+
 ## Handoff IDs and implementation gates
 
 | Order | Handoff | Architecture status | Implementation gate |
@@ -9,13 +11,13 @@ This is the implementation order, authority ledger, and cutover gate for the dis
 | 01 | [Definition Schema and Validation](01_definition_schema_and_validation.md) | Approved and frozen — 2026-08-31 | H1 KEEP and A-C proof contract are frozen for H3; Fixture C fingerprint refresh requires the separately recorded explicit H1 addendum. |
 | 02 | [Resolved District Model](02_resolved_district_model.md) | Approved and frozen — 2026-08-31 | Resolver contract is frozen with H1 KEEP; Fixture C fingerprint refresh requires the separately recorded explicit H1 addendum. |
 | 03 | [Variable Floor Grid Migration](03_variable_floor_grid_migration.md) | Approved — 2026-09-03 | H1 KEEP, frozen H1/H2 goldens, and Economy/Progression dependencies are satisfied. |
-| 04 | [World Projection and Editor Preview](04_world_projection_and_editor_preview.md) | Runtime projection work complete; editor-preview acceptance pending | Runtime projection remains available to successor gates. Full H4 acceptance requires the opt-in editor-plugin capability and tests in the 2026-08-31 addendum. |
+| 04 | [World Projection and Editor Preview](04_world_projection_and_editor_preview.md) | Approved contract; runtime and preview tests reported passing | Formal full-preview acceptance is not recorded. Runtime remains available to successors; reconcile every preview criterion with the recorded tests, without inferring approval from PASS. |
 | 05 | [Street and Pedestrian Generation](05_street_and_pedestrian_generation.md) | Approved — 2026-09-03 | Public-realm, Economy, Progression, selected-Plot, and god-mode contracts are reconciled; implementation requires H3 transactions and H4 runtime projection lifecycle. |
 | 06 | [Camera Envelope and Pedestrian Gateways](06_camera_and_pedestrian_gateways.md) | Approved — 2026-09-03 | Camera policy is selected/validated; implementation requires H3 selected/Active Plot views and H5 public topology. |
 | 07 | [Traffic Topology Migration](07_traffic_topology_migration.md) | Approved — 2026-09-03 | Active/owned versus selected/unowned Plot topology is reconciled; implementation requires H3 committed state and H5 public-realm/conversion inputs. |
 | 08 | [Visitor Arrival MVP Migration](08_visitor_arrival_mvp_migration.md) | Approved — 2026-09-03 | Requires H3 source state, H5 pedestrian graph, H6 structural eligibility, and VisitorManager lifecycle; it is independent of H7 traffic topology and requires no durable pending policy. |
 | 09 | [Save/Load V2 and District Persistence](09_save_load_v2.md) | Approved — 2026-09-03 | Requires implemented H1-H8 authority snapshots, recorded Fixture C golden addendum, and MVP immediate realization. V2 is the first supported district-layout save schema with no automatic rolling backups. |
-| 10 | [Legacy Removal and Final Acceptance Gate](10_legacy_removal_and_acceptance.md) | Draft - implementation blocked by predecessors | Implementation starts after H1-H9 implementation and required design/migration approvals; acceptance requires ten adapters removed and all evidence complete. |
+| 10 | [Legacy Removal and Final Acceptance Gate](10_legacy_removal_and_acceptance.md) | Approved engineering/release contract under ADR 32 | Engineering complete; H10 release acceptance pending external Gate R. Candidate binding and external evidence remain outstanding; this is not Product MVP completion. |
 
 Architecture approval confirms contracts. Implementation gates confirm only the explicitly stated predecessor evidence; numeric Handoff IDs do not create unstated dependencies. H7 traffic topology and H8 pedestrian MVP arrival are parallel branches after H5, with H8 additionally requiring H6. H1 and H2 may be approved and implemented together for proof only. After all three proofs, H1 records **KEEP**, **REVISE**, or **REJECT**; KEEP freezes the production H1/H2 format and goldens, while REVISE/REJECT blocks H3 production work.
 
@@ -73,7 +75,7 @@ Literal fingerprint SHA values are generated, reviewed, and frozen only after pr
 
 ## Temporary adapters
 
-Exactly ten executable adapters exist in the migration plan; every one is removed by H10.
+The historical migration plan named exactly ten adapters; evidence reports their removal by H10. This table preserves their identities for evidence interpretation, not an instruction to recreate them in new implementation.
 
 | Adapter | Introduced | Purpose |
 | --- | ---: | --- |
@@ -103,11 +105,11 @@ The H5 corner-frontage and public-band physical-door design blockers are resolve
 
 ## 2026-08-31 Fixture C Initial Ownership Decision
 
-Fixture C initial ownership is the exact section set `{market_entry,station_entry,garden_entry}`. It is the connected controlled-area setup required by H7 tests and loads; `market_hall` and `garden_plot` are whole plot IDs, not ownership values. This resolves the prior disconnected assumption without changing any fixture geometry, masks, IDs, gates, or frozen golden values.
+Fixture C initial ownership is exactly `{market_entry,station_entry,garden_entry}`; `market_hall` and `garden_plot` are Plot IDs, not ownership values. The [frozen-golden addendum](frozen_h1_h2_goldens.md) explicitly refreshed C's fingerprint on 2026-09-04; the old "unchanged goldens" assertion was stale. ADR 33 corrects the connected-area rationale: these are valid proof-only disconnected active-slot components. This pass changes no fixture masks, IDs or frozen fingerprints and grants no extra production ownership.
 
 ## 2026-08-31 Editor Preview Addendum
 
-H4 runtime projection work can remain complete for successor runtime gates. H4 editor-preview acceptance is pending until the dedicated opt-in `EditorPlugin` and `@tool` preview controller capability, including its lifecycle and parity tests, is implemented under the H4 addendum. This is a new H4 completion requirement only; H5 and H7 ownership and gates are unchanged.
+Historical addition of the preview requirement. The proof record now reports runtime 22/22 and preview 15/15 tests passing; formal full-preview acceptance is not recorded. H4 remains approved and runtime remains usable by successors. Do not restate the plugin as unimplemented or infer acceptance from those counts.
 
 ## 2026-08-31 V1 Save Support Decision
 

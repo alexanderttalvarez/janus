@@ -2,7 +2,7 @@
 
 ## Status
 
-**Implementation complete; acceptance blocked until the defined evidence package passes.** H10 begins after H1-H9 implementation. Acceptance—not implementation—requires zero adapters and complete release evidence.
+**Engineering complete; H10 release acceptance pending external Gate R.** This is the status recorded under ADR 32, not a new implementation audit. Gate E's final candidate binding and Gate R exports, physical measurements and independent signoffs remain evidence obligations. The 2026-09-08 documentation amendments introduce no release approval and are not proven by older PASS summaries. H10 is an approved engineering/release contract, not a blocked draft or Product MVP completion claim.
 
 ## Purpose
 

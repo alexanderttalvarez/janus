@@ -67,11 +67,11 @@ Identical projections in editor/runtime. Empty union disables spatial pan/focus 
 - `LegacyCameraBoundsAdapter` bridges legacy bootstrap only.
 - `LegacyCornerSpawnAdapter` is restricted to legacy gateway/layout compatibility. It never performs persisted corner-ID migration; schema-absent V1 saves are rejected by H9.
 - Old floor-label listeners reuse `LegacyFloorIdAdapter`; no unnamed adapter is allowed.
-- Preserve a temporary policy seam for the legacy 20-purchased-tile camera rule until the decision below is recorded. The seam may never mutate state.
+- Historical migration seam only: the accepted decision removes the legacy radial rule. New work must not recreate its adapter or policy branch.
 
-### Camera infrastructure margin
+### Historical Camera Alternatives (Resolved)
 
-**DESIGN POLICY BLOCKER:** Design owns the selection and Architecture validates it. No numeric margin is specified or may be invented by implementation agents.
+**Resolved 2026-09-03:** Road-profile-relative B is selected and validated in [H6 Policy Acceptance](h6_policy_acceptance.md). Its exact margin formula is authoritative. The alternatives below are retained decision history, not current blockers.
 
 | Alternative | Contract |
 | --- | --- |
@@ -83,7 +83,7 @@ A, B, and C are neutral alternatives. Selection must assess design intent for th
 
 ### Legacy 20-purchased-tile rule
 
-**DESIGN POLICY BLOCKER:** Design owns the selection and Architecture validates it.
+**Resolved 2026-09-03:** Alternative A removes the legacy 20-purchased-tile rule. ADR 33 explicitly amends ADR 16 to match. The following alternatives are historical, not open choices.
 
 | Alternative | Contract |
 | --- | --- |

@@ -3,7 +3,11 @@
 **Status:** Approved — 2026-09-06  
 **Implementation order:** 2 of 5
 
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), element 20 and ADR 33 apply. The [readiness matrix](_index.md) authorizes detached prospective geometry/transaction proofs only before runtime H4/H5 approval. Service/Visitor swaps below are later integration obligations, not current live dependencies. Search-indeterminate content cannot cause absorption, decoration or an Unsuitable verdict; preserve the parcel and return an inconclusive diagnostic. Retained parcel doors remain protected; explicit authorized retirement removes that parcel's automatic doors atomically, never an unrelated manual door.
+
 ## Purpose
+
+**Follow-on review, 2026-09-08:** The revision above records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves H4/H5. H2 remains a detached stage after foundation and H1; live occupied edits and Service/Visitor swaps require H4 implementation passes and H5 candidate cutover passes, then [Product acceptance](../mvp/04_product_delivery_and_acceptance.md). Documentation approval activates nothing. Implementation/cutover remain NOT VERIFIED; Product acceptance and separate external Gate R remain PENDING.
 
 Amend Zone planning for scale-diverse core-plus-annex parcels, deterministic queue envelopes, dedicated Anchors, preservation-safe mutations, and unsuitable units. ZoneManager remains sole parcel/wall/door writer.
 

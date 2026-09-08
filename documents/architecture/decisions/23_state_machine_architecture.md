@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** The mandatory shared Resource/Node framework and Phase-7 prerequisite are superseded by [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08. Keep explicit states/transitions; use the smallest owner-local representation. The body below is preserved history, not an instruction to implement a generic FSM.
+
 ## Context
 Several core systems (Visitor Agents, Tenant Lifecycle, Staff Behavior, Zone Tool) have complex, interdependent behavior with clear state transitions. We needed a consistent, debuggable, and maintainable state machine pattern.
 

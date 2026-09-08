@@ -1,5 +1,7 @@
 # Metrics & Data Visualization
 
+**Scope clarification, 2026-09-08:** This is a full-game metric catalogue, not a requirement to fabricate sources. [Current MVP](../current_mvp.md) alone defines delivered UI. Revenue, viability, satisfaction, trends/history and their heatmaps are deferred; service/rent/source facts must be labeled as such, never interpreted as those metrics. `presentation/H1` owns the source-backed one-primary-panel behavior.
+
 ## Overview
 
 This system ensures the player can always understand why things are happening in their district. Following Pillar 4 (Discoverable Rules, Transparent UI), all game data is visible, readable, and directly tied to in-world conditions. There are no hidden mechanics.

@@ -1,5 +1,17 @@
 # Zone / Space Design
 
+**Revision:** Approved 2026-09-08 consistency pass; [Current MVP](../current_mvp.md) governs scope. This element owns player editing; element 20 supersedes the historical rectangular/category-average splitter below.
+
+## Current Parcel and Mutation Contract
+
+Use subtype-specific minima, rotatable cores, optional annexes and soft target ranges from [element 20](20_tenant_interiors_visitor_interactions.md), never a generic zone average or hard maximum. Anchors bypass ordinary splitting. Candidate selection is feasible 6/3/1 weighting with the separate element-06 commercial score; legal adjacent customer-facing theme IDs must differ. No live tenant recoloring or new tenant identity is inferred from painting.
+
+Preserve established legal parcels and selected doors. Paint may create/extend/merge same-type zones under `zone_parcels/H6`; None removes selected tiles and is not the toolbar's no-tool state. Evaluate the complete prospective geometry/door/binding transaction, not only area. Reject any mutation that damages a retained locked/occupied parcel or protected door. Vacant mutable parcels may retire/reform; newly unsuitable vacant shells remain visible. Explicit authorized whole-parcel retirement coordinates Tenant unbind/retirement and removal of that parcel's automatic doors atomically; no area-only implicit eviction or financial penalty is inferred. Manual doors must remain legal except the accepted obsolete same-zone merge-boundary removal.
+
+Unpaid fit-out cancellation follows element 01; it does not remove geometry. Live occupied interior changes requiring draft Service/Visitor coordination remain gated by the Tenant Interiors index. The foundation's approved explicit Tenant retirement contract remains separate. Per-zone No Walls is deferred; element 12 owns wall behavior.
+
+**Follow-on review, 2026-09-08:** The preceding draft boundary records the earlier consistency pass. [ADR 34](../../architecture/decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves interior H4/H5 without changing these gameplay rules. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Live occupied-edit coordination requires those implementation/cutover passes, not documentation approval. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
+
 ## Overview
 
 Zones are the player's primary creative tool. A zone is a contiguous area of tiles designated for a specific commercial purpose. The player defines the zone's shape, size, type, and internal layout. The game's AI handles splitting the zone into individual businesses, populating them with tenants, and managing their spatial needs.
@@ -49,7 +61,7 @@ Zones can be **any contiguous shape**. There is no restriction to rectangles or 
 
 ## Zone Types & Subtypes
 
-### Zone Types (MVP)
+### Zone Types (Historical Sizing Examples)
 
 | Type | Description | Avg Store Size |
 |------|-------------|----------------|
@@ -61,7 +73,7 @@ Zones can be **any contiguous shape**. There is no restriction to rectangles or 
 
 ### Subtypes
 
-Each zone type has 5+ subtypes. Subtypes define the specific business category and have minimum/maximum tile requirements.
+Subtypes define customer-facing identity and reference an operational profile. The following examples predate element 20; their old averages/min-max assumptions are non-authoritative. Element 20 contains the current subtype minima and soft target ranges.
 
 | Zone Type | Example Subtypes |
 |-----------|-----------------|
@@ -94,7 +106,9 @@ Every tile within a zone has a typology. By default, all tiles are **Tenant tile
 
 ---
 
-## Frontage-Based Splitting Algorithm
+## Historical Frontage-Based Splitting Sketch
+
+Superseded for new interior planning by element 20 and staged `tenant_interiors/H2`; retained to explain the original foundation design. Do not implement this sketch's average-size formula, mandatory rectangles, Anchor splitting or global recoloring as current behavior.
 
 When a zone is finalized, the AI splits it into rectangular business parcels. The algorithm runs in five phases.
 
@@ -155,9 +169,9 @@ Each reserved frontage becomes the seed of a rectangular parcel:
 
 ---
 
-## Wall System Reference
+## Historical Wall Options
 
-*(Full wall mechanics are defined in the Wall System element. The following is a summary for context.)*
+The following open-plan options are deferred history. Current mandatory walls/doors are defined by element 12 and approved Zone/Parcel contracts.
 
 - **Business walls:** Each business is enclosed by default. "No Walls" mode creates open-plan layout.
 - **Zone perimeter walls:** Surround the zone, with gaps at transit connections and corridor doors.
@@ -167,7 +181,9 @@ Each reserved frontage becomes the seed of a rectangular parcel:
 
 ---
 
-## Zone Editing Consequences
+## Historical Zone Editing Consequences
+
+The table and eviction notes below are superseded by Current Parcel and Mutation Contract above. They are not current instructions: area-only eviction and whole-zone recalculation conflict with preservation-first geometry and Tenant-owned lifecycle.
 
 Editing a zone after tenants have moved in has consequences:
 

@@ -4,9 +4,11 @@
 
 **Prepared:** 2026-09-05
 
-**Implementation order:** 1 of TBD
+**Implementation order:** 1 of 1
 
 ## Purpose
+
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), element 03 and ADR 33/MVP H3 govern scope, prices, paid-action cancellation and the common gate. Required geometry is approved below; absence of an authored record is a content error, not an unresolved design choice. No mechanical elevator trip/capacity system is included.
 
 Define the smallest authoritative construction program for player-built circulation and Operations Rooms. It accepts typed player intents, provides non-mutating previews, and commits legal placements atomically on acquired, buildable District cells.
 
@@ -128,7 +130,7 @@ The committed elevator has one stable shaft identity and an explicit canonical s
 
 ### Operations Rooms
 
-An Operations Room request requires an approved, immutable catalog geometry record; until a footprint is supplied, it rejects as policy unavailable rather than assuming a tile count. Its legal cells follow the common rules and it costs one immutable 2,000-Kred line per room placement.
+An Operations Room request requires the approved immutable **2x2** catalog geometry record. Missing/malformed content rejects as policy unavailable; the footprint itself is settled. Its legal cells follow the common rules and it costs one immutable 2,000-Kred line per placement.
 
 On commit, the construction authority publishes a detached room fact containing stable `operations_room_id`, stable building ID, canonical floor identity, committed construction revision, and `committed_valid_for_staffing=true`. This is the sole construction input Staff H1 consumes. Staff independently owns staffing capacity, coverage, task, and payroll facts. Removing or invalidating a committed room is not authorized in this MVP; no room-reference mutation path is implied.
 

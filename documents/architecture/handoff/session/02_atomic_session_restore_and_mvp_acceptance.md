@@ -4,6 +4,10 @@
 
 **Approved — 2026-09-05 (delegated architecture authority).** This handoff extends District H9's detached Save V2 contract into the complete session restore orchestration and defines the MVP end-to-end acceptance gate.
 
+**Revision:** 2026-09-08 delegated consistency pass under ADR 33/[MVP H3](../mvp/03_foundation_integration_clarifications.md). This is foundation acceptance, not Product release. Coherent export, all-imports-before-derived-rebuild, reserved synergy value and durable due-payroll input explicitly supersede older ambiguous clauses. Draft interior authority-local schemas remain gated.
+
+**Follow-on review, 2026-09-08:** The preceding draft disposition is historical. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately approves [interior H5](../tenant_interiors/05_persistence_presentation_and_cutover.md)'s authority-local schema and candidate cutover architecture. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> [Product acceptance](../mvp/04_product_delivery_and_acceptance.md); external Gate R is separate. Live restore integration requires implementation/candidate passes, never documentation approval alone. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
+
 ## Purpose
 
 Restore a complete saved session by exporting, validating, staging, and committing detached authority state as one replacement. A restore either publishes one coherent new session or leaves the current session unchanged.
@@ -27,7 +31,7 @@ Restore a complete saved session by exporting, validating, staging, and committi
 | `progression` | Progression authority | Imports committed unlock/selection facts; derives eligibility after import | No derived eligibility snapshot |
 | `prestige` | Prestige authority | Imports committed prestige facts used by dependent reconstruction | No presentation cache |
 | `staff` | Staff authority | Imports staff facts and validates stable references | Authoritative staff state only |
-| `synergy` | Synergy authority | Imports committed synergy facts after referenced owners exist | No computed presentation state |
+| `synergy` | Session registry validator | Validates exact reserved `{"schema_version":1,"mode":"derived_only"}` value | No mutable synergy state or cache; ADR 33 |
 | `tenant` | Tenant authority | Imports tenant occupancy after district, zone/parcel, and progression facts exist | Authoritative tenant lifecycle only |
 | `visitor` | Visitor authority | Imports realized visitor lifecycle state after arrivals can resolve stable sources | Decision below |
 | `time` | Existing time authority | Participates only through its existing detached snapshot contract | Existing time-owned state; no new policy here |
@@ -38,7 +42,7 @@ Registry order is fixed: `district`, `zone_parcel`, `economy`, `progression`, `p
 
 ### Export and write
 
-1. The registry exports detached snapshots from the current committed session in registry order.
+1. Under ADR 33's shared non-reentrant session gate, the registry captures the complete detached snapshot set in registry order with calendar/mutation delivery excluded. Release the gate only after the whole set is captured; file I/O occurs outside it.
 2. `SaveManager` assembles the exact H9 V2 envelope, validates it, writes a temporary slot file, flushes it, and atomically replaces the selected slot.
 3. A failed export, validation, temporary write, flush, or replacement preserves the prior slot. It does not alter the active session or emit a load event.
 
@@ -47,7 +51,7 @@ Registry order is fixed: `district`, `zone_parcel`, `economy`, `progression`, `p
 1. `SaveManager` parses the selected slot and enforces H9's V2 schema/version/exact-key rule before candidate construction.
 2. It resolves `layout_ref`, verifies definition version and fingerprint, and creates an isolated candidate session container.
 3. Every registry owner validates its own snapshot detached; the registry then validates all cross-authority stable-ID and revision references in fixed order.
-4. The candidate imports snapshots in registry order. Derived indexes, eligibility, caches, geometry, transforms, navigation/traffic graphs, Nodes, reservations, and presentation are rebuilt only in candidate scope.
+4. Import **all** durable snapshots in registry order before cross-owner derivation. Then rebuild District/Zone indexes, candidate Prestige-backed Progression eligibility, public topology, spatial context, Tenant/Visitor read state and projections in dependency order inside the candidate only. A registry entry appearing earlier is not permission to consult the old live session. No tier awards, rent, payroll, evaluations or retroactive ticks run during import/rebuild.
 5. Any error destroys the candidate and preserves the old committed session, its projections, and its slot.
 
 ### Restore barrier and commit

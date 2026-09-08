@@ -1,5 +1,11 @@
 # Visitor Simulation
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. This is a full-game behavior catalogue; budgets, satisfaction, need decay, revenue and attraction simulation are deferred. Element 20 supersedes old goals/waiting/service assumptions, and element 01 owns clock units.
+
+## Foundation-Only Proxy Baseline
+
+The Corridor Service Integration Gate uses an explicit immutable proxy policy, not inferred tenant capacity: at most one admitted interaction per proxy (a FIFO of maximum one), completes at the next visitor tick after admission, produces one non-economic result, then the visitor leaves. Full/invalid targets do not reserve a place; exclude that target for the visit and retry another reachable target on the next decision. At most three failed target/route attempts per visit before leaving; exit failure keeps the visitor active at a valid public anchor and retries at most once each visitor tick. Public walking speed is one tile per scaled elapsed second; arrivals remain the district-arrival contract, not a new demand formula. Content serializes these values explicitly, and Visitor owns admission/participation; missing policy is unavailable. These 2026-09-08 clarification values only complete the technical test foundation. Product service uses element 20 after its separately approved cutover and never this proxy as fallback.
+
 ## Overview
 
 Visitors are the lifeblood of the district. Every visible visitor is an individual agent with their own objectives, preferences, and decision-making process. The simulation follows a **"What You See Is What Is Simulated"** philosophy: statistics reflect the actual population present, and crowd behavior emerges from independent decisions rather than scripted patterns.
@@ -82,7 +88,7 @@ Visitors have two separate budgets:
 
 ### State Needs
 
-Each visitor tracks state needs on a 0–100 scale. Needs decrease by 1 point per visitor tick (5 sim minutes).
+In the deferred needs model, each visitor tracks needs on a 0-100 scale. Needs decrease by 1 per visitor tick (5 scaled elapsed seconds, per element 01), except during committed service where ordinary needs are suspended.
 
 | Need | Description | Default Spawn Range | Goal Exception |
 |------|-------------|---------------------|----------------|
@@ -322,7 +328,7 @@ Top Visitor Thoughts (right now):
 
 - Visitors are individual agents, but the simulation uses optimization techniques:
   - **Spatial partitioning:** Only simulate visitors in the active camera view + buffer zone
-  - **Visitor Tick:** Decisions update every 5 sim minutes (5 seconds real time at 1x), not every frame
+  - **Visitor Tick:** Decisions update every 5 scaled elapsed seconds (5 real seconds at 1x), not every frame
   - **Path caching:** Common paths are cached and reused when possible
   - **Batch updates:** Satisfaction and attribute updates are batched per sim tick
 

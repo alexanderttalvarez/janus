@@ -3,7 +3,11 @@
 **Status:** Approved — 2026-09-06  
 **Implementation order:** 1 of 5
 
+**Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), [element 20](../../../game_design/elements/20_tenant_interiors_visitor_interactions.md) and ADR 33 apply. Element 20 supplies explicit revision-1 service/planning/fixture defaults for authored content, never runtime fallback. The [program readiness matrix](_index.md) limits this approval to detached outcomes: operational-category inputs and Visitor persistence are fixture-tested contracts, not live H8/schema changes before draft H4/H5 approval. Any indeterminate eligible profile defers selection; it cannot be discarded to label geometry Unsuitable.
+
 ## Purpose
+
+**Follow-on review, 2026-09-08:** The revision above records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves H4/H5. H1 still proceeds detached-first after foundation; fixtures do not activate live categories, H8 goals or Visitor schemas. Live integration follows H4 implementation passes and H5 candidate cutover passes, then [Product acceptance](../mvp/04_product_delivery_and_acceptance.md). Implementation/cutover remain NOT VERIFIED; Product acceptance and separate external Gate R remain PENDING.
 
 Define immutable versioned content and pure deterministic planning for subtype feasibility, fixtures, and minimal Product MVP visitor goals. No runtime service, Nodes, visitor movement, parcel mutation, or economy effect is created here.
 

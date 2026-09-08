@@ -89,7 +89,7 @@ The UI serves the creative fantasy. It provides information without cluttering t
 
 ## Scope Philosophy
 
-Start small, think big. The MVP is one flat plot with basic zoning, abstract visitor flow, and a simple economy. Each subsequent layer adds one new dimension: verticality, multiple plots, transit options, prestige features, progression systems.
+Start small, think big. The original flat-plot prototype is now the technical Corridor Service Integration Gate, not the player-facing release. The approved [Current Product MVP](current_mvp.md) explicitly supersedes that older scope: one Plot with basic vertical construction, geometry-responsive tenant interiors, abstract service, and a rent economy. Multiple Plots and richer transit, prestige, and progression remain later layers. This scope revision preserves the premise and makes vertical spatial design visible in the first product.
 
 The game should feel complete at MVP and rich at full scope.
 

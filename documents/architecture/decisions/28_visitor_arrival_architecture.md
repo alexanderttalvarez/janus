@@ -3,6 +3,8 @@
 **Date:** 2026-08-30
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, defines the common commit gate and staged interior boundary. Immediate pedestrian allocation is current; pending transport cohorts remain unavailable and need no persistence implementation now.
+
 ## Context
 
 Decision 3 defines visible visitor agents and the existing runtime spawns them from four plot-corner anchors. District layouts introduce resolved streets, pedestrian bands, multiple Active Plots, and future transport modes. Visitor demand must remain independent from the selection and presentation of physical arrival sources.

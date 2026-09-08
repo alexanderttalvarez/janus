@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, and `prestige/H1-H2` retain official snapshot ownership with fixed Quality 20. The five-manager/six-factor prerequisite and SynergyManager reference below are deferred history, not current dependencies.
+
 ### Context
 Prestige is the core progression metric (Scale × Quality). It drives Mall Levels, tech points, and visitor attraction. We needed to decide on calculation ownership, factor computation, and trend tracking.
 

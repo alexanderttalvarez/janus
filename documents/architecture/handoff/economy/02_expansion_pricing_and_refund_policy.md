@@ -6,6 +6,8 @@
 
 ## Purpose
 
+**Revision:** 2026-09-08 delegated consistency pass. Element 03 is the single monetary/refund authority; no post-commit refund or paid-construction cancellation job is current. [Current MVP](../../../game_design/current_mvp.md) gates playable expansion; approved pricing here does not expand scope. ADR 33/MVP H3 govern shared transaction/settlement boundaries.
+
 Provide the approved, centrally tunable Economy policy values needed to price plot-section acquisition, vertical floor-space acquisition, Street Segment conversion, and eligible demolition. Define the no-refund and no-reversal rules that apply once those transactions commit.
 
 This handoff supplies immutable policy data to Economy H1. It does not change Economy's balance ownership, transaction protocol, District Runtime's sole district-writer role, or the separate future ownership of progression gates and tenant consequences.
@@ -91,7 +93,7 @@ plot_section_cost = section_tile_count × 1,000 Kreds
 | U4 | 1,800 Kreds |
 | U5 | 2,000 Kreds |
 
-This table is authoritative. It must not be extrapolated beyond the approved physical elevation range. Economy prices a requested valid tile set from its explicit signed elevation; District Runtime owns whether the tile set is physically/legal/progression eligible.
+This table mirrors element 03, the single monetary authority; it is not independently tuned and must not be extrapolated beyond the approved physical elevation range. Economy prices a requested valid tile set from its explicit signed elevation; District Runtime owns physical/progression eligibility.
 
 ### Street Segment conversion
 
@@ -124,7 +126,8 @@ demolition_cost = 20 Kreds per eligible whole fixed structure
 | Completed Plot Section or vertical-space purchase | No refund policy; reversal is unsupported until separately approved. |
 | Completed Street Segment conversion | Irreversible in MVP; no reversal or refund. |
 | Completed eligible fixed-structure demolition | No refund. |
-| Construction cancellation | Outside H2; refund/penalty policy remains unapproved. |
+| Paid placement/job cancellation after commit | Unavailable, no reversal/refund under element 03; previews may cancel free. |
+| Unpaid tenant fit-out cancellation | State-only Tenant/Zone unbind under element 01 and `tenant/H1`; no Economy charge/refund. |
 | Occupied zone/tenant demolition | Reject in MVP; future tenant lifecycle owns consequences. |
 
 No post-append rollback, compensating refund, or refund-by-direct-balance-write is permitted.

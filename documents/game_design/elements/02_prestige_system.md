@@ -1,5 +1,11 @@
 # Prestige System
 
+**Scope/revision:** [Current MVP](../current_mvp.md), 2026-09-08. This element owns Prestige arithmetic and tier mapping; element 08 owns milestone awards.
+
+## Current MVP Calculation
+
+Monthly, count distinct developed tiles using stable `(plot ID, signed elevation, local cell)` identity. Zone, tenant, or amenity qualification counts a tile once; owned empty land contributes zero. `scale_quarters = min(developed_tile_count, 400)`, `Scale = scale_quarters / 4`, fixed `Quality = 20`, and `Prestige = 5 * scale_quarters` (0-2,000). No six-factor calculation, loan multiplier, daily trend or visitor effect is active. The authored initial official tier is Empty Lot with no fabricated numeric score; the first valid monthly result publishes the score. This explicitly applies the already approved `prestige/H2` baseline to the design. Higher full-game tiers below remain designed but unreachable under the baseline alone.
+
 ## Overview
 
 Prestige is the core progression metric in Janus. It represents the district's reputation, desirability, and overall quality. It is the product of two visible components: **Scale** and **Quality**. Prestige drives visitor attraction, tenant desirability, rent ceilings, and mall level advancement.
@@ -89,7 +95,7 @@ Quality measures how well the district functions and looks. It is composed of si
 
 ## Prestige Tiers
 
-Prestige values map to named tiers. Each tier provides mechanical benefits. Within each tier, effects scale smoothly — there are no sudden jumps at thresholds.
+Prestige values map to named tiers. Tenant access and rent ceilings change discretely at thresholds. Future visitor attraction may interpolate within tiers; it is not an MVP effect.
 
 | Tier | Prestige Range | Visitor Attraction (spawn multiplier) | Tenant Tier Access | Rent Ceiling ($/tile/day) |
 |------|---------------|--------------------------------------|-------------------|--------------------------|
@@ -133,9 +139,8 @@ Exclusive is an additional Megacity category, not Tenant Tier 6.
 **Design rationale:** Full recalculation is expensive (averages across all tenants, visitors, tiles, etc.). Monthly calculation keeps CPU usage manageable while keeping the game responsive. The daily trend indicator bridges the gap — the player sees immediate feedback without constant heavy computation.
 
 **Trend indicator logic:**
-- ▲: Current estimated quality > last official prestige
-- ▼: Current estimated quality < last official prestige
-- ◆: Within ±2% of last official prestige
+- Future trend compares estimated **Prestige** (Scale times Quality) to last official Prestige, never Quality to Prestige.
+- Up/down applies above/below a band of `max(1, last_official_prestige * 0.02)`; within that inclusive band is neutral. MVP exposes trend as unavailable, not zero.
 
 ---
 

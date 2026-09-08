@@ -2,6 +2,8 @@
 **Date:** 2026-07-28
 **Status:** Accepted
 
+**Current applicability:** [ADR 33](33_documentation_consistency_and_minimum_contracts.md), 2026-09-08, requires source-owned condition facts and presentation-only dismissal. The general Callable polling framework below is not a current implementation prerequisite.
+
 ### Context
 The game needs toast notifications (auto-dismiss, max 3 visible, queued), a notification panel (log with filtering), and a red dot indicator for unresolved high-priority items.
 

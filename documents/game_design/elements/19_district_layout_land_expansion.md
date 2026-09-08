@@ -4,6 +4,8 @@
 
 This document is the central design authority for district geometry, land vocabulary, ownership expansion, vertical rights, street conversion, and arrival-source placement. Other system documents should reference these rules rather than redefine them.
 
+**Revision:** Approved 2026-09-08 consistency pass. [Current MVP](../current_mvp.md) limits implementation scope; approved future geometry/pricing is not a requirement to ship multi-Plot play. Historical road timing is superseded by the exact intervals below.
+
 ---
 
 ## FACTS
@@ -22,7 +24,7 @@ This document is the central design authority for district geometry, land vocabu
 | **Carriageway** | The vehicle-lane portion of a Street Corridor. |
 | **Intersection** | The road area where Street Segments meet. |
 
-Do not use **parcel** for land. In Janus, a parcel means a tenant business.
+Do not use **parcel** for land. A parcel is a tenant-sized business unit inside a zone; it can be vacant, unsuitable, constructing or occupied. It is not the tenant identity itself. Land uses Plot and Plot Section.
 
 ### District Grid and Block Slots
 
@@ -100,10 +102,11 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 ### Traffic and Crossings
 
 - Traffic routes are initially straight-through only. Intersection reservation behavior remains authoritative for straight crossings; there are no intersection traffic lights or pedestrian crossings.
-- The controlled area is the connected union of Active Plot rectangles. Every outward-facing lane at its road perimeter has paired spawn/despawn anchors just outside the boundary intersection; expansion moves active anchors outward. Converted or inactive roads have no active anchors.
-- Midpoint crosswalks have two opposing traffic-light poles in the Pedestrian Bands. The shared simulation-time clock pauses with simulation: north-south crossings use offset 0, east-west use offset 5T, and at zero north-south vehicle lights are green while east-west are red.
-- The 10T cycle is vehicle green 5T, yellow 1T, red 4T; pedestrian red 6T, green 4T. Pedestrians enter only on green. During yellow, cars past their stop line clear and other cars stop.
+- Controlled traffic boundaries derive from orthogonally adjacent **Active Plot slots**, not a literal connected union of Plot rectangles (roads separate those rectangles). Selected/unowned slots do not count. Each active-slot component uses its bordering roads; disconnected components are valid, including proof Fixture C. Never fill intervening unowned slots or a bounding box. Every outward-facing lane at a component's road perimeter has paired spawn/despawn anchors just outside its boundary intersection, deduplicated by stable lane/control identity. Expansion moves those boundaries; converted/inactive roads have no anchors. The permanent outer ring remains.
+- Midpoint crosswalks have two opposing traffic-light poles in Pedestrian Bands. Use elapsed simulation seconds from element 01, pausing/scaling with simulation, with normalized phase `p = (elapsed / T + offset) mod 10`: north-south offset 0, east-west offset **6**. At epoch zero north-south vehicle lights are green and east-west red. This replaces the incompatible 5T-offset/red-at-zero pair; opposite phases need not be half a cycle because these are independent midpoint controls, not intersection control.
+- Vehicle phases: green `[0,5)`, yellow `[5,6)`, red `[6,10)`. Pedestrian entry green is `[6,9)`; all other phases are pedestrian red. `[9,10)` is a final-T pedestrian clearance interval with vehicles still red. During yellow, cars past their stop line clear and other cars stop. Pedestrians enter only while entry-green and vehicle occupancy is clear; cars enter only while vehicle-green and pedestrian occupancy is clear. A late/stalled occupant extends the conflicting movement hold, never its nominal phase or entry permission. Thus clock transitions cannot cause collisions or strand a crossing visitor.
 - `T` is the full carriageway crossing distance divided by canonical crosswalk speed. Every visitor uses this canonical speed regardless of status.
+- Canonical crosswalk speed is 1 tile per scaled elapsed second for this baseline. `T` therefore equals the carriageway width in tiles, independent of visitor attributes. Traffic presentation owns transient occupancy/reservations; the clock is a pure read of Time, not another saved timer. Public-route traversal observes the crossing hold, but arrival-source allocation does not depend on traffic signals.
 - Midpoint crosswalks are the only pedestrian crossings. Outer-ring midpoint crosswalks and their lights remain traffic-functional but are not pedestrian graph links or visitor crossings.
 
 ### Visitor Demand and Arrival Realization
@@ -117,13 +120,13 @@ Do not use **parcel** for land. In Janus, a parcel means a tenant business.
 ### Economy and Progression Authority
 
 - Economy and progression systems determine whether an eligible purchase, conversion, facility, or floor-space acquisition is currently allowed.
-- Exact prices, unlocks, requirements, and formulas for district expansion are not approved.
+- Approved expansion prices/refunds are in [element 03](03_economy.md); approved elevation, Plot Access and Bus Stop eligibility are in [element 08](08_mall_levels_tech_tree.md). Those are single numerical authorities. Facilities and bus arrivals remain deferred; no purchase rule is inferred from a visual or future fee proposal.
 
 ---
 
 ## ASSUMPTIONS
 
-- A hybrid content pipeline using typed Godot `Resource` metadata plus token-grid files is a provisional implementation approach to test. It is not an approved gameplay fact or a final content format.
+- Typed Godot Resource metadata plus token-grid layers is the architecture format frozen by `district_layout/H1-H2` KEEP, not an unresolved design question. Geometry and initial-state fixture records are unchanged by this pass.
 
 ### 2026-08-31 Road & Intersection Addendum
 
@@ -131,12 +134,10 @@ The road profile, generated public-realm, conversion, frontage/access, and traff
 
 ---
 
-## OPEN QUESTIONS
+## Resolved Defaults and Deferred Work
 
-- Construction-cancellation refund policy.
-- Demolition timing and consequences for old buildings retained after Plot Section purchase; an eligible whole fixed-structure demolition costs the approved flat 20-Kred fee and creates no refund.
-- Future progression extension for `F3`–`F9` and `U4`–`U5`, beyond their current explicit unavailability.
-- Transport-facility progression gates beyond the current explicit unavailability.
-- Transport-facility prices and operating fees.
-- The final typed-resource schema, token-grid format, validation rules, and whether the provisional hybrid pipeline should be retained.
-- Presentation details for warnings and for future public-transport arrivals.
+- Eligible fixed-structure demolition commits immediately and atomically across the whole occupant; occupied tenant/zone dependencies reject, with no charge. There is no demolition timer or cancellation job.
+- Pre-commit cancellation is free; completed paid actions have no refund, per element 03.
+- Full physical elevation gates and the hybrid content format are resolved in the authorities above, not open questions.
+- Later transport facilities, fees, arrival presentation and slot-role transitions need future handoffs. Current behavior is explicit unavailable, not a runtime fallback.
+- The production single-owned-Plot rule does not constrain proof-only Fixture C's exact three initial entry sections. Fixture C is not a player start or proof of geometrically connected Plot rectangles.

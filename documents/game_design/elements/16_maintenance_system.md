@@ -31,12 +31,12 @@ Repair Cost = Base Cost × (1 + (100 - Condition) / 100) × Floor Multiplier
 
 **Base Cost:** 50 Kreds
 
-| Condition | Degradation | Multiplier | F1 Cost | F3 Cost | F5+ Cost |
+| Condition | Degradation | Multiplier | G Cost | F2 Cost | F4+ Cost |
 |-----------|-------------|------------|---------|---------|----------|
-| **90** | 10% | 1.10x | 55 | 66 | 90 |
-| **60** | 40% | 1.40x | 70 | 84 | 114 |
-| **30** | 70% | 1.70x | 85 | 102 | 138 |
-| **10** | 90% | 1.90x | 95 | 114 | 153 |
+| **90** | 10% | 1.10x | 55 | 77 | 99 |
+| **60** | 40% | 1.40x | 70 | 98 | 126 |
+| **30** | 70% | 1.70x | 85 | 119 | 153 |
+| **10** | 90% | 1.90x | 95 | 133 | 171 |
 
 **Design rationale:** The formula creates a ~2x cost difference between early repair (55 Kreds) and critical repair (95 Kreds). The floor multiplier adds verticality pressure. Players are incentivized to maintain regularly rather than wait for decay.
 
@@ -44,11 +44,16 @@ Repair Cost = Base Cost × (1 + (100 - Condition) / 100) × Floor Multiplier
 
 | Floor | Base Cost Multiplier |
 |-------|---------------------|
-| **F1** | 1.0x |
-| **F2** | 1.2x |
-| **F3** | 1.4x |
-| **F5+** | 1.8x |
-| **U3** | 2.0x |
+| **G** | 1.0x |
+| **F1** | 1.2x |
+| **F2** | 1.4x |
+| **F3** | 1.6x |
+| **F4-F9** | 1.8x |
+| **U1** | 1.2x |
+| **U2** | 1.6x |
+| **U3-U5** | 2.0x |
+
+2026-09-08 clarification: old F1-as-ground labels are mapped to G, missing bands use the simplest bounded progression above, and examples are recomputed from the formula. Round a final non-integral cost up to the next centi-Kred once. This remains post-MVP design and authorizes no repair implementation.
 
 ### Visual Manifestation
 
