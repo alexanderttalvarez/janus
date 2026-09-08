@@ -1,6 +1,6 @@
 # Product MVP Evidence Register
 
-**Disposition, 2026-09-08:** Architecture documents approved under [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md); Design interpretations A1-A3 PENDING; implementation acceptance PENDING; Product acceptance PENDING; external district Gate R PENDING. This is a tracking template plus a linked bounded audit, not a fabricated test report.
+**Disposition, 2026-09-08:** Architecture documents approved under [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md); Design A1/A2 decisions recorded below; A3 reset acknowledgement PENDING; implementation acceptance PENDING; Product acceptance PENDING; external district Gate R PENDING. This is a tracking template plus a linked bounded audit, not a fabricated test report.
 
 Return to [evidence index](../_index.md). Requirements and test definitions: [MVP delivery/acceptance](../../handoff/mvp/04_product_delivery_and_acceptance.md). Historical district claims remain in their [own package](../district_layout_acceptance/_index.md).
 
@@ -12,25 +12,25 @@ Return to [evidence index](../_index.md). Requirements and test definitions: [MV
 
 ## Design decision register
 
-These are explicit pending interpretation decisions, not named people approving unseen behavior. Engineering may proceed on unaffected owner/content/capture infrastructure; do not lock contested service traces or ship them as Design-approved before resolution.
+These decisions are current gameplay authority for H4/H5 acceptance traces. They do not add spending, revenue, viability, or any other post-MVP economy behavior.
 
-| ID | Interpretation requiring confirmation | Alternative that would change the contract | Decision | Reviewer/date/evidence/revision |
-|---|---|---|---|---|
-| D-A1 | Expected wait ends at exterior-to-abstract admission; later internal checkout/device wait is excluded | Include internal stages or estimate until final completion | PENDING | Not recorded |
-| D-A2 | Café/food-court table cohorts share one counter stage and then seated stage, applying common partial-table rules | Per-person counter throughput or independent seat claims | PENDING | Not recorded |
-| D-A3 | Load preserves goals/results/cadence but resets commitments, FIFO position and elapsed service | Exact in-flight continuation, requiring additional durable Service state | PENDING acknowledgement of approved reset scope | Not recorded |
+| ID | Decision | Disposition | Evidence/revision |
+|---|---|---|---|
+| D-A1 | Expected wait ends at exterior-to-abstract admission. Later internal checkout/device waits do not affect patience. | **DECIDED**, user confirmation 2026-09-08 | Current Product MVP; ADR 34; H4 |
+| D-A2 | Café/food-court table cohorts share one counter-service stage, then the seated stage. Individual counter payments are explicitly **post-MVP**; Product service results remain non-economic. | **DECIDED**, user confirmation 2026-09-08 | Current Product MVP exclusions; ADR 34; H4 |
+| D-A3 | Load preserves goals/results/cadence but resets commitments, FIFO position and elapsed service. | PENDING acknowledgement of approved reset scope | Not recorded |
 
-D-A1/D-A2 can be decided before code; their visible consequences still require playtest acceptance. Do not invent a response. If a different meaning is confirmed, revise ADR 34/H4 and corresponding traces before implementation of that behavior. D-A3 records acceptance of the documented reset limitation, not permission to quietly expand persistence.
+D-A3 records acknowledgement of the documented reset limitation, not permission to quietly expand persistence. A future change to D-A1/D-A2 requires revision of ADR 34/H4 and affected traces before implementation of the changed behavior.
 
 ## Result registry
 
-A01-A15 determine Product engineering/visual acceptance, subject to Design decisions. A16 is a separate external release prerequisite: pending A16 does not turn a passed Product test into a failure, and Product acceptance never implies A16 passed. All rows here remain PENDING.
+A01-A15 determine Product engineering/visual acceptance, subject to D-A3 acknowledgement. A16 is a separate external release prerequisite: pending A16 does not turn a passed Product test into a failure, and Product acceptance never implies A16 passed. All rows here remain PENDING.
 
 | Test ID(s) | Required evidence group | Status | Candidate-bound artifact |
 |---|---|---|---|
 | A01-A03 | Startup, clock/atomicity, geometry | PENDING | Not supplied; audit findings are not PASS |
 | A04-A06 | Normal-play unlocks, Tenant/rent, Staff/payroll | PENDING | Not supplied |
-| A07-A09 | Nine typologies, FIFO/wait, batches/reload | PENDING | Not supplied; D-A1/D-A2 must be resolved |
+| A07-A09 | Nine typologies, FIFO/wait, batches/reload | PENDING | Not supplied; D-A1/D-A2 are decided |
 | A10-A11 | Historical visitor provenance, cap/routes/topology | PENDING | Not supplied |
 | A12-A13 | Save-state/fault matrix and lifecycle/leak parity | PENDING | Not supplied; audit reports source-level gaps |
 | A14 | Visual/UI/content and Design interpretation review | PENDING | Not supplied |
@@ -61,7 +61,7 @@ Blank fields remain blank until factual data is supplied. A screenshot alone can
 
 | Role | Required review | Status |
 |---|---|---|
-| Design | D-A1/D-A2 decision; D-A3 reset disclosure; actual capacity/queue/normal-play presentation | PENDING, no signer recorded |
+| Design | D-A3 reset disclosure; actual capacity/queue/normal-play presentation | PENDING, no signer recorded |
 | QA | A01-A15 complete same-candidate artifacts and errors/regressions | PENDING, no signer recorded |
 | Architecture | Revised owner/atomicity/persistence conformance against actual candidate | PENDING independent candidate review; ADR approval is not this signoff |
 | Release | Exports, artifact binding and H10 external Gate R review | PENDING, no signer recorded |
