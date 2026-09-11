@@ -17,7 +17,13 @@ class FakeProgression extends DistrictRuntimePorts.DistrictProgressionPort:
 class RejectingZone extends DistrictRuntimePorts.DistrictZonePort:
 	var reject: bool = false
 
-	func prepare(_intent: Dictionary, _candidate_state: Dictionary) -> Dictionary:
+	func prepare(
+		_intent: Dictionary,
+		_candidate_state: Dictionary,
+		_spatial_snapshot: DistrictZoneSpatialSnapshot,
+		_public_band_access: PublicBandAccessSnapshot = null,
+		_zone_plan: Dictionary = {}
+	) -> Dictionary:
 		if reject:
 			return {"accepted": false, "diagnostics": [{"code": "ZONE_CONSTRUCTION_REJECTED", "message": "injected Zone rejection"}]}
 		return {"accepted": true, "prepare_token": {}, "diagnostics": []}
@@ -55,7 +61,8 @@ func _test_policy() -> void:
 	detached["entries"]["stairs"]["charge_lines"][0]["value"] = 1
 	_assert(int(policy.entry_for("stairs").get("charge_lines", [])[0].get("value", -1)) == 500, "construction policy values are detached and immutable at the API boundary")
 	_assert(policy.charge_lines_for("elevator", 2).map(func(line: Dictionary) -> int: return int(line.get("value", -1))) == [2000, 500, 500], "elevator policy exposes shaft-once and lobby-per-stop charge lines")
-	_assert(policy.entry_for("operations_room").get("geometry_available", true) == false, "unresolved Operations Room geometry is explicit rather than inferred")
+	var room_entry: Dictionary = policy.entry_for("operations_room")
+	_assert(bool(room_entry.get("geometry_available", false)) and int(room_entry.get("footprint_width", 0)) == 2 and int(room_entry.get("footprint_depth", 0)) == 2, "Operations Room policy exposes the approved 2x2 geometry")
 	_assert(policy.entry_for("unsupported").is_empty(), "unsupported construction kinds have no fallback policy")
 
 
@@ -69,15 +76,17 @@ func _test_runtime_transactions() -> void:
 	var floor_ground: Dictionary = _floor_at(snapshot, plot["id"], 0)
 	var floor_upper: Dictionary = _floor_at(snapshot, plot["id"], 1)
 	var state: Dictionary = DistrictStateRecords.new().create_baseline(snapshot)
-	state["plot_states"] = [{"runtime_plot_id": plot["id"], "section_state_overrides": [], "floor_states": [_acquired_floor(floor_ground, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 1], [5, 0], [6, 0], [0, 1], [1, 1], [2, 1], [3, 1], [5, 1], [6, 1]]), _acquired_floor(floor_upper, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 1], [5, 0], [6, 0], [0, 1], [1, 1], [2, 1], [3, 1], [5, 1], [6, 1]])]}]
+	state["plot_states"] = [{"runtime_plot_id": plot["id"], "section_state_overrides": [], "floor_states": [_acquired_floor(floor_ground, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 1], [5, 0], [6, 0], [0, 1], [1, 1], [2, 1], [3, 1], [5, 1], [6, 1], [10, 0], [11, 0], [10, 1], [11, 1]]), _acquired_floor(floor_upper, [[0, 0], [1, 0], [2, 0], [3, 0], [4, 1], [5, 0], [6, 0], [0, 1], [1, 1], [2, 1], [3, 1], [5, 1], [6, 1]])]}]
 	var economy: EconomyManager = load("res://scripts/simulation/economy_manager.gd").new() as EconomyManager
 	root.add_child(economy)
 	var zone: RejectingZone = RejectingZone.new()
+	_assert(bool(economy.set_policy_snapshot(EconomyPolicySnapshot.approved_values()).get("valid", false)), "construction test configures Economy policy")
 	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
 	var economy_port: DistrictRuntimePorts.EconomyManagerPort = DistrictRuntimePorts.EconomyManagerPort.new()
 	economy_port.initialize(economy)
 	ports.initialize(economy_port, zone, FakeProgression.new())
 	var runtime: DistrictRuntime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	_assert(bool(runtime.configure_session_gate(SessionMutationGate.new()).get("valid", false)), "construction runtime accepts injected session gate")
 	runtime.configure_ports(ports)
 	var created: Dictionary = runtime.create_session(snapshot, state)
 	_assert(bool(created.get("valid", false)), "construction session restores an explicit acquired sparse state")
@@ -90,6 +99,9 @@ func _test_runtime_transactions() -> void:
 	_assert(runtime.get_revision() == 0 and economy.balance == before_balance and runtime.get_state().get("construction_records", []).is_empty(), "preview has no District or Economy side effect")
 	var corridor_commit: Dictionary = gateway.confirm(corridor)
 	_assert(bool(corridor_commit.get("valid", false)) and economy.balance == before_balance, "corridor confirm commits through the normal zero-cost transaction path")
+	var corridor_state: Dictionary = runtime.get_state()
+	_assert(corridor_state.get("construction_records", []).is_empty(), "corridors do not persist duplicate construction records")
+	_assert(corridor_state["plot_states"][0]["floor_states"][0].get("explicit_circulation_cells", []).has([0, 0]), "active corridor persists exclusively as explicit circulation")
 	var duplicate_confirm: Dictionary = gateway.confirm(corridor)
 	_assert(not bool(duplicate_confirm.get("valid", false)) and _has_code(duplicate_confirm.get("diagnostics", []), "CONSTRUCTION_REQUEST_ALREADY_CONFIRMED"), "double confirmation is suppressed by the intent gateway")
 
@@ -98,6 +110,7 @@ func _test_runtime_transactions() -> void:
 		for pair: Array in [[2, 0], [3, 0], [2, 1], [3, 1]]:
 			stairs_cells.append(_cell(floor, pair[0], pair[1]))
 	var stairs: Dictionary = _intent("stairs_1", "stairs", runtime.get_revision(), stairs_cells)
+	stairs["orientation"] = "NORTH"
 	var stairs_commit: Dictionary = gateway.confirm(stairs)
 	_assert(bool(stairs_commit.get("valid", false)) and economy.balance == before_balance - 500, "stairs charge exactly 500 Kreds")
 	_assert(runtime.get_construction_topology().get("vertical_links", []).size() == 1, "stairs publish exactly one adjacent-floor vertical link")
@@ -111,12 +124,13 @@ func _test_runtime_transactions() -> void:
 	_assert(bool(elevator_commit.get("valid", false)) and economy.balance == before_balance - 3500, "elevator charges 2,000 Kreds once plus 500 Kreds per lobby")
 	_assert(runtime.get_construction_topology().get("vertical_links", []).size() == 2, "elevator topology appears only across its committed adjacent stops")
 	_assert(runtime.get_traversal_read_view().vertical_links.size() == runtime.get_construction_topology().get("vertical_links", []).size(), "construction topology replaces its prior committed links without duplication")
-	_assert(runtime.get_operations_room_facts().is_empty(), "construction does not create Operations Room or staff state without approved room geometry")
+	_assert(runtime.get_operations_room_facts().is_empty(), "construction creates no Operations Room or staff state before an Operations Room commit")
 
 	var operations: Dictionary = _intent("room_1", "operations_room", runtime.get_revision(), [_cell(floor_ground, 10, 0), _cell(floor_ground, 11, 0), _cell(floor_ground, 10, 1), _cell(floor_ground, 11, 1)])
-	var room_result: Dictionary = gateway.preview(operations)
-	_assert(not bool(room_result.get("valid", false)) and _has_code(room_result.get("diagnostics", []), "CONSTRUCTION_GEOMETRY_UNAVAILABLE"), "Operations Room rejects unresolved immutable geometry")
-	_assert(economy.balance == before_balance - 3500, "unresolved Operations Room preview does not charge Economy")
+	var room_commit: Dictionary = gateway.confirm(operations)
+	_assert(bool(room_commit.get("valid", false)) and economy.balance == before_balance - 5500, "2x2 Operations Room charges exactly 2,000 Kreds")
+	var room_facts: Array[Dictionary] = runtime.get_operations_room_facts()
+	_assert(room_facts.size() == 1 and String(room_facts[0].get("building_id", "")) == String(plot["id"]) and String(room_facts[0].get("floor_id", "")) == String(floor_ground["id"]) and bool(room_facts[0].get("committed_valid_for_staffing", false)), "committed Operations Room publishes staffing-valid facts")
 
 	var stale_preview: Dictionary = _intent("stale_1", "corridor", runtime.get_revision(), [_cell(floor_ground, 0, 1)])
 	_assert(bool(gateway.preview(stale_preview).get("valid", false)), "stale-preview candidate resolves before a competing commit")
@@ -159,7 +173,7 @@ func _floor_at(snapshot: ResolvedDistrictSnapshot, plot_id: String, elevation: i
 func _acquired_floor(floor: Dictionary, pairs: Array) -> Dictionary:
 	var sorted_pairs: Array = pairs.duplicate(true)
 	sorted_pairs.sort_custom(func(left: Array, right: Array) -> bool: return int(left[1]) < int(right[1]) or (int(left[1]) == int(right[1]) and int(left[0]) < int(right[0])))
-	return {"floor_id": floor["id"], "elevation": floor["elevation"], "acquired_cells": sorted_pairs, "constructed_cells": []}
+	return {"floor_id": floor["id"], "elevation": floor["elevation"], "acquired_cells": sorted_pairs, "constructed_cells": [], "explicit_circulation_cells": []}
 
 
 func _cell(floor: Dictionary, x: int, y: int) -> Dictionary:

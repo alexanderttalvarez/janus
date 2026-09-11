@@ -8,6 +8,8 @@
 
 **Follow-on review, 2026-09-08:** The preceding draft disposition is historical. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately approves [interior H5](../tenant_interiors/05_persistence_presentation_and_cutover.md)'s authority-local schema and candidate cutover architecture. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> [Product acceptance](../mvp/04_product_delivery_and_acceptance.md); external Gate R is separate. Live restore integration requires implementation/candidate passes, never documentation approval alone. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
 
+**ADR 37 correction, 2026-09-10:** Detached District validation includes the exact v3 construction annex, FloorState sets, revision invariants, and cross-owner Zone conflicts. Candidate topology and Staff projections must rebuild and validate from committed explicit circulation plus construction records before session replacement; no implementation or evidence is asserted.
+
 ## Purpose
 
 Restore a complete saved session by exporting, validating, staging, and committing detached authority state as one replacement. A restore either publishes one coherent new session or leaves the current session unchanged.
@@ -51,7 +53,7 @@ Registry order is fixed: `district`, `zone_parcel`, `economy`, `progression`, `p
 1. `SaveManager` parses the selected slot and enforces H9's V2 schema/version/exact-key rule before candidate construction.
 2. It resolves `layout_ref`, verifies definition version and fingerprint, and creates an isolated candidate session container.
 3. Every registry owner validates its own snapshot detached; the registry then validates all cross-authority stable-ID and revision references in fixed order.
-4. Import **all** durable snapshots in registry order before cross-owner derivation. Then rebuild District/Zone indexes, candidate Prestige-backed Progression eligibility, public topology, spatial context, Tenant/Visitor read state and projections in dependency order inside the candidate only. A registry entry appearing earlier is not permission to consult the old live session. No tier awards, rent, payroll, evaluations or retroactive ticks run during import/rebuild.
+4. Import **all** durable snapshots in registry order before cross-owner derivation. District import first validates ADR 37's exact annex, FloorState sets, revision invariants, occupancy, and Zone conflicts. Then rebuild District/Zone indexes, candidate topology and Staff room-reference projections from committed explicit circulation plus construction records, Prestige-backed Progression eligibility, spatial context, Tenant/Visitor read state, and remaining projections in dependency order inside the candidate only. A registry entry appearing earlier is not permission to consult the old live session. No tier awards, rent, payroll, evaluations or retroactive ticks run during import/rebuild.
 5. Any error destroys the candidate and preserves the old committed session, its projections, and its slot.
 
 ### Restore barrier and commit

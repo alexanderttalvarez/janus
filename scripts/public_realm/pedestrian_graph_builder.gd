@@ -66,7 +66,10 @@ func build(
 		var from_id: String = "floor_cell/%s" % String(record.get("interior_cell_id", ""))
 		var to_id: String = "public_band/%s" % external_ref
 		_add_node(nodes, from_id, {"kind": "FLOOR_CELL", "source_id": record.get("interior_cell_id", "")})
-		_add_edge(edges, "public_band_edge/%s/%s" % [external_ref, record.get("door_edge_id", "")], from_id, to_id, "public_band_physical", String(record.get("door_edge_id", "")))
+		var connector_id: String = String(record.get("public_band_access_edge_id", ""))
+		if connector_id.is_empty():
+			connector_id = "public_band_edge/%s/%s" % [external_ref, record.get("door_edge_id", "")]
+		_add_edge(edges, connector_id, from_id, to_id, "public_band_physical", String(record.get("door_edge_id", "")))
 	var ordered_nodes: Array[Dictionary] = []
 	for node_id: String in nodes.keys():
 		var node: Dictionary = nodes[node_id].duplicate(true)

@@ -36,7 +36,7 @@ func _init() -> void:
 		},
 		"operations_room": {
 			"kind": "operations_room",
-			"geometry_available": false,
+			"geometry_available": true,
 			"footprint_width": 2,
 			"footprint_depth": 2,
 			"charge_lines": [{"category": "CONSTRUCTION_OPERATIONS_ROOM", "value": 2000}],

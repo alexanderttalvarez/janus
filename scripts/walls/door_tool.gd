@@ -32,6 +32,8 @@ func configure_production(authority: ManualDoorAuthority, projection_coordinator
 
 
 func _ready() -> void:
+	# Door placement remains available while simulation time is paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	var root := Node3D.new()
 	root.name = "VisualRoot"
 	add_child(root)

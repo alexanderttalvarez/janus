@@ -15,6 +15,9 @@ Start at [Architecture](./_index.md). The [old district blueprint](design_handof
 - ADR 32 governs district Gate E/R only. Engineering complete; H10 release acceptance pending external Gate R. No whole-product completion follows.
 - ADR 33 retains the consistency-pass amendments for time units, walls, camera, minimal Godot patterns and coherent transactions/restore. Its earlier draft dependency disposition is historical after ADR 34.
 - [ADR 34](decisions/34_product_mvp_runtime_and_cutover.md) records the separate 2026-09-08 follow-on review approving `tenant_interiors/H4-H5` architecture. Foundation -> detached H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING.
+- [ADR 35](decisions/35_public_band_access_snapshot_and_zone_injection.md) accepts the exact transient H5 `PublicBandAccessSnapshot`, District-to-Zone prospective injection, and current-schema stable public-door provenance. It adds no owner, save root, migration, persisted graph, or implementation evidence.
+- [ADR 36](decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) accepts DistrictState local schema v3 inside unchanged Save V2, the exact transient floor-scoped `DistrictZoneSpatialSnapshot`, and coordinated District/Zone paint transactions. It adds no manager or generalized spatial authority; implementation and new evidence are not asserted.
+- [ADR 37](decisions/37_district_construction_annex_schema.md) corrects ADR 36's accidental exact-root omission by retaining the Construction H1 annex inside DistrictState v3 without corridor records or an independent concurrency authority. Save V2 and the authority registry remain unchanged; implementation and new evidence are not asserted.
 
 ## Decisions
 
@@ -54,6 +57,9 @@ Start at [Architecture](./_index.md). The [old district blueprint](design_handof
 | 32 | H10 Engineering Completion and External Release Acceptance | [32_h10_engineering_completion_and_release_acceptance.md](decisions/32_h10_engineering_completion_and_release_acceptance.md) |
 | 33 | Documentation Consistency and Minimum Contracts | [33_documentation_consistency_and_minimum_contracts.md](decisions/33_documentation_consistency_and_minimum_contracts.md) |
 | 34 | Product MVP Runtime and Cutover | [34_product_mvp_runtime_and_cutover.md](decisions/34_product_mvp_runtime_and_cutover.md) |
+| 35 | Public Band Access Snapshot and Zone Injection | [35_public_band_access_snapshot_and_zone_injection.md](decisions/35_public_band_access_snapshot_and_zone_injection.md) |
+| 36 | District-Zone Spatial Snapshot and Zone Mutation Transaction | [36_district_zone_spatial_snapshot_and_zone_mutation.md](decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) |
+| 37 | District Construction Annex Schema | [37_district_construction_annex_schema.md](decisions/37_district_construction_annex_schema.md) |
 
 ## Pending Decisions
 - Future player-facing production-layout selection policy is intentionally deferred; Decision 29 fixes only the explicit initial layout bootstrap.

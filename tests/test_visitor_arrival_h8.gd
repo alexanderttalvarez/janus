@@ -43,6 +43,7 @@ func _init() -> void:
 	_test_revision_and_eligibility_contracts()
 	_test_token_contract()
 	_test_immediate_commit_and_event_order()
+	_test_calendar_owned_arrival()
 	_test_pre_append_rollback_and_save_boundary()
 	_test_exit_selection()
 	_test_global_population_budget()
@@ -58,6 +59,8 @@ func _setup() -> void:
 	_assert(bool(resolution.get("valid", false)), "H8 fixture resolves through H1/H2")
 	var snapshot: ResolvedDistrictSnapshot = resolution.get("snapshot") as ResolvedDistrictSnapshot
 	_runtime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	var gate_setup: Dictionary = _runtime.configure_session_gate(SessionMutationGate.new())
+	_assert(bool(gate_setup.get("valid", false)), "H8 injects the single session mutation gate into District Runtime")
 	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
 	ports.initialize(FakeEconomy.new(), DistrictRuntimePorts.DistrictZonePort.new(), FakeProgression.new())
 	_runtime.configure_ports(ports)
@@ -81,7 +84,7 @@ func _setup() -> void:
 	_assert(bool(h6_result.get("valid", false)), "H8 builds H6 gateway eligibility")
 	_visitor_manager = VisitorManager.new()
 	_coordinator = load("res://scripts/simulation/arrival_coordinator.gd").new() as ArrivalCoordinator
-	_assert(bool(_coordinator.initialize(_runtime, _public_projection.get_graph_snapshot(), h6_result.get("gateway_eligibility"), _visitor_manager).get("valid", false)), "H8 configures the immediate arrival coordinator")
+	_assert(bool(_coordinator.initialize(_runtime, _public_projection.get_graph_snapshot(), h6_result.get("gateway_eligibility"), _visitor_manager, _runtime.get_session_gate()).get("valid", false)), "H8 configures the immediate arrival coordinator")
 	_demand = ArrivalDemandSnapshot.new()
 	_assert(bool(_demand.initialize("demand_test", 20, [{"purpose": "shopping"}]).get("valid", false)), "H8 accepts a demand-only snapshot")
 
@@ -133,7 +136,7 @@ func _test_token_contract() -> void:
 	_assert(_runtime.consume_arrival_source_token(token) and not token.is_valid(), "validation token is single-use")
 	_assert(not _runtime.consume_arrival_source_token(token), "consumed token cannot be reused")
 	var blocked_mutation: Dictionary = _runtime.commit_transaction({"operation": DistrictRuntime.OP_SET_SOURCE_ENABLED, "arrival_source_id": source_id, "enabled": false, "expected_district_revision": 0})
-	_assert(not bool(blocked_mutation.get("valid", false)) and _has_code(blocked_mutation.get("diagnostics", []), "ARRIVAL_TRANSACTION_BUSY"), "arrival barrier blocks intervening district mutation")
+	_assert(not bool(blocked_mutation.get("valid", false)) and _has_code(blocked_mutation.get("diagnostics", []), "SESSION_MUTATION_BUSY"), "arrival barrier blocks intervening district mutation")
 	gate.release_barrier(owner)
 	gate.release(owner)
 	_assert(before_state == _runtime.get_state(), "token validation and consumption do not mutate source state or revision")
@@ -181,6 +184,18 @@ func _test_immediate_commit_and_event_order() -> void:
 	_assert(bool(fault_result.get("valid", false)) and fault_result.get("subscriber_diagnostics", []).size() == 1, "subscriber faults remain isolated after append")
 
 
+func _test_calendar_owned_arrival() -> void:
+	var session_gate: SessionMutationGate = _runtime.get_session_gate()
+	var owner_token: String = "calendar:visitor:1"
+	var before_count: int = _visitor_manager.get_active_visitor_count()
+	_assert(bool(session_gate.acquire(owner_token).get("valid", false)), "calendar acquires the sole session gate before direct arrival work")
+	var result: Dictionary = _coordinator.realize_arrival(_demand, owner_token)
+	_assert(bool(result.get("valid", false)) and _visitor_manager.get_active_visitor_count() == before_count + 1, "arrival realization succeeds as a direct calendar successor without reentrant acquisition")
+	_assert(session_gate.is_held() and session_gate.get_owner_token() == owner_token and not _coordinator.get_gate().is_held(), "arrival releases only its logical gate while calendar retains the session boundary")
+	session_gate.release(owner_token)
+	_assert(not session_gate.is_busy(), "calendar releases the session gate after its complete visitor boundary")
+
+
 func _test_pre_append_rollback_and_save_boundary() -> void:
 	var before_count: int = _visitor_manager.get_active_visitor_count()
 	var before_revision: int = _runtime.get_revision()
@@ -205,12 +220,12 @@ func _test_pre_append_rollback_and_save_boundary() -> void:
 	var save_manager: Node = get_root().get_node_or_null("SaveManager")
 	var gate: ArrivalCommitGate = _coordinator.get_gate()
 	if save_manager != null:
-		save_manager.set_arrival_commit_gate(gate)
+		save_manager.configure_session_boundary(_runtime.get_session_gate(), func() -> bool: return true)
 		var owner: String = "save_barrier_test"
 		_assert(gate.acquire(owner) and gate.enter_barrier(owner), "save barrier test acquires the shared arrival gate")
 		var blocked_load: Dictionary = save_manager.load_game(1)
 		var blocked_save: Error = save_manager.save_game(1)
-		_assert(_has_code(blocked_load.get("diagnostics", []), "ARRIVAL_TRANSACTION_BUSY") and blocked_save == ERR_BUSY, "direct SaveManager entry points remain blocked through the arrival barrier")
+		_assert(_has_code(blocked_load.get("diagnostics", []), "SESSION_MUTATION_BUSY") and blocked_save == ERR_BUSY, "direct SaveManager entry points remain blocked through the arrival barrier")
 		gate.release_barrier(owner)
 		gate.release(owner)
 	var serialized: Dictionary = _visitor_manager.serialize()

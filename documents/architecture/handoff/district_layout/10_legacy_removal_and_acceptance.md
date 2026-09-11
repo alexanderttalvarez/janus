@@ -4,6 +4,10 @@
 
 **Engineering complete; H10 release acceptance pending external Gate R.** This is the status recorded under ADR 32, not a new implementation audit. Gate E's final candidate binding and Gate R exports, physical measurements and independent signoffs remain evidence obligations. The 2026-09-08 documentation amendments introduce no release approval and are not proven by older PASS summaries. H10 is an approved engineering/release contract, not a blocked draft or Product MVP completion claim.
 
+**ADR 36 amendment, 2026-09-10:** [ADR 36](../../decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) is the replacement production boundary for District facts consumed by Zone transactions. Its local DistrictState v3, transient snapshot, coordinated mutation, and no-legacy-reachability obligations require new evidence; prior H10 evidence does not prove them. Gate R remains pending, and no implementation or release acceptance is asserted.
+
+**ADR 37 correction, 2026-09-10:** [ADR 37](../../decisions/37_district_construction_annex_schema.md)'s exact annex, corridor no-record rule, revision behavior, malformed/overlap rejection, and candidate projection rebuild require new evidence. Prior evidence proves none of these obligations; Gate R remains pending and no implementation or release acceptance is asserted.
+
 ## Purpose
 
 Remove runtime compatibility scaffolding and prove the target authority chain, Save V2, generated projections, and all three fixtures without fixed-layout fallbacks.
@@ -69,6 +73,7 @@ Every matrix row requires classified static/dependency evidence and named behavi
 | `PlotData.pedestrian_boundary`, `spawn_points`, `virtual_exterior`, fixed exterior doors, corner frontage | H5/H6/H8 | Generated topology/stable sources; public-band access and threshold tests. |
 | Authored roads, lanes, markers, corner/source authority | H4/H5/H7/H8 | Generated manifests/graph goldens and stable control-anchor IDs. |
 | Direct mutable `GridTile` writes, ownership/construction conflation, full-volume allocation, global rebuilds, bare `Vector2i` boundaries | H3/H4/H5 | Transactions, truth-table, sparse/delta, and explicit-address audits. |
+| Zone reachability to `GridManager`, `FloorGrid`, `GridTile`, `PlotData`, legacy adapters, or archive group | ADR 36/H3/H6 | Exact dependency/signature/reachability negatives; floor-scoped snapshot and atomic District/Zone transaction evidence. |
 | Schema-absent/V1 mutation | H9 | Reject before staging/live mutation, preserve slot, structured result. |
 
 The final matrix records file/line or tool artifact, test/fixture name, and pass/fail for every row.

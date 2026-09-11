@@ -97,7 +97,7 @@ func serialize() -> Dictionary:
 		serialized_core_tiles.append({"x": tile.x, "y": tile.y})
 
 	var serialized_frontage := _serialize_edges(frontage_edges)
-	var serialized_selected_door_edges := _serialize_edges(selected_door_edges)
+	var serialized_selected_door_edges := _serialize_selected_door_edges(selected_door_edges)
 
 	return {
 		"id": id,
@@ -125,7 +125,7 @@ static func deserialize(data: Dictionary) -> Parcel:
 		restored_core_tiles.append(Vector2i(tile_data.get("x", 0), tile_data.get("y", 0)))
 
 	var restored_frontage := _deserialize_edges(data.get("frontage_edges", []))
-	parcel.selected_door_edges = _deserialize_edges(data.get("selected_door_edges", []))
+	parcel.selected_door_edges = _deserialize_selected_door_edges(data.get("selected_door_edges", []))
 
 	parcel.set_geometry(restored_tiles, restored_frontage)
 	# Legacy saves predate core geometry; adopt the old footprint as a compatibility core.
@@ -149,6 +149,134 @@ static func _serialize_edges(edges: Array[Dictionary]) -> Array[Dictionary]:
 			"access_kind": edge.get("access_kind", ""),
 		})
 	return serialized
+
+
+static func validate_serialized_selected_door_edges(data: Variant) -> Dictionary:
+	if not data is Array:
+		return _invalid_public_door()
+	var seen_records: Dictionary = {}
+	var seen_origins: Dictionary = {}
+	var previous_key: String = ""
+	for value: Variant in data:
+		if not value is Dictionary:
+			return _invalid_public_door()
+		var edge: Dictionary = value
+		if not _has_exact_keys(edge, ["parcel_cell", "direction", "access_kind", "access_cell", "public_band_access_edge_id"]):
+			return _invalid_public_door()
+		if not edge.get("parcel_cell") is Dictionary or not _valid_cell(edge["parcel_cell"]):
+			return _invalid_public_door()
+		var direction: String = String(edge.get("direction", ""))
+		var access_kind: String = String(edge.get("access_kind", ""))
+		if not direction in ["NORTH", "EAST", "SOUTH", "WEST"] or not access_kind in ["SAME_ZONE_TRANSIT", "EXPLICIT_CIRCULATION", "PUBLIC_BAND"]:
+			return _invalid_public_door()
+		var public_id: Variant = edge.get("public_band_access_edge_id")
+		var access_cell: Variant = edge.get("access_cell")
+		if access_kind == "PUBLIC_BAND":
+			if access_cell != null or not public_id is String or String(public_id).is_empty():
+				return _invalid_public_door()
+		else:
+			if not access_cell is Dictionary or not _valid_cell(access_cell) or public_id != null:
+				return _invalid_public_door()
+		var cell: Dictionary = edge["parcel_cell"]
+		var origin_key := "%d,%d" % [int(cell["x"]), int(cell["y"])]
+		var record_key := "%s|%s|%s|%s|%s" % [origin_key, direction, access_kind, str(access_cell), str(public_id)]
+		var sort_key := "%012d|%012d|%s" % [int(cell["y"]) + 1000000, int(cell["x"]) + 1000000, direction]
+		if seen_origins.has(origin_key) or seen_records.has(record_key) or (not previous_key.is_empty() and sort_key <= previous_key):
+			return _invalid_public_door()
+		seen_origins[origin_key] = true
+		seen_records[record_key] = true
+		previous_key = sort_key
+	return {"valid": true, "diagnostics": []}
+
+
+static func _serialize_selected_door_edges(edges: Array[Dictionary]) -> Array[Dictionary]:
+	var ordered: Array[Dictionary] = edges.duplicate(true)
+	ordered.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		var left_tile: Vector2i = left.get("tile", Vector2i.ZERO)
+		var right_tile: Vector2i = right.get("tile", Vector2i.ZERO)
+		if left_tile != right_tile:
+			return left_tile.y < right_tile.y or (left_tile.y == right_tile.y and left_tile.x < right_tile.x)
+		return _direction_name(left.get("direction", Vector2i.ZERO)) < _direction_name(right.get("direction", Vector2i.ZERO))
+	)
+	var serialized: Array[Dictionary] = []
+	for edge: Dictionary in ordered:
+		var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
+		var access: Vector2i = edge.get("access", Vector2i.ZERO)
+		var kind: String = String(edge.get("access_kind", ""))
+		serialized.append({
+			"parcel_cell": {"x": tile.x, "y": tile.y},
+			"direction": _direction_name(edge.get("direction", Vector2i.ZERO)),
+			"access_kind": _serialized_access_kind(kind),
+			"access_cell": null if kind == "public_band" else {"x": access.x, "y": access.y},
+			"public_band_access_edge_id": String(edge.get("public_band_access_edge_id", "")) if kind == "public_band" else null,
+		})
+	return serialized
+
+
+static func _deserialize_selected_door_edges(data: Array) -> Array[Dictionary]:
+	var restored: Array[Dictionary] = []
+	for edge: Dictionary in data:
+		var tile_data: Dictionary = edge.get("parcel_cell", {})
+		var tile := Vector2i(int(tile_data.get("x", 0)), int(tile_data.get("y", 0)))
+		var direction: Vector2i = _direction_vector(String(edge.get("direction", "")))
+		var kind: String = _runtime_access_kind(String(edge.get("access_kind", "")))
+		var access_data: Variant = edge.get("access_cell")
+		var access: Vector2i = tile + direction
+		if access_data is Dictionary:
+			access = Vector2i(int(access_data.get("x", 0)), int(access_data.get("y", 0)))
+		var restored_edge: Dictionary = {"tile": tile, "direction": direction, "access": access, "access_kind": kind}
+		if kind == "public_band":
+			restored_edge["public_band_access_edge_id"] = String(edge.get("public_band_access_edge_id", ""))
+		restored.append(restored_edge)
+	return restored
+
+
+static func _serialized_access_kind(kind: String) -> String:
+	match kind:
+		"internal_transit": return "SAME_ZONE_TRANSIT"
+		"external_circulation": return "EXPLICIT_CIRCULATION"
+		"public_band": return "PUBLIC_BAND"
+	return ""
+
+
+static func _runtime_access_kind(kind: String) -> String:
+	match kind:
+		"SAME_ZONE_TRANSIT": return "internal_transit"
+		"EXPLICIT_CIRCULATION": return "external_circulation"
+		"PUBLIC_BAND": return "public_band"
+	return ""
+
+
+static func _direction_name(direction: Vector2i) -> String:
+	if direction == Vector2i.UP: return "NORTH"
+	if direction == Vector2i.RIGHT: return "EAST"
+	if direction == Vector2i.DOWN: return "SOUTH"
+	if direction == Vector2i.LEFT: return "WEST"
+	return ""
+
+
+static func _direction_vector(direction: String) -> Vector2i:
+	match direction:
+		"NORTH": return Vector2i.UP
+		"EAST": return Vector2i.RIGHT
+		"SOUTH": return Vector2i.DOWN
+		"WEST": return Vector2i.LEFT
+	return Vector2i.ZERO
+
+
+static func _valid_cell(value: Dictionary) -> bool:
+	return _has_exact_keys(value, ["x", "y"]) and value.get("x") is int and value.get("y") is int
+
+
+static func _has_exact_keys(value: Dictionary, keys: Array) -> bool:
+	if value.size() != keys.size(): return false
+	for key: String in keys:
+		if not value.has(key): return false
+	return true
+
+
+static func _invalid_public_door() -> Dictionary:
+	return {"valid": false, "diagnostics": [{"code": "INVALID_PUBLIC_BAND_DOOR_PROVENANCE"}]}
 
 
 static func _deserialize_edges(data: Array) -> Array[Dictionary]:

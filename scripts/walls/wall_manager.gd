@@ -105,81 +105,9 @@ func _on_district_delta_committed(_envelope: Dictionary) -> void:
 
 ## Regenerate all wall meshes from the current district and zone snapshots.
 func rebuild() -> void:
-	if _district_runtime != null:
-		_rebuild_production()
+	if _district_runtime == null:
 		return
-	var floor_node := _get_floor()
-	if floor_node == null:
-		return
-	var gm: Node = _get_spatial_view()
-	if gm == null:
-		return
-	var fg: Variant = gm.get_floor_grid()
-	if fg == null:
-		return
-
-	var container := _get_wall_container(floor_node)
-	_clear_walls(container)
-
-	# Collect tile membership.
-	var zone_of: Dictionary = {}  # Vector2i -> zone_id
-	var parcel_of: Dictionary = {}  # Vector2i -> parcel_id
-	var parcel_zone_of: Dictionary = {}  # Vector2i -> zone_id
-	var zm := _get_zone_manager()
-	var zones: Array[ZoneData] = []
-	if zm:
-		for zone: ZoneData in zm.get_zones_on_floor("G"):
-			zones.append(zone)
-			for tile_pos: Vector2i in zone.tiles:
-				zone_of[tile_pos] = zone.id
-			for parcel: Parcel in zone.parcels:
-				for tile_pos: Vector2i in parcel.tiles:
-					parcel_of[tile_pos] = parcel.id
-					parcel_zone_of[tile_pos] = zone.id
-
-	var corridor: Dictionary = {}  # Vector2i -> true
-	var built: Dictionary = {}     # Vector2i -> true
-	var manual_door_edges: Dictionary = {}  # edge key -> true
-	for x in range(fg.width):
-		for y in range(fg.height):
-			var tile: Variant = fg.get_tile(x, y)
-			if tile == null or not (tile.owned and tile.floor_built):
-				continue
-			var pos := Vector2i(x, y)
-			built[pos] = true
-			if tile.element == 4:
-				corridor[pos] = true
-			if tile.has_door(1):
-				manual_door_edges[_edge_key(pos, pos + Vector2i.UP)] = true
-			if tile.has_door(2):
-				manual_door_edges[_edge_key(pos, pos + Vector2i.DOWN)] = true
-			if tile.has_door(4):
-				manual_door_edges[_edge_key(pos, pos + Vector2i.RIGHT)] = true
-			if tile.has_door(8):
-				manual_door_edges[_edge_key(pos, pos + Vector2i.LEFT)] = true
-
-	var automatic_parcel_door_edges: Dictionary = {}
-	for zone: ZoneData in zones:
-		for parcel: Parcel in zone.parcels:
-			for edge: Dictionary in parcel.selected_door_edges:
-				var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
-				var access: Vector2i = edge.get("access", Vector2i.ZERO)
-				automatic_parcel_door_edges[_edge_key(tile, access)] = true
-
-	# Pipeline: edges -> pieces -> runs -> junctions -> boxes.
-	var pieces := _collect_wall_pieces(
-		built, corridor, zones, zone_of, parcel_of, parcel_zone_of,
-		manual_door_edges, automatic_parcel_door_edges
-	)
-	var runs := _merge_pieces_into_runs(pieces)
-	var joints_by_run: Dictionary = {}  # run index -> Array[float]
-	var junctions := _find_wall_junctions(runs, joints_by_run)
-	for junction: Dictionary in junctions:
-		_build_corner_cube(
-			container, junction["point"], junction["outward"], junction["thickness"], junction["is_parcel_boundary"]
-		)
-	for i in range(runs.size()):
-		_build_wall_segments(container, runs[i], joints_by_run.get(i, []))
+	_rebuild_production()
 
 
 func _rebuild_production() -> void:
@@ -204,12 +132,9 @@ func _rebuild_production() -> void:
 			for cell: Variant in floor_state.get("constructed_cells", []):
 				if cell is Array and cell.size() == 2:
 					built[Vector2i(int(cell[0]), int(cell[1]))] = true
-	for construction: Variant in state.get("construction_records", []):
-		if not construction is Dictionary or String(construction.get("kind", "")) != "corridor":
-			continue
-		for cell: Variant in construction.get("cells", []):
-			if cell is Dictionary and String(cell.get("floor_id", "")) == floor_id:
-				corridor[Vector2i(int(cell.get("x", -1)), int(cell.get("y", -1)))] = true
+			for cell: Variant in floor_state.get("explicit_circulation_cells", []):
+				if cell is Array and cell.size() == 2:
+					corridor[Vector2i(int(cell[0]), int(cell[1]))] = true
 	if built.is_empty():
 		return
 	var zone_of: Dictionary = {}
@@ -229,13 +154,16 @@ func _rebuild_production() -> void:
 					parcel_of[tile] = parcel.id
 					parcel_zone_of[tile] = zone.id
 	var manual_door_edges: Dictionary = {}
-	for record: Variant in state.get("manual_door_records", []):
-		if not record is Dictionary or String(record.get("runtime_plot_id", "")) != String(_production_floor_address.get("runtime_plot_id", "")) or String(record.get("floor_id", "")) != floor_id:
+	for record: Variant in state.get("manual_door_edges", []):
+		if not record is Dictionary:
 			continue
-		var from_value: Variant = record.get("from_cell", [])
-		var to_value: Variant = record.get("to_cell", [])
-		if from_value is Array and to_value is Array and from_value.size() == 2 and to_value.size() == 2:
-			manual_door_edges[_edge_key(Vector2i(int(from_value[0]), int(from_value[1])), Vector2i(int(to_value[0]), int(to_value[1])))] = true
+		var endpoint_a: Dictionary = record.get("endpoint_a", {})
+		var endpoint_b: Dictionary = record.get("endpoint_b", {})
+		if String(endpoint_a.get("runtime_plot_id", "")) != String(_production_floor_address.get("runtime_plot_id", "")) or int(endpoint_a.get("signed_elevation", 999999)) != int(_production_floor_address.get("elevation", 0)):
+			continue
+		var cell_a: Dictionary = endpoint_a.get("local_cell", {})
+		var cell_b: Dictionary = endpoint_b.get("local_cell", {})
+		manual_door_edges[_edge_key(Vector2i(int(cell_a.get("x", -1)), int(cell_a.get("y", -1))), Vector2i(int(cell_b.get("x", -1)), int(cell_b.get("y", -1))))] = true
 	var automatic_parcel_door_edges: Dictionary = {}
 	for zone: ZoneData in zones:
 		for parcel: Parcel in zone.parcels:
@@ -780,12 +708,6 @@ func _get_floor() -> Node3D:
 		if floor != null and floor.floor_level == "G":
 			return floor
 	return null
-
-
-func _get_spatial_view() -> Node:
-	# Archive-policy test scenes may provide the legacy spatial view through a
-	# dedicated group. Production scenes intentionally provide no such node.
-	return get_tree().get_first_node_in_group("archive_legacy_spatial") as Node
 
 
 func _get_zone_manager() -> ZoneManager:

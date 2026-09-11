@@ -8,6 +8,10 @@
 
 **Revision:** 2026-09-08 delegated consistency pass. ADR 33 supplies the one non-reentrant session gate, proof-only Fixture C ownership exception and superseding camera/traffic semantics. Element 08 and Progression H2/H3 replace all old U1-U3/higher-unavailable acceptance wording with exact current gates. Progression alone writes selected Plot IDs; District only consumes them. Read [Current MVP](../../../game_design/current_mvp.md) before implementing future expansion UI.
 
+**ADR 36 amendment, 2026-09-10:** District owns derivation of the immutable, transient, floor-scoped `DistrictZoneSpatialSnapshot` from one resolved layout and one committed or prospective District candidate. Zone receives that snapshot and the separate ADR 35 public-band snapshot by injection; no manager, generalized spatial service, legacy grid input, implementation result, or evidence is asserted.
+
+**ADR 37 correction, 2026-09-10:** `district_revision` remains the sole optimistic concurrency guard. A successful Zone paint commit that removes or restores explicit circulation increments District-owned `construction_revision` exactly once, creates/removes no corridor record, and leaves acquired/constructed membership unchanged. This is Zone conversion, not construction demolition/removal.
+
 Own the session District Runtime lifecycle and migrate the fixed grid to sparse, explicit-address, transactional district state.
 
 ## Dependencies
@@ -72,6 +76,8 @@ Prices/formulas, public-realm conversion (H5), generated Nodes (H4), or zone wri
 ### Transaction protocol
 
 Preview and commit evaluate the same intent against the district snapshot/revision, zone revision, economy quote/reservation contract, and immutable progression/economy policy snapshots. District Runtime hosts the transaction coordinator but never writes `ZoneManager` or Economy authority directly. A cross-authority commit uses this externally atomic sequence:
+
+For Zone paint under ADR 36/37, the pre-gate candidate sequence is specifically: capture matching District/Zone bases and ADR 36/ADR 35 snapshots; Zone resolves one pure plan and requests only sorted explicit-circulation additions/removals plus canonical obsolete same-zone merge manual-door removals; District validates the request, prepares its prospective candidate without changing acquired/constructed cells or creating/removing corridor records, increments `construction_revision` once if explicit circulation changes, and derives prospective ADR 36/ADR 35 snapshots; Zone validates the same plan against those prospective inputs and returns a token bound to District revision, Zone base revision, `layout_ref`, and plan identity. This two-stage Zone-plan -> District-candidate -> Zone-prepare sequence then enters the existing protocol below. A District mutation affecting Zone legality also injects a prospective snapshot and includes Zone; a truly District-neutral Zone mutation uses committed District as the unchanged candidate but still receives the snapshot.
 
 1. Prepare immutable detached district and zone candidates and capture all required immutable policy snapshots and authority revisions.
 2. Acquire the single cross-authority transaction gate and its notification/save/input barrier. No observer, player input handler, save operation, or authority publication may pass the barrier.

@@ -36,7 +36,7 @@ var is_active: bool = false
 var _painted_tiles: Array[Vector2i] = []
 var _painted_typologies: Dictionary = {}
 var _editing_zone_id: String = ""
-var _typo_mode: GridTile.TileTypology = GridTile.TileTypology.TENANT
+var _typo_mode: int = ZoneData.TileTypology.TENANT
 var _preview_mesh: MeshInstance3D
 var _painting: bool = false
 var _paint_start_tile: Vector2i = Vector2i.ZERO
@@ -74,6 +74,8 @@ func configure_projection(
 
 
 func _ready() -> void:
+	# Zone painting remains available while simulation time is paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_visual_root = Node3D.new()
 	_visual_root.name = "VisualRoot"
 	add_child(_visual_root)
@@ -166,7 +168,7 @@ func _combined_pending_typologies() -> Dictionary:
 	if existing != null:
 		combined = existing.typologies.duplicate()
 	for tile_pos in _painted_tiles:
-		combined[tile_pos] = _painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+		combined[tile_pos] = _painted_typologies.get(tile_pos, ZoneData.TileTypology.TENANT)
 	return combined
 
 
@@ -480,7 +482,7 @@ func _refresh_painted_tile(tile_pos: Vector2i) -> void:
 		return
 	var material := mesh.material_override as StandardMaterial3D
 	if material:
-		material.albedo_color = _get_typology_color(_painted_typologies.get(tile_pos, GridTile.TileTypology.TENANT), PAINTED_ALPHA)
+		material.albedo_color = _get_typology_color(_painted_typologies.get(tile_pos, ZoneData.TileTypology.TENANT), PAINTED_ALPHA)
 
 
 ## Remove the painted-tile visual when erased.
@@ -515,7 +517,7 @@ func cancel() -> void:
 	_painted_tiles.clear()
 	_painted_typologies.clear()
 	_editing_zone_id = ""
-	_typo_mode = GridTile.TileTypology.TENANT
+	_typo_mode = ZoneData.TileTypology.TENANT
 	_remove_mode = false
 	_none_mode = false
 	preview_split_result = null
@@ -549,7 +551,7 @@ func set_none_mode(enabled: bool) -> void:
 	_none_mode = enabled
 	if enabled:
 		_remove_mode = false
-		_typo_mode = GridTile.TileTypology.TENANT
+		_typo_mode = ZoneData.TileTypology.TENANT
 	if _painting:
 		_painting = false
 		_clear_drag_preview()
@@ -564,7 +566,7 @@ func is_none_mode() -> bool:
 func set_transit_mode(enabled: bool) -> void:
 	# Changing the toggle only changes the typology assigned to future paint
 	# actions. Existing pending tiles change only when explicitly repainted.
-	_typo_mode = GridTile.TileTypology.TRANSIT if enabled else GridTile.TileTypology.TENANT
+	_typo_mode = ZoneData.TileTypology.TRANSIT if enabled else ZoneData.TileTypology.TENANT
 	if enabled:
 		_none_mode = false
 		_remove_mode = false
@@ -573,12 +575,12 @@ func set_transit_mode(enabled: bool) -> void:
 
 
 func is_transit_mode() -> bool:
-	return _typo_mode == GridTile.TileTypology.TRANSIT
+	return _typo_mode == ZoneData.TileTypology.TRANSIT
 
 
-func _get_typology_color(typology: GridTile.TileTypology, alpha: float = 1.0) -> Color:
+func _get_typology_color(typology: int, alpha: float = 1.0) -> Color:
 	var color := ZONE_COLORS.get(active_zone_type, Color.GRAY) as Color
-	if typology == GridTile.TileTypology.TRANSIT:
+	if typology == ZoneData.TileTypology.TRANSIT:
 		color = color.lerp(Color.WHITE, 0.28)
 	color.a = alpha
 	return color
@@ -605,17 +607,10 @@ func _make_district_paint_intent() -> Dictionary:
 	var runtime := _get_district_runtime()
 	if runtime == null or not runtime.has_session():
 		return {}
-	var snapshot: ResolvedDistrictSnapshot = runtime.get_snapshot()
-	var plots: Array = snapshot.get_data().get("plots", [])
-	if plots.size() != 1:
-		return {}
-	var runtime_plot_id: String = String(plots[0].get("id", ""))
-	var floor_id: String = ""
-	for floor: Dictionary in snapshot.get_data().get("floors", []):
-		if String(floor.get("plot_id", "")) == runtime_plot_id and int(floor.get("elevation", 999)) == 0:
-			floor_id = String(floor.get("id", ""))
-			break
-	if runtime_plot_id.is_empty() or floor_id.is_empty():
+	var runtime_plot_id: String = String(_active_floor_address.get("runtime_plot_id", ""))
+	var floor_id: String = String(_active_floor_address.get("floor_id", ""))
+	var elevation: int = int(_active_floor_address.get("elevation", 999))
+	if runtime_plot_id.is_empty() or floor_id.is_empty() or elevation == 999:
 		return {}
 	var cells: Array = []
 	for tile_pos: Vector2i in _combined_pending_tiles():
@@ -625,7 +620,7 @@ func _make_district_paint_intent() -> Dictionary:
 		"expected_district_revision": runtime.get_revision(),
 		"runtime_plot_id": runtime_plot_id,
 		"floor_id": floor_id,
-		"elevation": 0,
+		"elevation": elevation,
 		"zone_plot_id": _preview_plot_id(),
 		"zone_floor_label": _preview_floor(),
 		"zone_type": _preview_zone_type(),

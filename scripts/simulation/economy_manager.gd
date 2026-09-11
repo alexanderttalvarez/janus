@@ -23,7 +23,7 @@ var _pending_district_balance_delta: int = 0
 ## District reservation counter.
 var _district_reservation_counter: int = 0
 var _reservations: Dictionary = {}
-var _policy_snapshot: RefCounted
+var _policy_snapshot: EconomyPolicySnapshot
 
 ## Active loans.
 var loans: Dictionary = {}  # Dictionary[String, LoanData]
@@ -46,10 +46,6 @@ var _settled_staff_weeks: Dictionary = {}
 
 ## Whether infinite money debug flag is active.
 var _infinite_money: bool = false
-
-
-func _init() -> void:
-	_policy_snapshot = load("res://scripts/simulation/economy_policy_snapshot.gd").new()
 
 
 func initialize(zone_manager: ZoneManager, tenant_manager: TenantManager, staff_manager: StaffManager = null) -> void:
@@ -97,27 +93,32 @@ func get_district_revision() -> int:
 
 
 func get_policy_snapshot() -> Dictionary:
-	return {} if _policy_snapshot == null else _policy_snapshot.call("duplicate_value")
+	return {} if _policy_snapshot == null else _policy_snapshot.duplicate_value()
 
 
-func set_policy_snapshot(values: Dictionary) -> void:
-	if _policy_snapshot == null:
-		_policy_snapshot = load("res://scripts/simulation/economy_policy_snapshot.gd").new()
-	var next_revision: int = int(values.get("revision", authority_revision + 1))
-	_policy_snapshot.call("initialize", next_revision, values)
+func set_policy_snapshot(values: Dictionary) -> Dictionary:
+	var candidate: EconomyPolicySnapshot = EconomyPolicySnapshot.new()
+	var validation: Dictionary = candidate.configure(values)
+	if not bool(validation.get("valid", false)):
+		return validation
+	_policy_snapshot = candidate
 	authority_revision += 1
+	return {"valid": true, "economy_policy_revision": candidate.get_revision(), "diagnostics": []}
 
 
 func district_quote(transaction: Dictionary) -> Dictionary:
 	if _policy_snapshot == null:
 		return _diagnostic_result("POLICY_UNAVAILABLE", "Economy policy snapshot is required")
 	var intent: Dictionary = transaction.get("intent", {})
-	var policy: Dictionary = transaction.get("economy_policy_snapshot", get_policy_snapshot())
+	var policy: Dictionary = transaction.get("economy_policy_snapshot", {})
 	if policy.is_empty():
 		return _diagnostic_result("POLICY_UNAVAILABLE", "Economy policy snapshot is required")
+	var current_policy: Dictionary = get_policy_snapshot()
+	if current_policy.is_empty():
+		return _diagnostic_result("POLICY_UNAVAILABLE", "Economy policy has not been configured")
 	var policy_revision: int = int(policy.get("revision", -1))
-	if policy_revision != int(get_policy_snapshot().get("revision", -2)):
-		return _diagnostic_result("STALE_QUOTE", "Economy policy revision is stale")
+	if policy_revision != int(current_policy.get("revision", -2)) or policy != current_policy:
+		return _diagnostic_result("STALE_QUOTE", "Economy policy snapshot is stale or does not match approved content")
 	var category: String = String(intent.get("charge_category", _category_for_intent(intent)))
 	var quote_result: Dictionary = _quote_construction(transaction, category, intent) if category.begins_with("CONSTRUCTION_") else _policy_snapshot.call("quote", category, intent)
 	if not bool(quote_result.get("accepted", false)):
@@ -154,10 +155,13 @@ func _reserve_quote(quote: Dictionary) -> Dictionary:
 	if value < 0:
 		return _diagnostic_result("ECONOMY_VALUE_INVALID", "quoted value cannot be negative")
 	var quote_policy_revision: int = int(quote.get("economy_policy_revision", -1))
-	if quote_policy_revision >= 0 and quote_policy_revision != int(get_policy_snapshot().get("revision", -2)):
+	if quote_policy_revision < 0 or quote_policy_revision != int(get_policy_snapshot().get("revision", -2)):
 		return _diagnostic_result("STALE_QUOTE", "quote policy revision is no longer current")
-	if not _debug_cost_bypass_active() and balance < value:
-		return _diagnostic_result("INSUFFICIENT_FUNDS", "economy balance cannot cover the requested reservation")
+	if int(quote.get("economy_revision", -1)) != authority_revision:
+		return _diagnostic_result("STALE_QUOTE", "quote Economy revision is no longer current")
+	var quote_bypassed: bool = bool(quote.get("debug_cost_bypass", false))
+	if not quote_bypassed and _available_funds() < value:
+		return _diagnostic_result("INSUFFICIENT_FUNDS", "available Economy funds cannot cover the requested reservation")
 	_district_reservation_counter += 1
 	var token: Dictionary = {
 		"id": _district_reservation_counter,
@@ -166,7 +170,7 @@ func _reserve_quote(quote: Dictionary) -> Dictionary:
 		"economy_policy_revision": int(quote.get("economy_policy_revision", -1)),
 		"progression_policy_revision": int(quote.get("progression_policy_revision", -1)),
 		"charge_category": String(quote.get("charge_category", "")),
-		"debug_cost_bypass": bool(quote.get("debug_cost_bypass", _debug_cost_bypass_active())),
+		"debug_cost_bypass": quote_bypassed,
 		"consumed": false,
 		"cancelled": false,
 	}
@@ -181,7 +185,7 @@ func district_guarantee_capture(reservation: Dictionary) -> Dictionary:
 		return _diagnostic_result("TRANSACTION_TOKEN_INVALID", "a valid Economy reservation is required")
 	if int(token.get("economy_revision", -1)) != authority_revision:
 		return _diagnostic_result("STALE_ECONOMY_REVISION", "economy changed after reservation")
-	if not _debug_cost_bypass_active() and balance < int(token.get("value", 0)):
+	if not bool(token.get("debug_cost_bypass", false)) and balance < int(token.get("value", 0)):
 		return _diagnostic_result("INSUFFICIENT_FUNDS", "economy balance cannot guarantee capture")
 	var guaranteed: Dictionary = token.duplicate(true)
 	guaranteed["guaranteed"] = true
@@ -194,29 +198,44 @@ func district_capture(guaranteed: Dictionary) -> Dictionary:
 	if not bool(guaranteed.get("accepted", false)) or not bool(token.get("guaranteed", false)) or not _valid_reservation(token):
 		return _diagnostic_result("TRANSACTION_TOKEN_INVALID", "a valid guaranteed capture token is required")
 	var value: int = int(token.get("value", 0))
-	var bypassed: bool = bool(token.get("debug_cost_bypass", false)) or _debug_cost_bypass_active()
+	var bypassed: bool = bool(token.get("debug_cost_bypass", false))
 	var before: int = balance
+	var signed_delta: int = 0
 	if not bypassed:
-		balance -= value
+		signed_delta = -value
+		balance += signed_delta
 		authority_revision += 1
-		_pending_district_balance_delta -= value
+		_pending_district_balance_delta += signed_delta
 	_reservations.erase(int(token.get("id", -1)))
-	return {"accepted": true, "financial_result": {"result_type": "DISTRICT_CAPTURE", "charge_category": String(token.get("charge_category", "")), "before_balance": before, "after_balance": balance, "signed_delta": -value, "economy_revision": authority_revision, "economy_policy_revision": int(token.get("economy_policy_revision", -1)), "progression_policy_revision": int(token.get("progression_policy_revision", -1)), "debug_cost_bypass": bypassed}, "diagnostics": []}
+	return {"accepted": true, "financial_result": {"result_type": "DISTRICT_CAPTURE", "charge_category": String(token.get("charge_category", "")), "before_balance": before, "after_balance": balance, "signed_delta": signed_delta, "economy_revision": authority_revision, "economy_policy_revision": int(token.get("economy_policy_revision", -1)), "progression_policy_revision": int(token.get("progression_policy_revision", -1)), "debug_cost_bypass": bypassed}, "diagnostics": []}
 
 
 ## Cancel a reservation without changing the financial authority.
 func district_cancel(reservation: Dictionary) -> Dictionary:
 	var token: Dictionary = reservation.get("reservation_token", reservation.get("guaranteed_capture_token", {}))
-	var reservation_id: int = int(token.get("id", -1))
-	if reservation_id < 0 or not _reservations.has(reservation_id):
+	if not _valid_reservation(token):
 		return _diagnostic_result("TRANSACTION_TOKEN_INVALID", "Economy reservation token is invalid or already consumed")
-	_reservations.erase(reservation_id)
+	_reservations.erase(int(token["id"]))
 	return {"accepted": true, "diagnostics": []}
 
 
 func _valid_reservation(token: Dictionary) -> bool:
 	var reservation_id: int = int(token.get("id", -1))
-	return reservation_id >= 0 and _reservations.has(reservation_id) and not bool(_reservations[reservation_id].get("consumed", false)) and not bool(_reservations[reservation_id].get("cancelled", false))
+	if reservation_id < 0 or not _reservations.has(reservation_id):
+		return false
+	var stored: Dictionary = _reservations[reservation_id]
+	for field: String in ["id", "value", "economy_revision", "economy_policy_revision", "progression_policy_revision", "charge_category", "debug_cost_bypass"]:
+		if token.get(field) != stored.get(field):
+			return false
+	return not bool(stored.get("consumed", false)) and not bool(stored.get("cancelled", false))
+
+
+func _available_funds() -> int:
+	var reserved_total: int = 0
+	for reservation: Dictionary in _reservations.values():
+		if not bool(reservation.get("debug_cost_bypass", false)):
+			reserved_total += int(reservation.get("value", 0))
+	return balance - reserved_total
 
 
 func _category_for_intent(intent: Dictionary) -> String:

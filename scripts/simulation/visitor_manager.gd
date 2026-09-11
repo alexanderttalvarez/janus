@@ -56,6 +56,14 @@ var _arrival_coordinator: ArrivalCoordinator
 var _arrival_commit_gate: ArrivalCommitGate
 var prepare_arrival_enabled: bool = true
 var commit_arrival_enabled: bool = true
+var _projection_floor_height: float = 0.0
+
+
+func configure_projection_metrics(metrics: ProjectionMetrics) -> Dictionary:
+	if metrics == null or not bool(metrics.validate().get("valid", false)):
+		return {"valid": false, "diagnostics": [{"code": "PROJECTION_METRICS_REQUIRED"}]}
+	_projection_floor_height = metrics.floor_height
+	return {"valid": true, "diagnostics": []}
 
 
 func configure_arrival_coordinator(coordinator: ArrivalCoordinator) -> void:
@@ -292,13 +300,19 @@ func _ready() -> void:
 
 
 ## Called by TimeManager on each visitor_tick.
-func on_visitor_tick(_tick: int = 0) -> void:
+func on_visitor_tick(_tick: int = 0) -> Dictionary:
 	if _arrival_coordinator != null:
-		_arrival_coordinator.on_visitor_tick()
+		var session_owner_token: String = ""
+		if _arrival_commit_gate != null and _arrival_commit_gate.get_session_gate() != null and _arrival_commit_gate.get_session_gate().is_held():
+			session_owner_token = _arrival_commit_gate.get_session_gate().get_owner_token()
+		var arrival_result: Dictionary = _arrival_coordinator.on_visitor_tick(session_owner_token)
+		if not bool(arrival_result.get("valid", false)):
+			return arrival_result
 	_revalidate_leaving_visitors()
 	_decay_visitor_needs()
 	_sync_data_positions()
 	_apply_culling()
+	return {"valid": true, "diagnostics": []}
 
 
 
@@ -644,7 +658,10 @@ func _source_position(source_record: Dictionary) -> Vector3:
 	var pose: Dictionary = source_record.get("pose", {})
 	if pose.is_empty():
 		pose = source_record.get("gateway_projection", {}).get("baseline_pose", {})
-	return Vector3(float(pose.get("x4", 0)) / 4.0, float(pose.get("elevation", 0)) * 3.0, float(pose.get("z4", 0)) / 4.0)
+	if _projection_floor_height <= 0.0:
+		push_error("VisitorManager: ProjectionMetrics must be configured before resolving an arrival source.")
+		return Vector3.ZERO
+	return Vector3(float(pose.get("x4", 0)) / 4.0, float(pose.get("elevation", 0)) * _projection_floor_height, float(pose.get("z4", 0)) / 4.0)
 
 
 ## Remove a visitor and their visual node.

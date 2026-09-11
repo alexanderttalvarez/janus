@@ -5,7 +5,7 @@ extends Node
 
 enum AssignmentMode { DEBUG_IMMEDIATE }
 
-const PHYSICAL_DOOR_ACCESS_KINDS: Array[String] = ["external_circulation", "internal_transit"]
+const PHYSICAL_DOOR_ACCESS_KINDS: Array[String] = ["external_circulation", "internal_transit", "public_band"]
 
 ## Active parcel-subtype assignment policy for this handoff.
 var assignment_mode: AssignmentMode = AssignmentMode.DEBUG_IMMEDIATE
@@ -48,29 +48,52 @@ func get_district_revision() -> int:
 
 
 ## Prepare a detached coordination token without writing zone authority.
-func preview_district_candidate(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+func preview_district_candidate(
+	intent: Dictionary,
+	district_ref: Dictionary,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> Dictionary:
+	var spatial_validation: Dictionary = _validate_spatial_snapshot_input(intent, district_ref, spatial_snapshot)
+	if not bool(spatial_validation.get("valid", false)):
+		return {"accepted": false, "preview": null, "diagnostics": spatial_validation.get("diagnostics", [])}
+	var public_access_validation: Dictionary = _validate_public_band_access_input(district_ref, public_band_access)
+	if not bool(public_access_validation.get("valid", false)):
+		return {"accepted": false, "preview": null, "diagnostics": public_access_validation.get("diagnostics", [])}
+	var retained_validation: Dictionary = _validate_retained_public_band_doors(public_band_access)
+	if not bool(retained_validation.get("valid", false)):
+		return {"accepted": false, "preview": null, "diagnostics": retained_validation.get("diagnostics", [])}
 	if String(intent.get("operation", "")) == DistrictRuntime.OP_SET_MANUAL_DOOR:
-		var door_validation: Dictionary = _validate_manual_door_zone_intent(intent, candidate_state)
+		var door_validation: Dictionary = _validate_manual_door_zone_intent(intent, district_ref)
 		if not bool(door_validation.get("valid", false)):
 			return {"accepted": false, "preview": null, "diagnostics": door_validation.get("diagnostics", [])}
 		return {"accepted": true, "preview": null, "diagnostics": []}
 	if String(intent.get("operation", "")) != DistrictRuntime.OP_PAINT_ZONE:
 		return {"accepted": true, "preview": null, "diagnostics": []}
 	var prospective_zone_state: Dictionary = _build_manual_door_zone_candidate(intent)
-	var existing_door_validation: Dictionary = _validate_manual_door_records_against_zone_candidate(candidate_state.get("manual_door_records", []), prospective_zone_state)
+	var existing_door_validation: Dictionary = _validate_manual_door_records_against_zone_candidate(spatial_snapshot.get_manual_door_edges(), prospective_zone_state, String(intent.get("zone_floor_label", "")))
 	if not bool(existing_door_validation.get("valid", false)):
 		return {"accepted": false, "preview": null, "diagnostics": existing_door_validation.get("diagnostics", [])}
+	var district_effects: Dictionary = _build_district_effects(intent, spatial_snapshot, existing_door_validation)
 	var preview: SplitResult = preview_paint(
 		String(intent.get("zone_type", "")),
 		_to_vector2i_array(intent.get("cells", [])),
 		String(intent.get("zone_floor_label", "")),
 		String(intent.get("zone_plot_id", "")),
 		intent.get("typologies", {}),
-		String(intent.get("paint_mode", "zone"))
+		String(intent.get("paint_mode", "zone")),
+		spatial_snapshot,
+		public_band_access
 	)
 	if preview == null or not preview.is_success():
 		return {"accepted": false, "diagnostics": [{"code": "ZONE_PAINT_REJECTED", "message": "ZoneManager rejected the detached zone paint candidate"}]}
-	return {"accepted": true, "preview": preview, "manual_door_zone_candidate": prospective_zone_state, "diagnostics": []}
+	return {
+		"accepted": true,
+		"preview": preview,
+		"manual_door_zone_candidate": prospective_zone_state,
+		"district_effects": district_effects,
+		"diagnostics": [],
+	}
 
 
 func _build_manual_door_zone_candidate(intent: Dictionary) -> Dictionary:
@@ -135,14 +158,23 @@ func _build_manual_door_zone_candidate(intent: Dictionary) -> Dictionary:
 	return candidate
 
 
-func _validate_manual_door_records_against_zone_candidate(records: Variant, candidate_state: Dictionary) -> Dictionary:
+func _validate_manual_door_records_against_zone_candidate(
+	records: Variant,
+	candidate_state: Dictionary,
+	floor_label: String = ""
+) -> Dictionary:
 	if not records is Array:
-		return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_RECORDS_INVALID", "message": "manual door records must be an array"}]}
+		return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_EDGES_INVALID", "message": "manual door edges must be an array"}]}
+	var obsolete_edges: Array[Dictionary] = []
 	for record: Variant in records:
 		if not record is Dictionary:
-			return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_RECORD_INVALID", "message": "manual door record must be an object"}]}
-		var from_address: Dictionary = {"runtime_plot_id": record.get("runtime_plot_id", ""), "floor_id": record.get("floor_id", ""), "elevation": int(record.get("elevation", 0)), "cell": record.get("from_cell", [])}
-		var to_address: Dictionary = {"runtime_plot_id": record.get("runtime_plot_id", ""), "floor_id": record.get("floor_id", ""), "elevation": int(record.get("elevation", 0)), "cell": record.get("to_cell", [])}
+			return {"valid": false, "diagnostics": [{"code": "MANUAL_DOOR_EDGE_INVALID", "message": "manual door edge must be an object"}]}
+		var endpoint_a: Dictionary = record.get("endpoint_a", {})
+		var endpoint_b: Dictionary = record.get("endpoint_b", {})
+		var cell_a: Dictionary = endpoint_a.get("local_cell", {})
+		var cell_b: Dictionary = endpoint_b.get("local_cell", {})
+		var from_address: Dictionary = {"runtime_plot_id": endpoint_a.get("runtime_plot_id", ""), "floor_id": floor_label, "elevation": int(endpoint_a.get("signed_elevation", 0)), "cell": [int(cell_a.get("x", -1)), int(cell_a.get("y", -1))]}
+		var to_address: Dictionary = {"runtime_plot_id": endpoint_b.get("runtime_plot_id", ""), "floor_id": floor_label, "elevation": int(endpoint_b.get("signed_elevation", 0)), "cell": [int(cell_b.get("x", -1)), int(cell_b.get("y", -1))]}
 		var from_view: Dictionary = get_manual_door_zone_view(from_address, candidate_state)
 		var to_view: Dictionary = get_manual_door_zone_view(to_address, candidate_state)
 		var from_zone_id: String = String(from_view.get("zone_id", ""))
@@ -153,20 +185,51 @@ func _validate_manual_door_records_against_zone_candidate(records: Variant, cand
 		elif from_zone_id.is_empty() and to_zone_id.is_empty():
 			reason = "MANUAL_DOOR_CONNECTION_INVALID"
 		elif not from_zone_id.is_empty() and from_zone_id == to_zone_id:
-			reason = "SAME_ZONE_FORBIDDEN"
-		elif not from_zone_id.is_empty() and not to_zone_id.is_empty() and (int(from_view.get("typology", -1)) != 2 or int(to_view.get("typology", -1)) != 2):
+			obsolete_edges.append(record.duplicate(true))
+		elif not from_zone_id.is_empty() and not to_zone_id.is_empty() and (int(from_view.get("typology", -1)) != ZoneData.TileTypology.TRANSIT or int(to_view.get("typology", -1)) != ZoneData.TileTypology.TRANSIT):
 			reason = "INTER_ZONE_REQUIRES_TRANSIT"
 		else:
 			var zoned_view: Dictionary = from_view if not from_zone_id.is_empty() else to_view
-			if int(zoned_view.get("typology", -1)) != 2:
+			if int(zoned_view.get("typology", -1)) != ZoneData.TileTypology.TRANSIT:
 				reason = "ZONE_TO_CIRCULATION_REQUIRES_TRANSIT"
 		if not reason.is_empty():
-			return {"valid": false, "diagnostics": [{"code": "EXISTING_DOOR_INVALIDATED", "message": "EXISTING_DOOR_INVALIDATED:MANUAL_DOOR:%s" % _manual_door_record_key(record) + ":" + reason}]}
-	return {"valid": true, "diagnostics": []}
+			return {"valid": false, "diagnostics": [{"code": "EXISTING_DOOR_INVALIDATED", "message": "EXISTING_DOOR_INVALIDATED:MANUAL_DOOR:%s:%s" % [_manual_door_record_key(record), reason]}]}
+	return {"valid": true, "obsolete_edges": obsolete_edges, "diagnostics": []}
+
+
+func _build_district_effects(
+	intent: Dictionary,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	door_validation: Dictionary
+) -> Dictionary:
+	var remove_cells: Array[Dictionary] = []
+	var add_cells: Array[Dictionary] = []
+	var paint_mode: String = String(intent.get("paint_mode", "zone"))
+	var floor_label: String = String(intent.get("zone_floor_label", ""))
+	var plot_id: String = String(intent.get("zone_plot_id", intent.get("runtime_plot_id", "")))
+	for tile: Vector2i in _normalized_tiles(_to_vector2i_array(intent.get("cells", []))):
+		var cell: Dictionary = {"x": tile.x, "y": tile.y}
+		if paint_mode == "none":
+			if get_zone_at_tile(tile, floor_label, plot_id) != null:
+				add_cells.append(cell)
+		elif spatial_snapshot.has_cell("explicit_circulation_cells", tile):
+			remove_cells.append(cell)
+	return {
+		"remove_explicit_circulation_cells": remove_cells,
+		"add_explicit_circulation_cells": add_cells,
+		"remove_manual_door_edges": door_validation.get("obsolete_edges", []).duplicate(true),
+	}
 
 
 func _manual_door_record_key(record: Dictionary) -> String:
-	return "%s|%s|%d|%s|%s" % [String(record.get("runtime_plot_id", "")), String(record.get("floor_id", "")), int(record.get("elevation", 0)), str(record.get("from_cell", [])), str(record.get("to_cell", []))]
+	var endpoint_a: Dictionary = record.get("endpoint_a", {})
+	var endpoint_b: Dictionary = record.get("endpoint_b", {})
+	return "%s|%s" % [_manual_door_endpoint_key(endpoint_a), _manual_door_endpoint_key(endpoint_b)]
+
+
+func _manual_door_endpoint_key(endpoint: Dictionary) -> String:
+	var cell: Dictionary = endpoint.get("local_cell", {})
+	return "%s|%+011d|%011d|%011d" % [String(endpoint.get("runtime_plot_id", "")), int(endpoint.get("signed_elevation", 0)), int(cell.get("y", -1)), int(cell.get("x", -1))]
 
 
 func _manual_door_cell_in_values(cell: Variant, values: Array) -> bool:
@@ -244,23 +307,41 @@ func _validate_manual_door_zone_intent(intent: Dictionary, _district_candidate: 
 	return {"valid": true, "diagnostics": []}
 
 
-func prepare_district_candidate(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
-	var preview: Dictionary = preview_district_candidate(intent, candidate_state)
-	if not bool(preview.get("accepted", false)):
-		return preview
-	var zone_candidate: Dictionary = _build_manual_door_zone_candidate(intent)
-	var door_validation: Dictionary = _validate_manual_door_records_against_zone_candidate(candidate_state.get("manual_door_records", []), zone_candidate)
+func prepare_district_candidate(
+	intent: Dictionary,
+	district_ref: Dictionary,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null,
+	zone_plan: Dictionary = {}
+) -> Dictionary:
+	if zone_plan.is_empty() or not bool(zone_plan.get("accepted", false)):
+		return {"accepted": false, "diagnostics": [{"code": "ZONE_PLAN_REQUIRED", "message": "District must provide the accepted Zone preview plan"}]}
+	var spatial_validation: Dictionary = _validate_spatial_snapshot_input(intent, district_ref, spatial_snapshot)
+	if not bool(spatial_validation.get("valid", false)):
+		return {"accepted": false, "diagnostics": spatial_validation.get("diagnostics", [])}
+	var public_access_validation: Dictionary = _validate_public_band_access_input(district_ref, public_band_access)
+	if not bool(public_access_validation.get("valid", false)):
+		return {"accepted": false, "diagnostics": public_access_validation.get("diagnostics", [])}
+	var zone_candidate: Dictionary = zone_plan.get("manual_door_zone_candidate", _build_manual_door_zone_candidate(intent)).duplicate(true)
+	if String(intent.get("operation", "")) == DistrictRuntime.OP_PAINT_ZONE:
+		var planned_preview: SplitResult = zone_plan.get("preview") as SplitResult
+		if planned_preview == null or not planned_preview.is_success():
+			return {"accepted": false, "diagnostics": [{"code": "ZONE_PLAN_INVALID", "message": "prepared Zone paint requires the successful preview result"}]}
+	var door_validation: Dictionary = _validate_manual_door_records_against_zone_candidate(spatial_snapshot.get_manual_door_edges(), zone_candidate, String(intent.get("zone_floor_label", "")))
 	if not bool(door_validation.get("valid", false)):
 		return {"accepted": false, "diagnostics": door_validation.get("diagnostics", [])}
 	return {
 		"accepted": true,
 		"prepare_token": {
 			"intent": intent.duplicate(true),
-			"candidate_state": candidate_state.duplicate(true),
-			"manual_door_records": candidate_state.get("manual_door_records", []).duplicate(true),
-			"manual_door_zone_candidate": zone_candidate.duplicate(true),
+			"district_ref": district_ref.duplicate(true),
+			"zone_plan": zone_plan.duplicate(true),
+			"manual_door_edges": spatial_snapshot.get_manual_door_edges(),
+			"manual_door_zone_candidate": zone_candidate,
 			"prior_zone_state": serialize(),
 			"zone_revision": authority_revision,
+			"spatial_snapshot": spatial_snapshot.duplicate_snapshot(),
+			"public_band_access": public_band_access.duplicate_snapshot() if public_band_access != null else null,
 			"mutated": false,
 		},
 		"diagnostics": [],
@@ -273,9 +354,18 @@ func commit_district_candidate(prepare_result: Dictionary) -> Dictionary:
 	if prepare_token.is_empty() or int(prepare_token.get("zone_revision", -1)) != authority_revision:
 		return {"accepted": false, "diagnostics": [{"code": "STALE_ZONE_REVISION", "message": "zone authority changed before coordinated commit"}]}
 	var intent: Dictionary = prepare_token.get("intent", {})
+	var district_ref: Dictionary = prepare_token.get("district_ref", {})
+	var spatial_snapshot: DistrictZoneSpatialSnapshot = prepare_token.get("spatial_snapshot") as DistrictZoneSpatialSnapshot
+	var spatial_validation: Dictionary = _validate_spatial_snapshot_input(intent, district_ref, spatial_snapshot)
+	if not bool(spatial_validation.get("valid", false)):
+		return {"accepted": false, "diagnostics": spatial_validation.get("diagnostics", [])}
+	var public_band_access: PublicBandAccessSnapshot = prepare_token.get("public_band_access") as PublicBandAccessSnapshot
+	var public_access_validation: Dictionary = _validate_public_band_access_input(district_ref, public_band_access)
+	if not bool(public_access_validation.get("valid", false)):
+		return {"accepted": false, "diagnostics": public_access_validation.get("diagnostics", [])}
 	if String(intent.get("operation", "")) != DistrictRuntime.OP_PAINT_ZONE:
-		return {"accepted": true, "diagnostics": []}
-	var door_validation: Dictionary = _validate_manual_door_records_against_zone_candidate(prepare_token.get("manual_door_records", []), prepare_token.get("manual_door_zone_candidate", {}))
+		return {"accepted": true, "door_access_edges": _build_public_band_traversal_edges(public_band_access), "diagnostics": []}
+	var door_validation: Dictionary = _validate_manual_door_records_against_zone_candidate(prepare_token.get("manual_door_edges", []), prepare_token.get("manual_door_zone_candidate", {}), String(intent.get("zone_floor_label", "")))
 	if not bool(door_validation.get("valid", false)):
 		return {"accepted": false, "diagnostics": door_validation.get("diagnostics", [])}
 	_district_notifications_deferred = true
@@ -285,14 +375,16 @@ func commit_district_candidate(prepare_result: Dictionary) -> Dictionary:
 		String(intent.get("zone_floor_label", "")),
 		String(intent.get("zone_plot_id", "")),
 		intent.get("typologies", {}),
-		String(intent.get("paint_mode", "zone"))
+		String(intent.get("paint_mode", "zone")),
+		spatial_snapshot,
+		public_band_access
 	)
 	if committed == null and not (String(intent.get("paint_mode", "zone")) == "none" and last_split_result != null and last_split_result.is_success()):
 		_district_notifications_deferred = false
 		_deferred_district_notifications.clear()
 		return {"accepted": false, "diagnostics": [{"code": "ZONE_PAINT_COMMIT_FAILED", "message": "ZoneManager could not commit the prepared paint candidate"}]}
 	prepare_token["mutated"] = true
-	return {"accepted": true, "diagnostics": []}
+	return {"accepted": true, "door_access_edges": _build_public_band_traversal_edges(public_band_access), "diagnostics": []}
 
 
 ## Restore a prior zone reference if a pre-append failure occurs.
@@ -364,12 +456,7 @@ func _to_vector2i_array(values: Array) -> Array[Vector2i]:
 
 
 func _restore_zone_projection(prior: Dictionary, revision: int) -> void:
-	for zone: ZoneData in zones.values():
-		_clear_zone_tiles(zone.tiles, zone.plot_id, zone.floor)
 	deserialize(prior)
-	for zone: ZoneData in zones.values():
-		_mark_zone_tiles(zone)
-	_rebuild_pathfinding()
 	authority_revision = revision
 
 
@@ -382,7 +469,9 @@ func create_zone(
 	tiles: Array[Vector2i],
 	floor: String,
 	plot_id: String,
-	typologies: Dictionary = {}
+	typologies: Dictionary = {},
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null,
+	public_band_access: PublicBandAccessSnapshot = null
 ) -> ZoneData:
 	var counter_snapshot := _counter_snapshot()
 	var candidate := ZoneData.new()
@@ -395,10 +484,10 @@ func create_zone(
 	candidate.typologies = _normalize_typologies(candidate.tiles, typologies)
 	candidate.zone_name = zone_type
 
-	if not _validate_candidate_tiles(candidate, ""):
+	if not _validate_candidate_tiles(candidate, "", spatial_snapshot):
 		_restore_counters(counter_snapshot)
 		return null
-	var transaction := _prepare_access_transaction(candidate, null)
+	var transaction := _prepare_access_transaction(candidate, null, spatial_snapshot, public_band_access)
 	if transaction.is_empty():
 		_restore_counters(counter_snapshot)
 		return null
@@ -410,8 +499,6 @@ func create_zone(
 			if existing != null:
 				_copy_zone_state(committed_zone, existing)
 				committed_zone = existing
-		_mark_zone_tiles(committed_zone)
-	_rebuild_pathfinding()
 	authority_revision += 1
 	_emit_zone_event("zone_created", [candidate.id, candidate.type, candidate.tiles.size()])
 	for committed_zone: ZoneData in transaction:
@@ -428,29 +515,28 @@ func paint_zone(
 	floor: String,
 	plot_id: String,
 	typologies: Dictionary = {},
-	paint_mode: String = "zone"
+	paint_mode: String = "zone",
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null,
+	public_band_access: PublicBandAccessSnapshot = null
 ) -> ZoneData:
 	var normalized_tiles := _normalized_tiles(tiles)
 	if paint_mode == "none":
-		return _remove_painted_tiles(normalized_tiles, floor, plot_id)
+		return _remove_painted_tiles(normalized_tiles, floor, plot_id, spatial_snapshot, public_band_access)
 	if zone_type.is_empty() or normalized_tiles.is_empty():
 		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "EMPTY_PAINT_STROKE")
 		return null
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	if spatial_snapshot == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
 		return null
-
 	var source_zones: Array[ZoneData] = []
 	var source_ids: Dictionary = {}
 	for tile_pos: Vector2i in normalized_tiles:
-		var tile: Variant = grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
-		if tile == null or not tile.owned or not tile.floor_built:
-			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_ZONE_TILE")
+		if not spatial_snapshot.has_cell("zone_eligible_cells", tile_pos):
+			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_TILE")
 			return null
-		if not tile.zone_id.is_empty():
-			var source: ZoneData = zones.get(tile.zone_id, null)
-			if source == null or source.plot_id != plot_id or source.floor != floor or source.type != zone_type:
+		var source: ZoneData = get_zone_at_tile(tile_pos, floor, plot_id)
+		if source != null:
+			if source.type != zone_type:
 				last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "ZONE_TYPE_CONFLICT")
 				return null
 			if not source_ids.has(source.id):
@@ -458,16 +544,13 @@ func paint_zone(
 				source_zones.append(source)
 	for tile_pos: Vector2i in normalized_tiles:
 		for direction: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
-			var neighbor: Variant = grid_manager.get_tile(tile_pos.x + direction.x, tile_pos.y + direction.y, plot_id, floor)
-			if neighbor == null or neighbor.zone_id.is_empty():
-				continue
-			var adjacent_source: ZoneData = zones.get(neighbor.zone_id, null)
+			var adjacent_source: ZoneData = get_zone_at_tile(tile_pos + direction, floor, plot_id)
 			if adjacent_source != null and adjacent_source.type == zone_type and not source_ids.has(adjacent_source.id):
 				source_ids[adjacent_source.id] = true
 				source_zones.append(adjacent_source)
 	source_zones.sort_custom(func(first: ZoneData, second: ZoneData) -> bool: return first.id < second.id)
 	if source_zones.is_empty():
-		return create_zone(zone_type, normalized_tiles, floor, plot_id, typologies)
+		return create_zone(zone_type, normalized_tiles, floor, plot_id, typologies, spatial_snapshot, public_band_access)
 
 	var survivor: ZoneData = source_zones[0]
 	var candidate := _copy_zone(survivor)
@@ -481,28 +564,21 @@ func paint_zone(
 	var merged_typologies: Dictionary = {}
 	for source: ZoneData in source_zones:
 		for source_tile: Vector2i in source.tiles:
-			merged_typologies[source_tile] = source.typologies.get(source_tile, GridTile.TileTypology.TENANT)
+			merged_typologies[source_tile] = source.typologies.get(source_tile, ZoneData.TileTypology.TENANT)
 	for tile_pos: Vector2i in normalized_tiles:
-		merged_typologies[tile_pos] = typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+		merged_typologies[tile_pos] = typologies.get(tile_pos, ZoneData.TileTypology.TENANT)
 	candidate.typologies = _normalize_typologies(candidate.tiles, merged_typologies)
 	if not _is_connected_tiles(candidate.tiles):
 		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
 		return null
-	if not _prepare_preserving_addition(candidate, source_zones):
+	if not _prepare_preserving_addition(candidate, source_zones, spatial_snapshot, public_band_access):
 		return null
 
 	var counter_snapshot := _counter_snapshot()
 	for source: ZoneData in source_zones:
 		if source.id != survivor.id:
-			_clear_merge_boundary_doors(source_zones, source)
-	for source: ZoneData in source_zones:
-		_clear_zone_tiles(source.tiles, source.plot_id, source.floor)
-	for source: ZoneData in source_zones:
-		if source.id != survivor.id:
 			zones.erase(source.id)
 	_copy_zone_state(candidate, survivor)
-	_mark_zone_tiles(survivor)
-	_rebuild_pathfinding()
 	authority_revision += 1
 	_emit_zone_event("zone_modified", [survivor.id])
 	for source: ZoneData in source_zones:
@@ -513,18 +589,21 @@ func paint_zone(
 
 
 ## Remove committed zone membership atomically while preserving unaffected parcels.
-func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: String) -> ZoneData:
+func _remove_painted_tiles(
+	tiles: Array[Vector2i],
+	floor: String,
+	plot_id: String,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> ZoneData:
 	var affected: Dictionary = {}
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	if spatial_snapshot == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
 		return null
 	for tile_pos: Vector2i in tiles:
-		var tile: Variant = grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
-		if tile != null and not tile.zone_id.is_empty():
-			var zone: ZoneData = zones.get(tile.zone_id, null)
-			if zone != null:
-				affected[zone.id] = zone
+		var zone: ZoneData = get_zone_at_tile(tile_pos, floor, plot_id)
+		if zone != null:
+			affected[zone.id] = zone
 	if affected.is_empty():
 		last_split_result = SplitResult.success([], [], [])
 		return null
@@ -543,14 +622,13 @@ func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: Strin
 			return null
 		candidate.tiles = _normalized_tiles(remaining)
 		candidate.typologies = _normalize_typologies(candidate.tiles, source.typologies)
-		if not _prepare_removal_candidate(candidate, source):
+		if not _prepare_removal_candidate(candidate, source, spatial_snapshot, public_band_access):
 			return null
 		candidates.append(candidate)
 
 	last_split_result = SplitResult.success([], [], [])
 	for zone_id: String in affected:
 		var source: ZoneData = affected[zone_id]
-		_clear_zone_tiles(tiles, plot_id, floor)
 		if not zones.has(zone_id):
 			continue
 		var candidate: ZoneData = null
@@ -563,16 +641,18 @@ func _remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: Strin
 			_emit_zone_event("zone_deleted", [zone_id])
 		else:
 			_copy_zone_state(candidate, source)
-			_mark_zone_tiles(source)
 			_emit_zone_event("zone_modified", [zone_id])
-	_rebuild_pathfinding()
 	authority_revision += 1
 	return candidates[0] if not candidates.is_empty() else null
 
 
-func _prepare_preserving_addition(candidate: ZoneData, sources: Array[ZoneData]) -> bool:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
+func _prepare_preserving_addition(
+	candidate: ZoneData,
+	sources: Array[ZoneData],
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> bool:
+	if spatial_snapshot == null:
 		return false
 	var old_tiles: Dictionary = {}
 	var old_parcels: Array[Parcel] = []
@@ -583,16 +663,12 @@ func _prepare_preserving_addition(candidate: ZoneData, sources: Array[ZoneData])
 			old_parcels.append(parcel)
 	var new_tenant_tiles: Array[Vector2i] = []
 	for tile_pos: Vector2i in candidate.tiles:
-		if not old_tiles.has(tile_pos) and candidate.typologies.get(tile_pos, GridTile.TileTypology.TENANT) == GridTile.TileTypology.TENANT:
+		if not old_tiles.has(tile_pos) and candidate.typologies.get(tile_pos, ZoneData.TileTypology.TENANT) == ZoneData.TileTypology.TENANT:
 			new_tenant_tiles.append(tile_pos)
 	var overlay: Dictionary = {}
 	for tile_pos: Vector2i in candidate.tiles:
 		overlay[tile_pos] = candidate.id
-	var context := FloorAccessContext.new(
-		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
-		grid_manager.get_plot(candidate.plot_id),
-		overlay
-	)
+	var context := _build_access_context(spatial_snapshot, candidate, sources, public_band_access)
 	var planned: Array[Parcel] = []
 	for parcel: Parcel in old_parcels:
 		var preserved := _copy_parcel(parcel)
@@ -623,7 +699,7 @@ func _prepare_preserving_addition(candidate: ZoneData, sources: Array[ZoneData])
 		new_zone.parcel_layout_seed = candidate.parcel_layout_seed
 		new_zone.tiles = _normalized_tiles(new_tenant_tiles)
 		new_zone.typologies = _normalize_typologies(new_zone.tiles, candidate.typologies)
-		var new_result := ZoneSplitter.split(new_zone, context.floor_grid, context.plot, context)
+		var new_result := ZoneSplitter.split(new_zone, context)
 		if not new_result.is_success():
 			last_split_result = new_result
 			return false
@@ -642,19 +718,16 @@ func _prepare_preserving_addition(candidate: ZoneData, sources: Array[ZoneData])
 	return true
 
 
-func _prepare_removal_candidate(candidate: ZoneData, source: ZoneData) -> bool:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
+func _prepare_removal_candidate(
+	candidate: ZoneData,
+	source: ZoneData,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> bool:
+	if spatial_snapshot == null:
 		return false
-	var overlay: Dictionary = {}
-	for tile_pos: Vector2i in candidate.tiles:
-		overlay[tile_pos] = candidate.id
-	var context := FloorAccessContext.new(
-		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
-		grid_manager.get_plot(candidate.plot_id),
-		overlay
-	)
-	var result := ZoneSplitter.split(candidate, context.floor_grid, context.plot, context)
+	var context := _build_access_context(spatial_snapshot, candidate, [source], public_band_access)
+	var result := ZoneSplitter.split(candidate, context)
 	if not result.is_success():
 		last_split_result = result
 		return false
@@ -721,12 +794,10 @@ func _copy_parcel(source: Parcel) -> Parcel:
 func _physical_door_candidates_for_parcel(
 	parcel: Parcel, zone: ZoneData, context: FloorAccessContext, overlay: Dictionary
 ) -> Array[Dictionary]:
-	var floor_grid := context.floor_grid
-	var plot := context.plot
 	var zone_tiles: Dictionary = {}
 	for tile_pos: Vector2i in zone.tiles:
 		zone_tiles[tile_pos] = true
-	var edges := ZoneSplitter._frontage_edges(parcel.tiles, zone_tiles, zone, floor_grid, plot, context)
+	var edges := ZoneSplitter._frontage_edges(parcel.tiles, zone_tiles, zone, context)
 	var physical: Array[Dictionary] = []
 	for edge: Dictionary in edges:
 		if PHYSICAL_DOOR_ACCESS_KINDS.has(edge.get("access_kind", "")):
@@ -742,24 +813,6 @@ func _all_parcels_have_physical_door_frontage_context(
 		if _physical_door_candidates_for_parcel(parcel, zone, context, overlay).is_empty():
 			return false
 	return true
-
-
-func _clear_merge_boundary_doors(sources: Array[ZoneData], source: ZoneData) -> void:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return
-	for other: ZoneData in sources:
-		if other.id >= source.id:
-			continue
-		for first: Vector2i in source.tiles:
-			for direction: Vector2i in [Vector2i.RIGHT, Vector2i.DOWN]:
-				var second := first + direction
-				if not other.tiles.has(second):
-					continue
-				var first_tile: Variant = grid_manager.get_tile(first.x, first.y, source.plot_id, source.floor)
-				var second_tile: Variant = grid_manager.get_tile(second.x, second.y, source.plot_id, source.floor)
-				if first_tile.typology == GridTile.TileTypology.TRANSIT and second_tile.typology == GridTile.TileTypology.TRANSIT and grid_manager.has_door_between(first, second, source.plot_id, source.floor):
-					grid_manager.set_door_between(first, second, false, source.plot_id, source.floor)
 
 
 func _serialize_tiles(p_tiles: Array[Vector2i]) -> Array[Dictionary]:
@@ -801,7 +854,8 @@ func modify_zone(
 	zone_id: String,
 	new_tiles: Array[Vector2i],
 	plot_id: String,
-	typologies: Dictionary = {}
+	typologies: Dictionary = {},
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null
 ) -> ZoneData:
 	var counter_snapshot := _counter_snapshot()
 	var zone: ZoneData = zones.get(zone_id, null)
@@ -817,25 +871,20 @@ func modify_zone(
 	candidate.typologies = _normalize_typologies(
 		candidate.tiles, typologies if not typologies.is_empty() else zone.typologies
 	)
-	if not _validate_candidate_tiles(candidate, zone.id):
+	if not _validate_candidate_tiles(candidate, zone.id, spatial_snapshot):
 		_restore_counters(counter_snapshot)
 		return null
-	var transaction := _prepare_access_transaction(candidate, zone)
+	var transaction := _prepare_access_transaction(candidate, zone, spatial_snapshot)
 	if transaction.is_empty():
 		_restore_counters(counter_snapshot)
 		return null
 	candidate = transaction[0]
-	var old_tiles: Array[Vector2i] = zone.tiles.duplicate()
-	_clear_zone_tiles(old_tiles, zone.plot_id, zone.floor)
 	_copy_zone_state(candidate, zone)
 	for committed_zone: ZoneData in transaction:
 		if committed_zone != candidate:
 			var existing: ZoneData = zones.get(committed_zone.id, null)
 			if existing != null:
 				_copy_zone_state(committed_zone, existing)
-				_mark_zone_tiles(existing)
-	_mark_zone_tiles(zone)
-	_rebuild_pathfinding()
 	authority_revision += 1
 	var event_bus: Node = get_node_or_null("/root/EventBus")
 	if event_bus != null:
@@ -867,11 +916,11 @@ func preview_split(
 	floor: String,
 	plot_id: String,
 	typologies: Dictionary = {},
-	preview_zone_id: String = ""
+	preview_zone_id: String = "",
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null
 ) -> SplitResult:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	if spatial_snapshot == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
 	var preview_zone := ZoneData.new()
 	var replaced_zone: ZoneData = zones.get(preview_zone_id, null)
 	if replaced_zone != null:
@@ -887,7 +936,7 @@ func preview_split(
 	preview_zone.floor = floor
 	preview_zone.tiles = _normalized_tiles(tiles)
 	preview_zone.typologies = _normalize_typologies(preview_zone.tiles, typologies)
-	return _preview_access_transaction(preview_zone, replaced_zone)
+	return _preview_access_transaction(preview_zone, replaced_zone, spatial_snapshot)
 
 
 ## Preview one paint-first mutation without changing committed state or counters.
@@ -897,33 +946,30 @@ func preview_paint(
 	floor: String,
 	plot_id: String,
 	typologies: Dictionary = {},
-	paint_mode: String = "zone"
+	paint_mode: String = "zone",
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null,
+	public_band_access: PublicBandAccessSnapshot = null
 ) -> SplitResult:
 	var normalized_tiles := _normalized_tiles(tiles)
 	if paint_mode == "none":
-		return _preview_remove_painted_tiles(normalized_tiles, floor, plot_id)
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+		return _preview_remove_painted_tiles(normalized_tiles, floor, plot_id, spatial_snapshot, public_band_access)
+	if spatial_snapshot == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
 	var source_zones: Array[ZoneData] = []
 	var source_ids: Dictionary = {}
 	for tile_pos: Vector2i in normalized_tiles:
-		var tile: Variant = grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
-		if tile == null or not tile.owned or not tile.floor_built:
+		if not spatial_snapshot.has_cell("zone_eligible_cells", tile_pos):
 			return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_ZONE_TILE")
-		if not tile.zone_id.is_empty():
-			var source: ZoneData = zones.get(tile.zone_id, null)
-			if source == null or source.plot_id != plot_id or source.floor != floor or source.type != zone_type:
+		var source: ZoneData = get_zone_at_tile(tile_pos, floor, plot_id)
+		if source != null:
+			if source.type != zone_type:
 				return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "ZONE_TYPE_CONFLICT")
 			if not source_ids.has(source.id):
 				source_ids[source.id] = true
 				source_zones.append(source)
 	for tile_pos: Vector2i in normalized_tiles:
 		for direction: Vector2i in [Vector2i.UP, Vector2i.LEFT, Vector2i.RIGHT, Vector2i.DOWN]:
-			var neighbor: Variant = grid_manager.get_tile(tile_pos.x + direction.x, tile_pos.y + direction.y, plot_id, floor)
-			if neighbor == null or neighbor.zone_id.is_empty():
-				continue
-			var adjacent_source: ZoneData = zones.get(neighbor.zone_id, null)
+			var adjacent_source: ZoneData = get_zone_at_tile(tile_pos + direction, floor, plot_id)
 			if adjacent_source != null and adjacent_source.type == zone_type and not source_ids.has(adjacent_source.id):
 				source_ids[adjacent_source.id] = true
 				source_zones.append(adjacent_source)
@@ -937,7 +983,7 @@ func preview_paint(
 		preview_zone.type = zone_type
 		preview_zone.tiles = normalized_tiles
 		preview_zone.typologies = _normalize_typologies(normalized_tiles, typologies)
-		return _preview_access_transaction(preview_zone, null)
+		return _preview_access_transaction(preview_zone, null, spatial_snapshot, public_band_access)
 	source_zones.sort_custom(func(first: ZoneData, second: ZoneData) -> bool: return first.id < second.id)
 	var candidate := _copy_zone(source_zones[0])
 	var all_tiles: Dictionary = {}
@@ -945,16 +991,16 @@ func preview_paint(
 	for source: ZoneData in source_zones:
 		for source_tile: Vector2i in source.tiles:
 			all_tiles[source_tile] = true
-			merged_typologies[source_tile] = source.typologies.get(source_tile, GridTile.TileTypology.TENANT)
+			merged_typologies[source_tile] = source.typologies.get(source_tile, ZoneData.TileTypology.TENANT)
 	for tile_pos: Vector2i in normalized_tiles:
 		all_tiles[tile_pos] = true
-		merged_typologies[tile_pos] = typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+		merged_typologies[tile_pos] = typologies.get(tile_pos, ZoneData.TileTypology.TENANT)
 	candidate.tiles = _normalized_tiles(_dictionary_tiles(all_tiles))
 	candidate.typologies = _normalize_typologies(candidate.tiles, merged_typologies)
 	if not _is_connected_tiles(candidate.tiles):
 		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
 	var counter_snapshot := _counter_snapshot()
-	var valid := _prepare_preserving_addition(candidate, source_zones)
+	var valid := _prepare_preserving_addition(candidate, source_zones, spatial_snapshot, public_band_access)
 	var preview_result := last_split_result
 	_restore_counters(counter_snapshot)
 	if not valid:
@@ -962,15 +1008,20 @@ func preview_paint(
 	return preview_result
 
 
-func _preview_remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_id: String) -> SplitResult:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+func _preview_remove_painted_tiles(
+	tiles: Array[Vector2i],
+	floor: String,
+	plot_id: String,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> SplitResult:
+	if spatial_snapshot == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
 	var affected: Dictionary = {}
 	for tile_pos: Vector2i in tiles:
-		var tile: Variant = grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
-		if tile != null and not tile.zone_id.is_empty() and zones.has(tile.zone_id):
-			affected[tile.zone_id] = zones[tile.zone_id]
+		var zone: ZoneData = get_zone_at_tile(tile_pos, floor, plot_id)
+		if zone != null:
+			affected[zone.id] = zone
 	if affected.is_empty():
 		return SplitResult.success([], [], [])
 	var counter_snapshot := _counter_snapshot()
@@ -989,7 +1040,7 @@ func _preview_remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_i
 		var candidate := _copy_zone(source)
 		candidate.tiles = _normalized_tiles(remaining)
 		candidate.typologies = _normalize_typologies(candidate.tiles, source.typologies)
-		if not _prepare_removal_candidate(candidate, source):
+		if not _prepare_removal_candidate(candidate, source, spatial_snapshot, public_band_access):
 			var failed_result := last_split_result
 			_restore_counters(counter_snapshot)
 			return failed_result
@@ -1001,22 +1052,19 @@ func _preview_remove_painted_tiles(tiles: Array[Vector2i], floor: String, plot_i
 
 ## Plan the same pure split and physical-door validation transaction as commit
 ## without assigning IDs, mutating counters, grid state, or existing zones.
-func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -> SplitResult:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
-	var overlay: Dictionary = {}
+func _preview_access_transaction(
+	candidate: ZoneData,
+	replaced_zone: ZoneData,
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> SplitResult:
+	if spatial_snapshot == null:
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
+	var replaced: Array[ZoneData] = []
 	if replaced_zone != null:
-		for tile_pos: Vector2i in replaced_zone.tiles:
-			overlay[tile_pos] = ""
-	for tile_pos: Vector2i in candidate.tiles:
-		overlay[tile_pos] = candidate.id
-	var context := FloorAccessContext.new(
-		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
-		grid_manager.get_plot(candidate.plot_id),
-		overlay
-	)
-	var result := ZoneSplitter.split(candidate, context.floor_grid, context.plot, context)
+		replaced.append(replaced_zone)
+	var context := _build_access_context(spatial_snapshot, candidate, replaced, public_band_access)
+	var result := ZoneSplitter.split(candidate, context)
 	if not result.is_success():
 		return result
 	if replaced_zone != null:
@@ -1031,7 +1079,7 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 
 	var prospective_zones: Array[ZoneData] = [_zone_with_split_residuals(candidate, result)]
 	for affected_zone: ZoneData in _affected_zones(candidate, replaced_zone):
-		var affected_result := ZoneSplitter.split(affected_zone, context.floor_grid, context.plot, context)
+		var affected_result := ZoneSplitter.split(affected_zone, context)
 		if not affected_result.is_success():
 			return affected_result
 		_match_preview_parcels(affected_result.parcels, affected_zone.parcels)
@@ -1047,7 +1095,7 @@ func _preview_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 			)
 		prospective_zones.append(_zone_with_split_residuals(affected_zone, affected_result))
 	var manual_door_diagnostic := _manual_door_invalidation_diagnostic(
-		candidate, replaced_zone, prospective_zones
+		candidate, replaced_zone, prospective_zones, context
 	)
 	if not manual_door_diagnostic.is_empty():
 		return _existing_door_failure(result.parcels, manual_door_diagnostic)
@@ -1075,12 +1123,7 @@ func delete_zone(zone_id: String, plot_id: String = "") -> void:
 		push_error("ZoneManager.delete_zone(): plot mismatch for zone '%s'." % zone_id)
 		return
 
-	var grid_manager := _get_grid_manager()
-	if grid_manager:
-		for tile_pos: Vector2i in zone.tiles:
-			grid_manager.sell_tile(tile_pos.x, tile_pos.y, zone.plot_id, zone.floor)
 	zones.erase(zone_id)
-	_rebuild_pathfinding()
 	authority_revision += 1
 	var event_bus: Node = get_node_or_null("/root/EventBus")
 	if event_bus != null:
@@ -1146,13 +1189,11 @@ func _manual_door_serialized_typology(zone: Dictionary, cell: Array) -> int:
 func get_zone_at_tile(
 	tile_pos: Vector2i, floor: String = "", plot_id: String = ""
 ) -> ZoneData:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return null
-	var tile: Variant = grid_manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
-	if tile == null or tile.zone_id.is_empty():
-		return null
-	return zones.get(tile.zone_id, null)
+	for zone_value: Variant in zones.values():
+		var zone: ZoneData = zone_value as ZoneData
+		if zone != null and (floor.is_empty() or zone.floor == floor) and (plot_id.is_empty() or zone.plot_id == plot_id) and zone.tiles.has(tile_pos):
+			return zone
+	return null
 
 
 ## Get all zones on a specific floor.
@@ -1304,6 +1345,36 @@ func get_service_proxy_door_snapshots() -> Array[Dictionary]:
 	return snapshots
 
 
+func _build_public_band_traversal_edges(snapshot: PublicBandAccessSnapshot) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if snapshot == null:
+		return result
+	var access_by_id: Dictionary = {}
+	for access_edge: Dictionary in snapshot.access_edges:
+		access_by_id[String(access_edge["access_edge_id"])] = access_edge
+	for zone: ZoneData in zones.values():
+		for parcel: Parcel in zone.parcels:
+			for selected: Dictionary in parcel.selected_door_edges:
+				if String(selected.get("access_kind", "")) != "public_band":
+					continue
+				var access_id: String = String(selected.get("public_band_access_edge_id", ""))
+				if not access_by_id.has(access_id):
+					continue
+				var access_edge: Dictionary = access_by_id[access_id]
+				var tile: Vector2i = selected.get("tile", Vector2i.ZERO)
+				result.append({
+					"door_edge_id": service_proxy_door_id(parcel.id, selected),
+					"floor_id": zone.floor,
+					"interior_cell_id": "%s/%d,%d" % [zone.floor, tile.x, tile.y],
+					"external_ref": String(access_edge["pedestrian_band_id"]),
+					"access_kind": "public_band_physical",
+					"source_kind": "H3",
+					"public_band_access_edge_id": access_id,
+				})
+	result.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["door_edge_id"]) < String(right["door_edge_id"]))
+	return result
+
+
 static func service_proxy_door_id(parcel_id: String, edge: Dictionary) -> String:
 	return "parcel_door/%s/%s" % [parcel_id, _door_edge_key(edge)]
 
@@ -1337,6 +1408,41 @@ func serialize() -> Dictionary:
 		"parcel_counter": _parcel_counter,
 		"parcel_display_number_counter": _parcel_display_number_counter,
 	}
+
+
+func validate_serialized_state(data: Dictionary, public_band_access: PublicBandAccessSnapshot) -> Dictionary:
+	if public_band_access == null:
+		return {"valid": false, "diagnostics": [{"code": "PUBLIC_BAND_ACCESS_UNAVAILABLE"}]}
+	var snapshot_validation: Dictionary = PublicBandAccessSnapshot.validate_value(public_band_access.duplicate_value())
+	if not bool(snapshot_validation.get("valid", false)):
+		return snapshot_validation
+	if not data.get("zones") is Dictionary:
+		return {"valid": false, "diagnostics": [{"code": "INVALID_PUBLIC_BAND_DOOR_PROVENANCE"}]}
+	var edges_by_id: Dictionary = {}
+	for edge: Dictionary in public_band_access.access_edges:
+		edges_by_id[String(edge["access_edge_id"])] = edge
+	for zone_value: Variant in (data["zones"] as Dictionary).values():
+		if not zone_value is Dictionary:
+			return {"valid": false, "diagnostics": [{"code": "INVALID_PUBLIC_BAND_DOOR_PROVENANCE"}]}
+		var zone_data: Dictionary = zone_value
+		for parcel_value: Variant in zone_data.get("parcels", []):
+			if not parcel_value is Dictionary:
+				return {"valid": false, "diagnostics": [{"code": "INVALID_PUBLIC_BAND_DOOR_PROVENANCE"}]}
+			var parcel_data: Dictionary = parcel_value
+			var selected_validation: Dictionary = Parcel.validate_serialized_selected_door_edges(parcel_data.get("selected_door_edges"))
+			if not bool(selected_validation.get("valid", false)):
+				return selected_validation
+			for selected: Dictionary in parcel_data["selected_door_edges"]:
+				if String(selected["access_kind"]) != "PUBLIC_BAND":
+					continue
+				var edge_id: String = String(selected["public_band_access_edge_id"])
+				if not edges_by_id.has(edge_id):
+					return {"valid": false, "diagnostics": [{"code": "INVALID_PUBLIC_BAND_DOOR_PROVENANCE"}]}
+				var edge: Dictionary = edges_by_id[edge_id]
+				var endpoint: Dictionary = edge["parcel_endpoint"]
+				if String(endpoint["runtime_plot_id"]) != String(zone_data.get("plot_id", "")) or endpoint["local_cell"] != selected["parcel_cell"] or String(edge["outward_direction"]) != String(selected["direction"]):
+					return {"valid": false, "diagnostics": [{"code": "INVALID_PUBLIC_BAND_DOOR_PROVENANCE"}]}
+	return {"valid": true, "diagnostics": []}
 
 
 func deserialize(data: Dictionary) -> void:
@@ -1377,22 +1483,49 @@ func deserialize(data: Dictionary) -> void:
 # ── Atomic Split Preparation ───────────────────────────────────────────
 
 
-func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -> Array[ZoneData]:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
-		return []
-	var overlay: Dictionary = {}
-	if replaced_zone != null:
-		for tile_pos: Vector2i in replaced_zone.tiles:
-			overlay[tile_pos] = ""
-	for tile_pos: Vector2i in candidate.tiles:
-		overlay[tile_pos] = candidate.id
-	var context := FloorAccessContext.new(
-		grid_manager.get_floor_grid(candidate.plot_id, candidate.floor),
-		grid_manager.get_plot(candidate.plot_id),
-		overlay
+func _build_access_context(
+	spatial_snapshot: DistrictZoneSpatialSnapshot,
+	candidate: ZoneData,
+	replaced_zones: Array[ZoneData],
+	public_band_access: PublicBandAccessSnapshot
+) -> FloorAccessContext:
+	var replaced_ids: Dictionary = {}
+	for replaced_zone: ZoneData in replaced_zones:
+		if replaced_zone != null:
+			replaced_ids[replaced_zone.id] = true
+	var prospective_zone_ids: Dictionary = {}
+	var prospective_typologies: Dictionary = {}
+	for zone_value: Variant in zones.values():
+		var zone: ZoneData = zone_value as ZoneData
+		if zone == null or replaced_ids.has(zone.id) or zone.plot_id != candidate.plot_id or zone.floor != candidate.floor:
+			continue
+		for tile: Vector2i in zone.tiles:
+			prospective_zone_ids[tile] = zone.id
+			prospective_typologies[tile] = zone.typologies.get(tile, ZoneData.TileTypology.TENANT)
+	for tile: Vector2i in candidate.tiles:
+		prospective_zone_ids[tile] = candidate.id
+		prospective_typologies[tile] = candidate.typologies.get(tile, ZoneData.TileTypology.TENANT)
+	return FloorAccessContext.new(
+		spatial_snapshot,
+		prospective_zone_ids,
+		prospective_typologies,
+		public_band_access
 	)
+
+
+func _prepare_access_transaction(
+	candidate: ZoneData,
+	replaced_zone: ZoneData,
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null,
+	public_band_access: PublicBandAccessSnapshot = null
+) -> Array[ZoneData]:
+	if spatial_snapshot == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
+		return []
+	var replaced: Array[ZoneData] = []
+	if replaced_zone != null:
+		replaced.append(replaced_zone)
+	var context := _build_access_context(spatial_snapshot, candidate, replaced, public_band_access)
 	if not _prepare_split(candidate, context):
 		return []
 	var prior_parcels: Array[Parcel] = []
@@ -1420,7 +1553,7 @@ func _prepare_access_transaction(candidate: ZoneData, replaced_zone: ZoneData) -
 			return []
 		_assign_debug_subtypes(affected_candidate)
 		prepared.append(affected_candidate)
-	var manual_door_diagnostic := _manual_door_invalidation_diagnostic(candidate, replaced_zone, prepared)
+	var manual_door_diagnostic := _manual_door_invalidation_diagnostic(candidate, replaced_zone, prepared, context)
 	if not manual_door_diagnostic.is_empty():
 		last_split_result = SplitResult.failure(SplitResult.Status.EXISTING_DOOR_INVALIDATED, manual_door_diagnostic)
 		return []
@@ -1453,18 +1586,15 @@ func _affected_zones(candidate: ZoneData, replaced_zone: ZoneData) -> Array[Zone
 	return affected
 
 
-func _prepare_split(candidate: ZoneData, access_context: FloorAccessContext = null) -> bool:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+func _prepare_split(candidate: ZoneData, access_context: FloorAccessContext) -> bool:
+	if access_context == null:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_UNAVAILABLE")
 		return false
-	var floor_grid: Variant = grid_manager.get_floor_grid(candidate.plot_id, candidate.floor)
-	var plot: Variant = grid_manager.get_plot(candidate.plot_id)
-	last_split_result = ZoneSplitter.split(candidate, floor_grid, plot, access_context)
+	last_split_result = ZoneSplitter.split(candidate, access_context)
 	if not last_split_result.is_success():
 		return false
 	for residual_tile: Vector2i in last_split_result.residual_tiles:
-		candidate.typologies[residual_tile] = GridTile.TileTypology.DECORATION
+		candidate.typologies[residual_tile] = ZoneData.TileTypology.DECORATION
 	candidate.parcels = last_split_result.parcels
 	return true
 
@@ -1484,23 +1614,23 @@ func _assign_debug_subtypes(candidate: ZoneData) -> void:
 	last_assignment_result = assignment_result
 
 
-func _validate_candidate_tiles(candidate: ZoneData, existing_zone_id: String) -> bool:
+func _validate_candidate_tiles(
+	candidate: ZoneData,
+	existing_zone_id: String,
+	spatial_snapshot: DistrictZoneSpatialSnapshot
+) -> bool:
 	if candidate.plot_id.is_empty() or candidate.tiles.is_empty():
 		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "MISSING_ZONE_CONTEXT")
 		return false
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "GRID_MANAGER_UNAVAILABLE")
+	if spatial_snapshot == null or String(spatial_snapshot.get_floor_scope().get("runtime_plot_id", "")) != candidate.plot_id:
+		last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISTRICT_ZONE_SPATIAL_SCOPE_MISMATCH")
 		return false
 	for tile_pos: Vector2i in candidate.tiles:
-		var tile: Variant = grid_manager.get_tile(tile_pos.x, tile_pos.y, candidate.plot_id, candidate.floor)
-		if tile == null or not tile.owned or not tile.floor_built:
+		if not spatial_snapshot.has_cell("zone_eligible_cells", tile_pos):
 			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_OR_UNOWNED_ZONE_TILE")
 			return false
-		if tile.element != GridTile.TileElement.NONE and tile.element != GridTile.TileElement.CIRCULATION:
-			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "OCCUPIED_ZONE_TILE")
-			return false
-		if not tile.zone_id.is_empty() and tile.zone_id != existing_zone_id:
+		var occupying_zone: ZoneData = get_zone_at_tile(tile_pos, candidate.floor, candidate.plot_id)
+		if occupying_zone != null and occupying_zone.id != existing_zone_id:
 			last_split_result = SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "OVERLAPPING_ZONE_TILE")
 			return false
 	return true
@@ -1612,6 +1742,71 @@ func _transit_area_key(edge: Dictionary) -> String:
 	return "transit:%d,%d" % [access.x, access.y]
 
 
+func _validate_spatial_snapshot_input(
+	intent: Dictionary,
+	district_ref: Dictionary,
+	snapshot: DistrictZoneSpatialSnapshot
+) -> Dictionary:
+	var operation: String = String(intent.get("operation", ""))
+	if operation != DistrictRuntime.OP_PAINT_ZONE and operation != DistrictRuntime.OP_SET_MANUAL_DOOR:
+		return {"valid": true, "diagnostics": []}
+	if snapshot == null:
+		return {"valid": false, "diagnostics": [{"code": "DISTRICT_ZONE_SPATIAL_UNAVAILABLE"}]}
+	var validation: Dictionary = DistrictZoneSpatialSnapshot.validate_value(snapshot.duplicate_value())
+	if not bool(validation.get("valid", false)):
+		return validation
+	var layout: Dictionary = snapshot.get_layout_ref()
+	if snapshot.get_district_revision() != int(district_ref.get("district_revision", -1)) or String(layout.get("layout_id", "")) != String(district_ref.get("layout_id", "")) or int(layout.get("layout_definition_version", -1)) != int(district_ref.get("layout_definition_version", -2)) or String(layout.get("definition_fingerprint", "")) != String(district_ref.get("definition_fingerprint", "")):
+		return {"valid": false, "diagnostics": [{"code": "DISTRICT_ZONE_SPATIAL_STALE"}]}
+	var scope: Dictionary = snapshot.get_floor_scope()
+	if String(scope.get("runtime_plot_id", "")) != String(intent.get("runtime_plot_id", "")) or String(scope.get("floor_id", "")) != String(intent.get("floor_id", "")) or int(scope.get("signed_elevation", 999999)) != int(intent.get("elevation", -999999)):
+		return {"valid": false, "diagnostics": [{"code": "DISTRICT_ZONE_SPATIAL_SCOPE_MISMATCH"}]}
+	return {"valid": true, "diagnostics": []}
+
+
+func _validate_public_band_access_input(district_ref: Dictionary, snapshot: PublicBandAccessSnapshot) -> Dictionary:
+	if snapshot == null:
+		return {"valid": false, "diagnostics": [{"code": "PUBLIC_BAND_ACCESS_UNAVAILABLE"}]}
+	var validation: Dictionary = PublicBandAccessSnapshot.validate_value(snapshot.duplicate_value())
+	if not bool(validation.get("valid", false)):
+		return validation
+	var layout: Dictionary = snapshot.layout_ref
+	if snapshot.district_revision != int(district_ref.get("district_revision", -1)) or String(layout.get("layout_id", "")) != String(district_ref.get("layout_id", "")) or int(layout.get("layout_definition_version", -1)) != int(district_ref.get("layout_definition_version", -2)) or String(layout.get("definition_fingerprint", "")) != String(district_ref.get("definition_fingerprint", "")):
+		return {"valid": false, "diagnostics": [{"code": "PUBLIC_BAND_ACCESS_STALE"}]}
+	return {"valid": true, "diagnostics": []}
+
+
+func _validate_retained_public_band_doors(snapshot: PublicBandAccessSnapshot) -> Dictionary:
+	if snapshot == null:
+		return {"valid": false, "diagnostics": [{"code": "PUBLIC_BAND_ACCESS_UNAVAILABLE"}]}
+	var edges_by_id: Dictionary = {}
+	for edge: Dictionary in snapshot.access_edges:
+		edges_by_id[String(edge["access_edge_id"])] = edge
+	for zone: ZoneData in zones.values():
+		for parcel: Parcel in zone.parcels:
+			for selected: Dictionary in parcel.selected_door_edges:
+				if String(selected.get("access_kind", "")) != "public_band":
+					continue
+				var edge_id: String = String(selected.get("public_band_access_edge_id", ""))
+				if edge_id.is_empty() or not edges_by_id.has(edge_id):
+					return {"valid": false, "diagnostics": [{"code": "EXISTING_DOOR_INVALIDATED", "parcel_id": parcel.id}]}
+				var edge: Dictionary = edges_by_id[edge_id]
+				var endpoint: Dictionary = edge["parcel_endpoint"]
+				var cell: Dictionary = endpoint["local_cell"]
+				if String(endpoint["runtime_plot_id"]) != zone.plot_id or Vector2i(int(cell["x"]), int(cell["y"])) != selected.get("tile", Vector2i.ZERO) or _direction_name(selected.get("direction", Vector2i.ZERO)) != String(edge["outward_direction"]):
+					return {"valid": false, "diagnostics": [{"code": "EXISTING_DOOR_INVALIDATED", "parcel_id": parcel.id}]}
+	return {"valid": true, "diagnostics": []}
+
+
+static func _direction_name(direction: Vector2i) -> String:
+	match direction:
+		Vector2i.UP: return "NORTH"
+		Vector2i.RIGHT: return "EAST"
+		Vector2i.DOWN: return "SOUTH"
+		Vector2i.LEFT: return "WEST"
+	return ""
+
+
 func _all_parcels_have_physical_door_frontage(parcels: Array[Parcel]) -> bool:
 	for parcel: Parcel in parcels:
 		if _physical_door_candidates(parcel).is_empty():
@@ -1636,15 +1831,19 @@ func _physical_door_candidates(parcel: Parcel) -> Array[Dictionary]:
 
 
 static func _same_door_geometry(first: Dictionary, second: Dictionary) -> bool:
-	return first.get("tile", Vector2i.ZERO) == second.get("tile", Vector2i.ZERO) and first.get("direction", Vector2i.ZERO) == second.get("direction", Vector2i.ZERO) and first.get("access", Vector2i.ZERO) == second.get("access", Vector2i.ZERO)
+	if first.get("tile", Vector2i.ZERO) != second.get("tile", Vector2i.ZERO) or first.get("direction", Vector2i.ZERO) != second.get("direction", Vector2i.ZERO) or first.get("access", Vector2i.ZERO) != second.get("access", Vector2i.ZERO):
+		return false
+	if String(first.get("access_kind", "")) == "public_band" or String(second.get("access_kind", "")) == "public_band":
+		return String(first.get("access_kind", "")) == "public_band" and String(second.get("access_kind", "")) == "public_band" and not String(first.get("public_band_access_edge_id", "")).is_empty() and String(first.get("public_band_access_edge_id", "")) == String(second.get("public_band_access_edge_id", ""))
+	return true
 
 
 static func _door_edge_key(edge: Dictionary) -> String:
 	var tile: Vector2i = edge.get("tile", Vector2i.ZERO)
 	var direction: Vector2i = edge.get("direction", Vector2i.ZERO)
 	var access: Vector2i = edge.get("access", Vector2i.ZERO)
-	return "%d,%d|%d,%d|%d,%d|%s" % [
-		tile.x, tile.y, direction.x, direction.y, access.x, access.y, edge.get("access_kind", "")
+	return "%d,%d|%d,%d|%d,%d|%s|%s" % [
+		tile.x, tile.y, direction.x, direction.y, access.x, access.y, edge.get("access_kind", ""), edge.get("public_band_access_edge_id", "")
 	]
 
 
@@ -1745,127 +1944,80 @@ func _tile_overlap(first: Array[Vector2i], second: Array[Vector2i]) -> int:
 func _zone_with_split_residuals(source: ZoneData, result: SplitResult) -> ZoneData:
 	var projected := _copy_zone(source)
 	for tile_pos: Vector2i in result.residual_tiles:
-		projected.typologies[tile_pos] = GridTile.TileTypology.DECORATION
+		projected.typologies[tile_pos] = ZoneData.TileTypology.DECORATION
 	return projected
 
 
 func _manual_door_invalidation_diagnostic(
-	candidate: ZoneData, replaced_zone: ZoneData, prospective_zones: Array[ZoneData]
+	_candidate: ZoneData,
+	replaced_zone: ZoneData,
+	prospective_zones: Array[ZoneData],
+	context: FloorAccessContext
 ) -> String:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return ""
-	var floor_grid: Variant = grid_manager.get_floor_grid(candidate.plot_id, candidate.floor)
-	if floor_grid == null:
-		return ""
-	var overrides: Dictionary = {}
+	if context == null or context.spatial_snapshot == null:
+		return "DISTRICT_ZONE_SPATIAL_UNAVAILABLE"
 	var changed_tiles: Dictionary = {}
 	if replaced_zone != null:
 		for tile_pos: Vector2i in replaced_zone.tiles:
-			overrides[tile_pos] = {
-				"zone_id": "",
-				"typology": GridTile.TileTypology.TENANT,
-				"element": GridTile.TileElement.CIRCULATION,
-			}
 			changed_tiles[tile_pos] = true
 	for zone: ZoneData in prospective_zones:
 		for tile_pos: Vector2i in zone.tiles:
-			overrides[tile_pos] = {
-				"zone_id": zone.id,
-				"typology": zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT),
-				"element": GridTile.TileElement.NONE,
-			}
 			changed_tiles[tile_pos] = true
-
-	var edges: Dictionary = {}
-	var directions: Array[Dictionary] = [
-		{"offset": Vector2i.UP, "side": GridTile.DoorSide.NORTH},
-		{"offset": Vector2i.LEFT, "side": GridTile.DoorSide.WEST},
-		{"offset": Vector2i.RIGHT, "side": GridTile.DoorSide.EAST},
-		{"offset": Vector2i.DOWN, "side": GridTile.DoorSide.SOUTH},
-	]
-	for y: int in range(floor_grid.height):
-		for x: int in range(floor_grid.width):
-			var from := Vector2i(x, y)
-			var tile: Variant = floor_grid.get_tile(x, y)
-			if tile == null:
-				continue
-			for direction_data: Dictionary in directions:
-				if not tile.has_door(direction_data["side"]):
-					continue
-				var to: Vector2i = from + direction_data["offset"]
-				edges[_manual_door_edge_key(from, to)] = {"from": from, "to": to}
-	var keys: Array[String] = []
-	for key: String in edges:
-		keys.append(key)
-	keys.sort()
-	for key: String in keys:
-		var edge: Dictionary = edges[key]
-		var from: Vector2i = edge["from"]
-		var to: Vector2i = edge["to"]
+	for edge: Dictionary in context.spatial_snapshot.get_manual_door_edges():
+		var endpoint_a: Dictionary = edge.get("endpoint_a", {})
+		var endpoint_b: Dictionary = edge.get("endpoint_b", {})
+		var cell_a: Dictionary = endpoint_a.get("local_cell", {})
+		var cell_b: Dictionary = endpoint_b.get("local_cell", {})
+		var from := Vector2i(int(cell_a.get("x", -1)), int(cell_a.get("y", -1)))
+		var to := Vector2i(int(cell_b.get("x", -1)), int(cell_b.get("y", -1)))
 		if not changed_tiles.has(from) and not changed_tiles.has(to):
 			continue
-		var reason := _prospective_manual_door_invalid_reason(floor_grid, overrides, from, to)
+		var reason: String = _prospective_manual_door_invalid_reason(context, from, to)
 		if not reason.is_empty():
-			return "EXISTING_DOOR_INVALIDATED:MANUAL_DOOR:%s:%s" % [key, reason]
+			return "EXISTING_DOOR_INVALIDATED:MANUAL_DOOR:%s:%s" % [_manual_door_edge_key(from, to), reason]
 	return ""
 
 
 func _prospective_manual_door_invalid_reason(
-	floor_grid: FloorGrid, overrides: Dictionary, from: Vector2i, to: Vector2i
+	context: FloorAccessContext,
+	from: Vector2i,
+	to: Vector2i
 ) -> String:
-	var from_valid := floor_grid.is_valid_tile(from.x, from.y)
-	var to_valid := floor_grid.is_valid_tile(to.x, to.y)
-	if not from_valid and not to_valid:
+	if context == null or not context.is_valid_tile(from) or not context.is_valid_tile(to):
 		return "INVALID_ENDPOINT"
-	if not from_valid or not to_valid:
-		var interior := to if from_valid else from
-		var interior_state := _prospective_manual_tile_state(floor_grid, overrides, interior)
-		if interior_state.is_empty() or not interior_state["owned"] or not interior_state["floor_built"]:
-			return "INVALID_ENDPOINT"
-		if not String(interior_state["zone_id"]).is_empty() and interior_state["typology"] != GridTile.TileTypology.TRANSIT:
-			return "EXTERIOR_REQUIRES_TRANSIT"
-		return ""
-	var from_state := _prospective_manual_tile_state(floor_grid, overrides, from)
-	var to_state := _prospective_manual_tile_state(floor_grid, overrides, to)
-	if from_state.is_empty() or to_state.is_empty() or not from_state["owned"] or not to_state["owned"] or not from_state["floor_built"] or not to_state["floor_built"]:
-		return "INVALID_ENDPOINT"
-	var from_zone: String = from_state["zone_id"]
-	var to_zone: String = to_state["zone_id"]
+	var from_zone: String = context.zone_id_at(from)
+	var to_zone: String = context.zone_id_at(to)
 	if not from_zone.is_empty() and not to_zone.is_empty():
 		if from_zone == to_zone:
 			return "SAME_ZONE_FORBIDDEN"
-		if from_state["typology"] != GridTile.TileTypology.TRANSIT or to_state["typology"] != GridTile.TileTypology.TRANSIT:
+		if context.typology_at(from) != ZoneData.TileTypology.TRANSIT or context.typology_at(to) != ZoneData.TileTypology.TRANSIT:
 			return "INTER_ZONE_REQUIRES_TRANSIT"
 		return ""
 	if not from_zone.is_empty() or not to_zone.is_empty():
-		var zone_state: Dictionary = from_state if not from_zone.is_empty() else to_state
-		var external_state: Dictionary = to_state if not from_zone.is_empty() else from_state
-		if zone_state["typology"] != GridTile.TileTypology.TRANSIT:
+		var zone_cell: Vector2i = from if not from_zone.is_empty() else to
+		var circulation_cell: Vector2i = to if not from_zone.is_empty() else from
+		if context.typology_at(zone_cell) != ZoneData.TileTypology.TRANSIT:
 			return "ZONE_TO_CIRCULATION_REQUIRES_TRANSIT"
-		if external_state["element"] != GridTile.TileElement.CIRCULATION:
+		if not context.spatial_snapshot.has_cell("explicit_circulation_cells", circulation_cell):
 			return "ZONE_TO_CIRCULATION_REQUIRES_EXPLICIT_CIRCULATION"
 		return ""
-	if from_state["element"] == to_state["element"]:
+	var from_circulation: bool = context.spatial_snapshot.has_cell("explicit_circulation_cells", from)
+	var to_circulation: bool = context.spatial_snapshot.has_cell("explicit_circulation_cells", to)
+	if from_circulation == to_circulation:
 		return "UNZONED_EDGE_REQUIRES_CIRCULATION_MISMATCH"
 	return ""
 
 
 func _prospective_manual_tile_state(
-	floor_grid: FloorGrid, overrides: Dictionary, tile_pos: Vector2i
+	context: FloorAccessContext,
+	tile_pos: Vector2i
 ) -> Dictionary:
-	if not floor_grid.is_valid_tile(tile_pos.x, tile_pos.y):
+	if context == null or not context.is_valid_tile(tile_pos):
 		return {}
-	var tile: Variant = floor_grid.get_tile(tile_pos.x, tile_pos.y)
-	if tile == null:
-		return {}
-	var override: Dictionary = overrides.get(tile_pos, {})
 	return {
-		"zone_id": override.get("zone_id", tile.zone_id),
-		"typology": override.get("typology", tile.typology),
-		"element": override.get("element", tile.element),
-		"owned": tile.owned,
-		"floor_built": tile.floor_built,
+		"zone_id": context.zone_id_at(tile_pos),
+		"typology": context.typology_at(tile_pos),
+		"explicit_circulation": context.spatial_snapshot.has_cell("explicit_circulation_cells", tile_pos),
 	}
 
 
@@ -1875,39 +2027,6 @@ static func _manual_door_edge_key(first: Vector2i, second: Vector2i) -> String:
 		first = second
 		second = swapped
 	return "%d,%d|%d,%d" % [first.x, first.y, second.x, second.y]
-
-
-# ── Grid Commit ────────────────────────────────────────────────────────
-
-
-func _mark_zone_tiles(zone: ZoneData) -> void:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return
-	for tile_pos: Vector2i in zone.tiles:
-		grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, zone.id, zone.plot_id, zone.floor)
-		# Zone-owned tiles are no longer public circulation; their semantic
-		# access comes from Tenant/Transit typology and frontage metadata.
-		grid_manager.set_tile_element(
-			tile_pos.x, tile_pos.y, GridTile.TileElement.NONE, zone.plot_id, zone.floor
-		)
-		grid_manager.set_tile_typology(
-			tile_pos.x,
-			tile_pos.y,
-			zone.typologies.get(tile_pos, GridTile.TileTypology.TENANT),
-			zone.plot_id,
-			zone.floor
-		)
-
-
-func _clear_zone_tiles(tiles: Array[Vector2i], plot_id: String, floor: String) -> void:
-	var grid_manager := _get_grid_manager()
-	if grid_manager == null:
-		return
-	for tile_pos: Vector2i in tiles:
-		grid_manager.set_tile_zone(tile_pos.x, tile_pos.y, "", plot_id, floor)
-		grid_manager.set_tile_element(tile_pos.x, tile_pos.y, GridTile.TileElement.CIRCULATION, plot_id, floor)
-		grid_manager.set_tile_typology(tile_pos.x, tile_pos.y, GridTile.TileTypology.TENANT, plot_id, floor)
 
 
 # ── Zone Copying & Serialization Helpers ───────────────────────────────
@@ -1986,7 +2105,7 @@ func _generate_parcel_display_number() -> int:
 func _normalize_typologies(tiles: Array[Vector2i], typologies: Dictionary) -> Dictionary:
 	var normalized: Dictionary = {}
 	for tile_pos: Vector2i in tiles:
-		normalized[tile_pos] = typologies.get(tile_pos, GridTile.TileTypology.TENANT)
+		normalized[tile_pos] = typologies.get(tile_pos, ZoneData.TileTypology.TENANT)
 	return normalized
 
 
@@ -2021,47 +2140,28 @@ func _deserialize_typologies(data: Array) -> Dictionary:
 	var typologies: Dictionary = {}
 	for entry: Dictionary in data:
 		typologies[Vector2i(entry.get("x", 0), entry.get("y", 0))] = entry.get(
-			"typology", GridTile.TileTypology.TENANT
+			"typology", ZoneData.TileTypology.TENANT
 		)
 	return typologies
 
 
-func _rebuild_pathfinding() -> void:
-	var grid_manager := _get_grid_manager()
-	if grid_manager:
-		grid_manager.rebuild_pathfinding()
-
-
-## Read-only paint eligibility for ZoneTool; legacy spatial reads are test-pack only.
+## Read-only paint eligibility for ZoneTool from injected District and Zone snapshots.
 func can_paint_tile_for_tool(
 	tile_pos: Vector2i,
 	floor: String,
 	plot_id: String,
 	zone_type: String,
-	none_mode: bool
+	none_mode: bool,
+	spatial_snapshot: DistrictZoneSpatialSnapshot = null
 ) -> bool:
-	var manager := _get_grid_manager()
-	if manager == null:
-		return false
-	var tile: GridTile = manager.get_tile(tile_pos.x, tile_pos.y, plot_id, floor)
-	if tile == null or not tile.owned or not tile.floor_built:
-		return false
 	var occupying_zone := get_zone_at_tile(tile_pos, floor, plot_id)
 	if none_mode:
 		return occupying_zone != null
+	if spatial_snapshot == null or not spatial_snapshot.has_cell("zone_eligible_cells", tile_pos):
+		return false
 	if occupying_zone == null:
 		return true
 	return occupying_zone.type == zone_type
-
-
-func _get_grid_manager() -> Node:
-	var root := get_tree().current_scene
-	if root == null:
-		return null
-	var world := root.get_node_or_null("World")
-	if world == null:
-		return null
-	return get_tree().get_first_node_in_group("archive_legacy_spatial") as Node
 
 
 static func _compare_tile_positions(a: Vector2i, b: Vector2i) -> bool:

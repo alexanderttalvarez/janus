@@ -6,6 +6,8 @@ extends RefCounted
 
 var _layout_entries: Dictionary = {}
 var _prestige_policy: PrestigePolicy
+var _economy_policy: EconomyPolicySnapshot
+var _progression_policy: ProgressionPolicyCatalog
 var _sealed: bool = false
 
 
@@ -61,11 +63,27 @@ func initialize_production_catalog(entries: Array[Dictionary]) -> Dictionary:
 	_prestige_policy = policy_script.new() as PrestigePolicy
 	var policy_validation: Dictionary = _prestige_policy.validate_content()
 	if not bool(policy_validation.get("valid", false)):
-		_layout_entries.clear()
-		_prestige_policy = null
-		return policy_validation
+		return _reject_policy_content(policy_validation)
+
+	_economy_policy = EconomyPolicySnapshot.new()
+	var economy_validation: Dictionary = _economy_policy.configure(EconomyPolicySnapshot.approved_values())
+	if not bool(economy_validation.get("valid", false)):
+		return _reject_policy_content(economy_validation)
+
+	_progression_policy = ProgressionPolicyCatalog.new()
+	var progression_validation: Dictionary = _progression_policy.validate_content()
+	if not bool(progression_validation.get("valid", false)):
+		return _reject_policy_content(progression_validation)
+
 	_sealed = true
-	return {"valid": true, "diagnostics": [], "layout_ids": get_layout_ids(), "prestige_policy_revision": PrestigePolicy.POLICY_REVISION}
+	return {
+		"valid": true,
+		"diagnostics": [],
+		"layout_ids": get_layout_ids(),
+		"prestige_policy_revision": PrestigePolicy.POLICY_REVISION,
+		"economy_policy_revision": _economy_policy.get_revision(),
+		"progression_policy_revision": ProgressionPolicyCatalog.POLICY_REVISION,
+	}
 
 
 ## Validate a caller-provided layout identity and optional V2 identity fields.
@@ -129,6 +147,22 @@ func is_sealed() -> bool:
 
 func get_prestige_policy() -> PrestigePolicy:
 	return _prestige_policy
+
+
+func get_economy_policy_snapshot() -> Dictionary:
+	return {} if _economy_policy == null else _economy_policy.duplicate_value()
+
+
+func get_progression_policy_catalog() -> ProgressionPolicyCatalog:
+	return _progression_policy
+
+
+func _reject_policy_content(validation: Dictionary) -> Dictionary:
+	_layout_entries.clear()
+	_prestige_policy = null
+	_economy_policy = null
+	_progression_policy = null
+	return validation
 
 
 func _diagnostic(code: String, path: String, message: String) -> Dictionary:

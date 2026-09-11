@@ -64,6 +64,9 @@ func _test_content_registry() -> void:
 
 func _test_calendar_order_and_catch_up() -> void:
 	var time_manager: TimeManager = load("res://scripts/simulation/time_manager.gd").new()
+	var session_gate: SessionMutationGate = SessionMutationGate.new()
+	var boundary_setup: Dictionary = time_manager.configure_boundary_delivery(session_gate, func(_kind: String, _id: int) -> Dictionary: return {"valid": true, "diagnostics": []})
+	_assert(bool(boundary_setup.get("valid", false)), "calendar delivery requires an explicit session boundary")
 	var events: Array[String] = []
 	time_manager.visitor_tick.connect(func(tick: int) -> void: events.append("visitor:%d" % tick))
 	time_manager.sim_hour_passed.connect(func(hour: int) -> void: events.append("hour:%d" % hour))
@@ -88,6 +91,9 @@ func _test_calendar_order_and_catch_up() -> void:
 
 func _test_speed_and_pause() -> void:
 	var time_manager: TimeManager = load("res://scripts/simulation/time_manager.gd").new()
+	var session_gate: SessionMutationGate = SessionMutationGate.new()
+	var boundary_setup: Dictionary = time_manager.configure_boundary_delivery(session_gate, func(_kind: String, _id: int) -> Dictionary: return {"valid": true, "diagnostics": []})
+	_assert(bool(boundary_setup.get("valid", false)), "speed tests configure the required calendar boundary")
 	time_manager.set_speed(0)
 	time_manager._process(100.0)
 	_assert(time_manager.sim_time == 0.0 and time_manager.visual_time == 0.0, "pause advances neither clock")
@@ -102,7 +108,9 @@ func _test_speed_and_pause() -> void:
 
 func _test_readiness_barrier() -> void:
 	var registry: RefCounted = _registry()
-	var coordinator: RefCounted = load("res://scripts/session/session_bootstrap_coordinator.gd").new()
+	var coordinator: SessionBootstrapCoordinator = load("res://scripts/session/session_bootstrap_coordinator.gd").new() as SessionBootstrapCoordinator
+	var gate_setup: Dictionary = coordinator.configure_session_gate(SessionMutationGate.new())
+	_assert(bool(gate_setup.get("valid", false)), "bootstrap requires the explicit session gate")
 	var ready_events: Array[String] = []
 	coordinator.session_ready.connect(func(layout_id: String) -> void: ready_events.append(layout_id))
 	var begin: Dictionary = coordinator.begin("district.initial", registry)
@@ -110,15 +118,17 @@ func _test_readiness_barrier() -> void:
 	_assert(not coordinator.can_accept_input(), "staging does not accept gameplay input")
 	var early_commit: Dictionary = coordinator.commit_ready()
 	_assert(not bool(early_commit.get("valid", false)) and _has_code(early_commit.get("diagnostics", []), "AUTHORITIES_NOT_READY"), "commit is blocked before authority readiness")
-	coordinator.mark_projections_ready()
+	var readiness: Dictionary = {"test": {"valid": true, "layout_id": "district.initial", "definition_fingerprint": String(begin.get("layout_ref", {}).get("definition_fingerprint", ""))}}
+	coordinator.mark_projections_ready(readiness)
 	_assert(not coordinator.can_accept_input(), "projection readiness alone does not open the gate")
-	coordinator.mark_authorities_ready()
+	coordinator.mark_authorities_ready(readiness)
 	var committed: Dictionary = coordinator.commit_ready()
 	_assert(bool(committed.get("valid", false)) and coordinator.is_ready(), "ready opens only after both barriers")
 	_assert(coordinator.can_accept_input() and ready_events == ["district.initial"], "session-ready publishes once after the barrier")
 	coordinator.dispose()
 	_assert(coordinator.get_phase() == "IDLE" and not coordinator.can_accept_input(), "dispose closes the session readiness gate")
-	var failed_coordinator: RefCounted = load("res://scripts/session/session_bootstrap_coordinator.gd").new()
+	var failed_coordinator: SessionBootstrapCoordinator = load("res://scripts/session/session_bootstrap_coordinator.gd").new() as SessionBootstrapCoordinator
+	failed_coordinator.configure_session_gate(SessionMutationGate.new())
 	var failed_begin: Dictionary = failed_coordinator.begin("", registry)
 	_assert(not bool(failed_begin.get("valid", false)) and failed_coordinator.get_phase() == "FAILED", "empty content selection fails before staging")
 	_assert(not failed_coordinator.can_accept_input() and failed_coordinator.get_selected_layout_id().is_empty(), "failed selection exposes no staged session")

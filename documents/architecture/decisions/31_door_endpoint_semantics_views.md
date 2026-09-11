@@ -3,6 +3,8 @@
 **Date:** 2026-09-06  
 **Status:** Accepted — refines Decision 30 without changing authority ownership.
 
+**Current applicability, 2026-09-10:** [ADR 36](36_district_zone_spatial_snapshot_and_zone_mutation.md) generalizes the District endpoint view into a floor-scoped batch value for Zone transactions. The single-endpoint semantics and owner split here remain authoritative; the batch snapshot creates no parallel authority or generalized spatial service. Implementation and evidence are not asserted.
+
 ## Context
 
 Decision 30 places manual-door records in H3 `DistrictState`, committed only by `DistrictRuntime`, while `ZoneManager` remains the sole zone/parcel writer. Door legality requires facts currently read from legacy `GridManager`: endpoint zone identity, typology, explicit circulation, and floor/cell validity. H10 forbids that production dependency.

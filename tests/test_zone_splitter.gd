@@ -29,20 +29,36 @@ func _assert(condition: bool, message: String) -> void:
 		push_error("[FAIL] %s" % message)
 
 
-func _make_context(width: int = 8, height: int = 8) -> Dictionary:
-	var floor_grid := FloorGrid.new()
-	floor_grid.initialize(width, height)
-	for x: int in range(width):
-		for y: int in range(height):
-			var tile := floor_grid.get_tile(x, y)
-			tile.owned = true
-			tile.floor_built = true
-
-	var plot := PlotData.new()
-	plot.plot_id = "test_plot"
-	plot.boundary = Rect2i(0, 0, width, height)
-	plot.pedestrian_boundary = Rect2i(-2, -2, width + 4, height + 4)
-	return {"floor_grid": floor_grid, "plot": plot}
+func _make_context(
+	width: int = 8,
+	height: int = 8,
+	circulation_exclusions: Array[Vector2i] = []
+) -> FloorAccessContext:
+	var cells: Array[Dictionary] = []
+	var circulation: Array[Dictionary] = []
+	for y: int in range(-1, height + 1):
+		for x: int in range(-1, width + 1):
+			var position := Vector2i(x, y)
+			var cell: Dictionary = {"x": x, "y": y}
+			cells.append(cell)
+			if not circulation_exclusions.has(position):
+				circulation.append(cell.duplicate())
+	var snapshot := DistrictZoneSpatialSnapshot.new()
+	var configured: Dictionary = snapshot.configure({
+		"schema_id": DistrictZoneSpatialSnapshot.SCHEMA_ID,
+		"schema_version": DistrictZoneSpatialSnapshot.SCHEMA_VERSION,
+		"layout_ref": {"layout_id": "test_layout", "layout_definition_version": 1, "definition_fingerprint": "0".repeat(64)},
+		"district_revision": 0,
+		"floor_scope": {"floor_id": "test_floor", "runtime_plot_id": "test_plot", "signed_elevation": 0},
+		"valid_cells": cells,
+		"acquired_cells": cells,
+		"constructed_cells": cells,
+		"zone_eligible_cells": cells,
+		"explicit_circulation_cells": circulation,
+		"manual_door_edges": [],
+	})
+	_assert(bool(configured.get("valid", false)), "split fixture snapshot is valid")
+	return FloorAccessContext.new(snapshot)
 
 
 func _make_zone(tiles: Array[Vector2i], typologies: Dictionary = {}, layout_seed: int = 0) -> ZoneData:
@@ -63,7 +79,7 @@ func _test_perimeter_rectangle_creates_valid_cores_and_full_coverage() -> void:
 	for y: int in range(6):
 		for x: int in range(6):
 			tiles.append(Vector2i(x, y))
-	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
+	var result := ZoneSplitter.split(_make_zone(tiles), context)
 	_assert(result.is_success(), "perimeter rectangle succeeds")
 	_assert(result.parcels.size() == 6, "perimeter rectangle creates the target six parcel cores")
 	_assert(result.residual_tiles.is_empty(), "perimeter rectangle leaves no residual tenant tiles")
@@ -84,7 +100,7 @@ func _test_residual_tiles_expand_from_cores() -> void:
 		tiles.append(Vector2i(x, 0))
 	for x: int in [0, 1, 2, 4, 5, 6]:
 		tiles.append(Vector2i(x, 1))
-	var result := ZoneSplitter.split(_make_zone(tiles, {}, 137), context.floor_grid, context.plot)
+	var result := ZoneSplitter.split(_make_zone(tiles, {}, 137), context)
 	_assert(result.is_success(), "core-and-growth zone succeeds")
 	_assert(result.parcels.size() == 2, "two Retail cores are allocated before growth")
 	_assert(result.residual_tiles.is_empty(), "reachable residual Tenant tiles are absorbed")
@@ -106,12 +122,12 @@ func _test_owned_unzoned_tiles_provide_implicit_frontage() -> void:
 		Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4),
 		Vector2i(4, 4), Vector2i(3, 5), Vector2i(4, 5),
 	]
-	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
-	_assert(result.is_success(), "owned built unzoned tiles provide implicit frontage")
-	_assert(result.parcels.size() == 1, "implicit frontage creates one valid Retail parcel")
+	var result := ZoneSplitter.split(_make_zone(tiles), context)
+	_assert(result.is_success(), "explicit circulation provides external frontage")
+	_assert(result.parcels.size() == 1, "explicit circulation creates one valid Retail parcel")
 	_assert(
-		result.parcels[0].frontage_edges.any(func(edge: Dictionary) -> bool: return edge.get("access_kind") == "implicit_unzoned_circulation"),
-		"implicit frontage is recorded without mutating tile elements"
+		result.parcels[0].frontage_edges.any(func(edge: Dictionary) -> bool: return edge.get("access_kind") == "external_circulation"),
+		"external frontage is derived only from the District snapshot"
 	)
 
 
@@ -122,16 +138,16 @@ func _test_internal_transit_provides_frontage_without_becoming_parcel_area() -> 
 	for x: int in range(1, 7):
 		var transit := Vector2i(x, 1)
 		tiles.append(transit)
-		typologies[transit] = GridTile.TileTypology.TRANSIT
+		typologies[transit] = ZoneData.TileTypology.TRANSIT
 		for y: int in range(2, 4):
 			tiles.append(Vector2i(x, y))
-	var result := ZoneSplitter.split(_make_zone(tiles, typologies), context.floor_grid, context.plot)
+	var result := ZoneSplitter.split(_make_zone(tiles, typologies), context)
 	_assert(result.is_success(), "internal Transit frontage succeeds")
 	_assert(result.parcels.size() == 2, "internal Transit frontage yields two valid Retail cores")
 	for parcel: Parcel in result.parcels:
 		_assert_valid_core(parcel, 6)
 		_assert(
-			not parcel.tiles.any(func(tile: Vector2i) -> bool: return typologies.get(tile) == GridTile.TileTypology.TRANSIT),
+			not parcel.tiles.any(func(tile: Vector2i) -> bool: return typologies.get(tile) == ZoneData.TileTypology.TRANSIT),
 			"Transit is excluded from final parcel geometry"
 		)
 		_assert(
@@ -145,7 +161,7 @@ func _test_single_row_component_is_rejected_without_a_valid_core() -> void:
 	var tiles: Array[Vector2i] = []
 	for x: int in range(6):
 		tiles.append(Vector2i(x, 0))
-	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
+	var result := ZoneSplitter.split(_make_zone(tiles), context)
 	_assert(
 		result.status == SplitResult.Status.INSUFFICIENT_RENTABLE_SPACE,
 		"single-row Tenant component is rejected because no 2x2 core exists"
@@ -153,20 +169,21 @@ func _test_single_row_component_is_rejected_without_a_valid_core() -> void:
 
 
 func _test_interior_zone_without_frontage_is_rejected() -> void:
-	var context := _make_context()
 	var tiles: Array[Vector2i] = [
 		Vector2i(3, 3), Vector2i(4, 3), Vector2i(3, 4),
 		Vector2i(4, 4), Vector2i(3, 5), Vector2i(4, 5),
 	]
 	var tile_set: Dictionary = {}
+	var exclusions: Array[Vector2i] = []
 	for tile: Vector2i in tiles:
 		tile_set[tile] = true
 	for tile: Vector2i in tiles:
 		for direction: Vector2i in [Vector2i.UP, Vector2i.DOWN, Vector2i.LEFT, Vector2i.RIGHT]:
 			var neighbor := tile + direction
-			if not tile_set.has(neighbor):
-				context.floor_grid.get_tile(neighbor.x, neighbor.y).owned = false
-	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
+			if not tile_set.has(neighbor) and not exclusions.has(neighbor):
+				exclusions.append(neighbor)
+	var context := _make_context(8, 8, exclusions)
+	var result := ZoneSplitter.split(_make_zone(tiles), context)
 	_assert(result.status == SplitResult.Status.NO_VALID_FRONTAGE, "interior zone without circulation is rejected")
 	_assert(result.parcels.is_empty(), "rejected zone returns no parcel")
 
@@ -177,7 +194,7 @@ func _test_disconnected_source_zone_is_rejected() -> void:
 		Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1),
 		Vector2i(6, 6), Vector2i(7, 6), Vector2i(7, 7),
 	]
-	var result := ZoneSplitter.split(_make_zone(tiles), context.floor_grid, context.plot)
+	var result := ZoneSplitter.split(_make_zone(tiles), context)
 	_assert(result.status == SplitResult.Status.INVALID_ZONE_GEOMETRY, "disconnected source zone is rejected")
 
 
@@ -190,8 +207,8 @@ func _test_input_order_and_seed_preserve_geometry() -> void:
 		ordered.append(Vector2i(x, 1))
 	var reversed := ordered.duplicate()
 	reversed.reverse()
-	var first := ZoneSplitter.split(_make_zone(ordered, {}, 943), context.floor_grid, context.plot)
-	var second := ZoneSplitter.split(_make_zone(reversed, {}, 943), context.floor_grid, context.plot)
+	var first := ZoneSplitter.split(_make_zone(ordered, {}, 943), context)
+	var second := ZoneSplitter.split(_make_zone(reversed, {}, 943), context)
 	_assert(first.is_success() and second.is_success(), "both input orders split successfully")
 	_assert(first.parcels.size() == second.parcels.size(), "input order preserves parcel count")
 	_assert(

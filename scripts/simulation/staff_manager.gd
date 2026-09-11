@@ -160,11 +160,22 @@ func deserialize(data: Dictionary) -> void:
 	if int(data.get("schema_version", -1)) != SCHEMA_VERSION or not data.get("rooms", {}) is Dictionary or not data.get("staff", []) is Array:
 		return
 	operations_rooms = data["rooms"].duplicate(true)
-	all_staff = data["staff"].duplicate(true)
-	cleaning_tasks = data.get("cleaning_tasks", []).duplicate(true)
+	var records_valid: bool = true
+	all_staff.clear()
+	for record: Variant in data["staff"]:
+		if not record is Dictionary:
+			records_valid = false
+			break
+		all_staff.append((record as Dictionary).duplicate(true))
+	cleaning_tasks.clear()
+	for task: Variant in data.get("cleaning_tasks", []):
+		if not task is Dictionary:
+			records_valid = false
+			break
+		cleaning_tasks.append((task as Dictionary).duplicate(true))
 	_staff_counter = int(data.get("staff_counter", 0))
 	authority_revision = int(data.get("staff_revision", 0))
-	if not _validate_restored_staff():
+	if not records_valid or not _validate_restored_staff():
 		operations_rooms.clear()
 		all_staff.clear()
 		cleaning_tasks.clear()

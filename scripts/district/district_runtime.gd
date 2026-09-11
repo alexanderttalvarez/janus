@@ -29,11 +29,12 @@ var _ports: DistrictRuntimePorts.DistrictRuntimePortsBundle
 var _journal: DistrictCommitJournal = DistrictCommitJournal.new()
 var _dispatcher: DistrictCommitDispatcher = DistrictCommitDispatcher.new()
 var _gate: DistrictTransactionGate = DistrictTransactionGate.new()
+var _session_gate: SessionMutationGate
 var _transaction_counter: int = 0
 var _state_records: DistrictStateRecords = DistrictStateRecords.new()
 var _traversal_view: DistrictTraversalReadView
 var _street_conversion_validator: Callable
-var _arrival_commit_gate: ArrivalCommitGate = ArrivalCommitGate.new()
+var _arrival_commit_gate: ArrivalCommitGate
 var _arrival_token_counter: int = 0
 var _arrival_topology_revision: int = -1
 var _arrival_eligibility_revision: int = -1
@@ -49,6 +50,20 @@ func _init() -> void:
 
 func configure_ports(ports: DistrictRuntimePorts.DistrictRuntimePortsBundle) -> void:
 	_ports = ports
+
+
+func configure_session_gate(session_gate: SessionMutationGate) -> Dictionary:
+	if session_gate == null:
+		return _reject("SESSION_GATE_REQUIRED", "District Runtime requires the session mutation gate")
+	var configuration: Dictionary = _gate.configure(session_gate)
+	if not bool(configuration.get("valid", false)):
+		return configuration
+	_session_gate = session_gate
+	return {"valid": true, "diagnostics": []}
+
+
+func get_session_gate() -> SessionMutationGate:
+	return _session_gate
 
 
 func configure_construction_policy(policy: ConstructionPolicy) -> void:
@@ -225,9 +240,13 @@ func get_gate() -> DistrictTransactionGate:
 
 
 ## H8 injects the shared arrival gate without changing H3 transaction ownership.
-func set_arrival_commit_gate(gate: ArrivalCommitGate) -> void:
-	if gate != null:
-		_arrival_commit_gate = gate
+func set_arrival_commit_gate(gate: ArrivalCommitGate) -> Dictionary:
+	if gate == null:
+		return _reject("ARRIVAL_GATE_REQUIRED", "District Runtime requires the configured arrival gate")
+	if _session_gate == null or gate.get_session_gate() != _session_gate:
+		return _reject("SESSION_GATE_MISMATCH", "arrival and District Runtime must share the same session mutation gate")
+	_arrival_commit_gate = gate
+	return {"valid": true, "diagnostics": []}
 
 
 func get_arrival_commit_gate() -> ArrivalCommitGate:
@@ -380,15 +399,7 @@ func get_manual_door_district_view(address: Dictionary, candidate_state: Diction
 	var state: Dictionary = _state if candidate_state.is_empty() else candidate_state
 	result["acquired"] = _manual_door_state_has_cell(state, String(result["runtime_plot_id"]), String(result["floor_id"]), result["cell"], "acquired_cells")
 	result["constructed"] = _manual_door_state_has_cell(state, String(result["runtime_plot_id"]), String(result["floor_id"]), result["cell"], "constructed_cells")
-	for construction: Variant in state.get("construction_records", []):
-		if not construction is Dictionary or String(construction.get("kind", "")) != "corridor":
-			continue
-		for construction_cell: Variant in construction.get("cells", []):
-			if construction_cell is Dictionary and String(construction_cell.get("floor_id", "")) == String(result["floor_id"]) and int(construction_cell.get("x", -1)) == int(result["cell"][0]) and int(construction_cell.get("y", -1)) == int(result["cell"][1]):
-				result["explicit_circulation"] = true
-				break
-		if bool(result["explicit_circulation"]):
-			break
+	result["explicit_circulation"] = _manual_door_state_has_cell(state, String(result["runtime_plot_id"]), String(result["floor_id"]), result["cell"], "explicit_circulation_cells")
 	result["resolved"] = true
 	return result
 
@@ -431,8 +442,8 @@ func preview_transaction(intent: Dictionary) -> Dictionary:
 
 
 func commit_transaction(intent: Dictionary) -> Dictionary:
-	if _arrival_commit_gate != null and _arrival_commit_gate.is_held():
-		return _reject("ARRIVAL_TRANSACTION_BUSY", "district mutations are blocked while an arrival transaction is flushing")
+	if _session_gate == null:
+		return _reject("SESSION_GATE_REQUIRED", "District Runtime requires the session mutation gate")
 	if _snapshot == null:
 		return _reject("SESSION_REQUIRED", "a District Runtime session is required")
 	var initial_evaluation: Dictionary = _evaluate_intent(intent, _state.duplicate(true))
@@ -444,7 +455,7 @@ func commit_transaction(intent: Dictionary) -> Dictionary:
 	_transaction_counter += 1
 	var owner_token: String = "district_txn_%d" % _transaction_counter
 	if not _gate.acquire(owner_token):
-		return _reject("TRANSACTION_BUSY", "another district transaction is active")
+		return _reject("SESSION_MUTATION_BUSY", "another session mutation is active")
 	if not _gate.enter_barrier(owner_token):
 		_gate.release(owner_token)
 		return _reject("BARRIER_FAILED", "transaction barrier could not be acquired")
@@ -498,6 +509,7 @@ func commit_transaction(intent: Dictionary) -> Dictionary:
 											result = _abort(owner_token, reservation, prepare_token, [{"code": "JOURNAL_APPEND_FAILED", "message": "journal append failed before commit point"}])
 										else:
 											committed = true
+											_publish_zone_door_access(zone_commit)
 											_publish_committed_topology(envelope.get("construction_topology", {}))
 											result = {"valid": true, "envelope": envelope, "state": get_state(), "diagnostics": []}
 		if committed:
@@ -744,8 +756,13 @@ func _apply_set_manual_door(intent: Dictionary, candidate: Dictionary, delta: Di
 		diagnostics.append_array(record_result.get("diagnostics", []))
 		return
 	var record: Dictionary = record_result["record"]
-	var from_view: Dictionary = get_manual_door_district_view({"runtime_plot_id": record["runtime_plot_id"], "floor_id": record["floor_id"], "elevation": record["elevation"], "cell": record["from_cell"]}, candidate)
-	var to_view: Dictionary = get_manual_door_district_view({"runtime_plot_id": record["runtime_plot_id"], "floor_id": record["floor_id"], "elevation": record["elevation"], "cell": record["to_cell"]}, candidate)
+	var endpoint_a: Dictionary = record["endpoint_a"]
+	var endpoint_b: Dictionary = record["endpoint_b"]
+	var from_cell: Dictionary = endpoint_a["local_cell"]
+	var to_cell: Dictionary = endpoint_b["local_cell"]
+	var floor_id: String = String(intent["floor_id"])
+	var from_view: Dictionary = get_manual_door_district_view({"runtime_plot_id": endpoint_a["runtime_plot_id"], "floor_id": floor_id, "elevation": endpoint_a["signed_elevation"], "cell": [from_cell["x"], from_cell["y"]]}, candidate)
+	var to_view: Dictionary = get_manual_door_district_view({"runtime_plot_id": endpoint_b["runtime_plot_id"], "floor_id": floor_id, "elevation": endpoint_b["signed_elevation"], "cell": [to_cell["x"], to_cell["y"]]}, candidate)
 	for endpoint: Dictionary in [from_view, to_view]:
 		if not bool(endpoint.get("resolved", false)):
 			diagnostics.append({"code": "MANUAL_DOOR_ENDPOINT_UNRESOLVED", "message": "manual door endpoint is not in the resolved district"})
@@ -753,7 +770,7 @@ func _apply_set_manual_door(intent: Dictionary, candidate: Dictionary, delta: Di
 			diagnostics.append({"code": "MANUAL_DOOR_ENDPOINT_NOT_BUILT", "message": "manual door endpoints require acquired and constructed floor cells"})
 	if not diagnostics.is_empty():
 		return
-	var records: Array = candidate.get("manual_door_records", []).duplicate(true)
+	var records: Array = candidate.get("manual_door_edges", []).duplicate(true)
 	var identity: String = _manual_door_record_key(record)
 	var existing_index: int = -1
 	for index: int in range(records.size()):
@@ -773,7 +790,7 @@ func _apply_set_manual_door(intent: Dictionary, candidate: Dictionary, delta: Di
 			return
 		records.remove_at(existing_index)
 		delta["affected_ids"].append(identity)
-	candidate["manual_door_records"] = records
+	candidate["manual_door_edges"] = records
 	delta["manual_door"] = record.duplicate(true)
 	delta["enabled"] = enabled
 
@@ -799,11 +816,20 @@ func _manual_door_record_from_intent(intent: Dictionary) -> Dictionary:
 		var swap: Array = from
 		from = to
 		to = swap
-	return {"valid": true, "record": {"runtime_plot_id": String(intent["runtime_plot_id"]), "floor_id": String(intent["floor_id"]), "elevation": int(intent["elevation"]), "from_cell": from, "to_cell": to}, "diagnostics": []}
+	var plot_id: String = String(intent["runtime_plot_id"])
+	var elevation: int = int(intent["elevation"])
+	return {"valid": true, "record": {"endpoint_a": {"runtime_plot_id": plot_id, "signed_elevation": elevation, "local_cell": {"x": from[0], "y": from[1]}}, "endpoint_b": {"runtime_plot_id": plot_id, "signed_elevation": elevation, "local_cell": {"x": to[0], "y": to[1]}}}, "diagnostics": []}
 
 
 func _manual_door_record_key(record: Dictionary) -> String:
-	return "%s|%s|%d|%d,%d|%d,%d" % [String(record.get("runtime_plot_id", "")), String(record.get("floor_id", "")), int(record.get("elevation", 0)), int(record.get("from_cell", [0, 0])[0]), int(record.get("from_cell", [0, 0])[1]), int(record.get("to_cell", [0, 0])[0]), int(record.get("to_cell", [0, 0])[1])]
+	var endpoint_a: Dictionary = record.get("endpoint_a", {})
+	var endpoint_b: Dictionary = record.get("endpoint_b", {})
+	return "%s|%s" % [_manual_door_endpoint_key(endpoint_a), _manual_door_endpoint_key(endpoint_b)]
+
+
+func _manual_door_endpoint_key(endpoint: Dictionary) -> String:
+	var cell: Dictionary = endpoint.get("local_cell", {})
+	return "%s|%+011d|%011d|%011d" % [String(endpoint.get("runtime_plot_id", "")), int(endpoint.get("signed_elevation", 0)), int(cell.get("y", -1)), int(cell.get("x", -1))]
 
 
 func _apply_paint_zone(intent: Dictionary, delta: Dictionary, diagnostics: Array[Dictionary]) -> void:
@@ -934,14 +960,180 @@ func _flush_authority_notifications() -> Array[Dictionary]:
 
 func _zone_preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
 	if _ports == null or _ports.zone == null:
-		return {"accepted": true, "preview": null, "diagnostics": []}
-	return _ports.zone.preview(intent, candidate_state)
+		return {"accepted": true, "preview": null, "district_effects": {}, "diagnostics": []}
+	var spatial_result: Dictionary = _derive_zone_spatial_snapshot(intent, candidate_state)
+	if not bool(spatial_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": spatial_result.get("diagnostics", [])}
+	var access_result: Dictionary = PublicBandAccessSnapshot.derive(_snapshot, candidate_state, int(candidate_state.get("district_revision", -1)))
+	if not bool(access_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": access_result.get("diagnostics", [])}
+	var zone_plan: Dictionary = _ports.zone.preview(
+		intent,
+		_zone_district_ref(candidate_state),
+		spatial_result.get("snapshot") as DistrictZoneSpatialSnapshot,
+		access_result.get("snapshot") as PublicBandAccessSnapshot
+	)
+	if not bool(zone_plan.get("accepted", false)):
+		return zone_plan
+	var effects_result: Dictionary = _apply_zone_district_effects(intent, candidate_state, zone_plan.get("district_effects", {}))
+	if not bool(effects_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": effects_result.get("diagnostics", [])}
+	return zone_plan
+
+
+func _publish_zone_door_access(zone_commit: Dictionary) -> void:
+	if _traversal_view == null or not zone_commit.has("door_access_edges"):
+		return
+	var refreshed := DistrictTraversalReadView.new()
+	refreshed.initialize(
+		_snapshot.get_fingerprint(),
+		get_revision(),
+		_ports.zone.get_revision() if _ports != null and _ports.zone != null else _traversal_view.zone_revision,
+		_traversal_view.floor_circulation_edges,
+		zone_commit.get("door_access_edges", []),
+		_traversal_view.vertical_links
+	)
+	if bool(refreshed.validate(_snapshot).get("valid", false)):
+		_traversal_view = refreshed
 
 
 func _zone_prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
 	if _ports == null or _ports.zone == null:
 		return {"accepted": true, "prepare_token": {}, "diagnostics": []}
-	return _ports.zone.prepare(intent, candidate_state)
+	var base_spatial_result: Dictionary = _derive_zone_spatial_snapshot(intent, candidate_state)
+	if not bool(base_spatial_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": base_spatial_result.get("diagnostics", [])}
+	var base_access_result: Dictionary = PublicBandAccessSnapshot.derive(_snapshot, candidate_state, int(candidate_state.get("district_revision", -1)))
+	if not bool(base_access_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": base_access_result.get("diagnostics", [])}
+	var zone_plan: Dictionary = _ports.zone.preview(
+		intent,
+		_zone_district_ref(candidate_state),
+		base_spatial_result.get("snapshot") as DistrictZoneSpatialSnapshot,
+		base_access_result.get("snapshot") as PublicBandAccessSnapshot
+	)
+	if not bool(zone_plan.get("accepted", false)):
+		return zone_plan
+	var effects_result: Dictionary = _apply_zone_district_effects(intent, candidate_state, zone_plan.get("district_effects", {}))
+	if not bool(effects_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": effects_result.get("diagnostics", [])}
+	var prospective_spatial_result: Dictionary = _derive_zone_spatial_snapshot(intent, candidate_state)
+	if not bool(prospective_spatial_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": prospective_spatial_result.get("diagnostics", [])}
+	var prospective_access_result: Dictionary = PublicBandAccessSnapshot.derive(_snapshot, candidate_state, int(candidate_state.get("district_revision", -1)))
+	if not bool(prospective_access_result.get("valid", false)):
+		return {"accepted": false, "diagnostics": prospective_access_result.get("diagnostics", [])}
+	return _ports.zone.prepare(
+		intent,
+		_zone_district_ref(candidate_state),
+		prospective_spatial_result.get("snapshot") as DistrictZoneSpatialSnapshot,
+		prospective_access_result.get("snapshot") as PublicBandAccessSnapshot,
+		zone_plan
+	)
+
+
+func _apply_zone_district_effects(
+	intent: Dictionary,
+	candidate_state: Dictionary,
+	effects: Dictionary
+) -> Dictionary:
+	if effects.is_empty():
+		return {"valid": true, "diagnostics": []}
+	var expected_keys: Array[String] = ["remove_explicit_circulation_cells", "add_explicit_circulation_cells", "remove_manual_door_edges"]
+	if effects.size() != expected_keys.size():
+		return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+	for key: String in expected_keys:
+		if not effects.has(key) or not effects[key] is Array:
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+	var intent_cells: Dictionary = {}
+	for value: Variant in intent.get("cells", []):
+		if not value is Array or value.size() != 2 or not value[0] is int or not value[1] is int:
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		intent_cells["%d,%d" % [int(value[0]), int(value[1])]] = true
+	var plot_id: String = String(intent.get("runtime_plot_id", ""))
+	var floor_id: String = String(intent.get("floor_id", ""))
+	var elevation: int = int(intent.get("elevation", 0))
+	var floor_state: Dictionary = _floor_state(candidate_state, floor_id, elevation).duplicate(true)
+	var circulation: Array = floor_state.get("explicit_circulation_cells", []).duplicate(true)
+	var paint_mode: String = String(intent.get("paint_mode", "zone"))
+	var circulation_changed: bool = false
+	for cell_value: Variant in effects["remove_explicit_circulation_cells"]:
+		var parsed: Dictionary = _zone_effect_cell(cell_value, intent_cells)
+		if not bool(parsed.get("valid", false)) or paint_mode == "none":
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		var pair: Array = parsed["pair"]
+		if not circulation.has(pair):
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		circulation.erase(pair)
+		circulation_changed = true
+	for cell_value: Variant in effects["add_explicit_circulation_cells"]:
+		var parsed: Dictionary = _zone_effect_cell(cell_value, intent_cells)
+		if not bool(parsed.get("valid", false)) or paint_mode != "none":
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		var pair: Array = parsed["pair"]
+		if not floor_state.get("acquired_cells", []).has(pair) or not floor_state.get("constructed_cells", []).has(pair) or circulation.has(pair):
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		circulation.append(pair)
+		circulation_changed = true
+	floor_state["explicit_circulation_cells"] = _sort_cells(circulation)
+	_upsert_floor_state(candidate_state, plot_id, floor_state)
+	if circulation_changed:
+		candidate_state["construction_revision"] = int(candidate_state.get("construction_revision", 0)) + 1
+	var manual_edges: Array = candidate_state.get("manual_door_edges", []).duplicate(true)
+	for edge_value: Variant in effects["remove_manual_door_edges"]:
+		if not edge_value is Dictionary:
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		var requested_key: String = _manual_door_record_key(edge_value)
+		var remove_index: int = -1
+		for index: int in range(manual_edges.size()):
+			if manual_edges[index] is Dictionary and _manual_door_record_key(manual_edges[index]) == requested_key:
+				remove_index = index
+				break
+		if requested_key.is_empty() or remove_index < 0:
+			return {"valid": false, "diagnostics": [{"code": "INVALID_DISTRICT_ZONE_EFFECTS"}]}
+		manual_edges.remove_at(remove_index)
+	candidate_state["manual_door_edges"] = manual_edges
+	var sorted_state: Dictionary = _sort_state(candidate_state)
+	candidate_state.clear()
+	candidate_state.merge(sorted_state, true)
+	var state_validation: Dictionary = _state_records.validate(candidate_state, _snapshot)
+	if not bool(state_validation.get("valid", false)):
+		return {"valid": false, "diagnostics": state_validation.get("diagnostics", [])}
+	return {"valid": true, "diagnostics": []}
+
+
+func _zone_district_ref(candidate_state: Dictionary) -> Dictionary:
+	return {
+		"layout_id": String(candidate_state.get("layout_id", "")),
+		"layout_definition_version": int(candidate_state.get("layout_definition_version", -1)),
+		"definition_fingerprint": String(candidate_state.get("definition_fingerprint", "")),
+		"district_revision": int(candidate_state.get("district_revision", -1)),
+	}
+
+
+func _zone_effect_cell(value: Variant, intent_cells: Dictionary) -> Dictionary:
+	if not value is Dictionary or value.size() != 2 or not value.has("x") or not value.has("y") or not value["x"] is int or not value["y"] is int:
+		return {"valid": false}
+	var key: String = "%d,%d" % [int(value["x"]), int(value["y"])]
+	if not intent_cells.has(key):
+		return {"valid": false}
+	return {"valid": true, "pair": [int(value["x"]), int(value["y"])]}
+
+
+func _derive_zone_spatial_snapshot(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	if String(intent.get("operation", "")) != OP_PAINT_ZONE and String(intent.get("operation", "")) != OP_SET_MANUAL_DOOR:
+		return {"valid": true, "snapshot": null, "diagnostics": []}
+	if not intent.has("floor_id") or not intent.has("runtime_plot_id") or not intent.has("elevation"):
+		return {"valid": false, "diagnostics": [{"code": "DISTRICT_ZONE_SPATIAL_SCOPE_MISMATCH", "message": "Zone coordination requires an explicit floor scope"}]}
+	return DistrictZoneSpatialSnapshot.derive(
+		_snapshot,
+		candidate_state,
+		{
+			"floor_id": String(intent.get("floor_id", "")),
+			"runtime_plot_id": String(intent.get("runtime_plot_id", "")),
+			"signed_elevation": int(intent.get("elevation", 0)),
+		}
+	)
 
 
 func _zone_commit(prepare_token: Dictionary) -> Dictionary:
@@ -1192,7 +1384,7 @@ func _floor_state(state: Dictionary, floor_id: String, elevation: int) -> Dictio
 		for floor_state: Dictionary in plot_state.get("floor_states", []):
 			if String(floor_state.get("floor_id", "")) == floor_id:
 				return floor_state
-	return {"floor_id": floor_id, "elevation": elevation, "acquired_cells": [], "constructed_cells": []}
+	return {"floor_id": floor_id, "elevation": elevation, "acquired_cells": [], "constructed_cells": [], "explicit_circulation_cells": []}
 
 
 func _upsert_floor_state(state: Dictionary, plot_id: String, floor_state: Dictionary) -> void:
@@ -1279,8 +1471,9 @@ func _sort_state(state: Dictionary) -> Dictionary:
 		for floor_state: Dictionary in plot_state["floor_states"]:
 			floor_state["acquired_cells"] = _sort_cells(floor_state["acquired_cells"])
 			floor_state["constructed_cells"] = _sort_cells(floor_state["constructed_cells"])
+			floor_state["explicit_circulation_cells"] = _sort_cells(floor_state["explicit_circulation_cells"])
 	result["street_segment_states"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["street_segment_id"]) < String(right["street_segment_id"]))
 	result["arrival_source_states"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["arrival_source_id"]) < String(right["arrival_source_id"]))
 	result["demolished_fixed_occupant_ids"].sort()
-	result["manual_door_records"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return _manual_door_record_key(left) < _manual_door_record_key(right))
+	result["manual_door_edges"].sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return _manual_door_record_key(left) < _manual_door_record_key(right))
 	return result

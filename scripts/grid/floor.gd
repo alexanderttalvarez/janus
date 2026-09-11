@@ -11,9 +11,37 @@ extends Node3D
 @export var grid_height: int = 25
 @export var tile_size: float = 1.0
 
+## Per-floor camera presentation modes from ADR 16.
+enum VisibilityMode { FULL, EXTERIOR, HIDDEN }
+
+## The currently applied camera presentation mode.
+var visibility_mode: int = VisibilityMode.FULL
+
 
 func _ready() -> void:
 	_update_grid_overlay()
+
+
+## Apply the ADR 16 per-floor presentation contract.
+## FULL shows all floor-owned content, EXTERIOR preserves only structural and
+## circulation context, and HIDDEN removes the floor completely.
+func set_visibility_mode(mode: int) -> void:
+	visibility_mode = mode
+	visible = mode != VisibilityMode.HIDDEN
+	if mode == VisibilityMode.HIDDEN:
+		return
+	var exterior_visible: Array[String] = [
+		"GridOverlay",
+		"TileContainer",
+		"CirculationContainer",
+		"FloorPlane",
+		"WallMesh",
+		"WallContainer",
+		"DoorContainer",
+	]
+	for child: Node in get_children():
+		if child is Node3D and child.name != &"GridOrigin":
+			(child as Node3D).visible = mode == VisibilityMode.FULL or exterior_visible.has(String(child.name))
 
 
 ## Apply an H4 projection descriptor without creating per-cell Nodes.
@@ -37,6 +65,12 @@ func _update_grid_overlay() -> void:
 	plane.size = Vector2(float(grid_width) * tile_size, float(grid_height) * tile_size)
 	overlay.mesh = plane
 	overlay.position = Vector3(float(grid_width) * tile_size / 2.0, overlay.position.y, float(grid_height) * tile_size / 2.0)
+	# FloorPlane and WallMesh use centered meshes; keep their centers aligned
+	# with the grid's canonical origin for every generated floor size.
+	for centered_name: String in ["FloorPlane", "WallMesh"]:
+		var centered_mesh: Node3D = get_node_or_null(centered_name) as Node3D
+		if centered_mesh != null:
+			centered_mesh.position = Vector3(overlay.position.x, centered_mesh.position.y, overlay.position.z)
 
 
 ## Get the GridOrigin Marker3D for world-position reference.

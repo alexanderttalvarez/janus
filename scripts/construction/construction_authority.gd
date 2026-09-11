@@ -48,6 +48,7 @@ func resolve(
 	all_cells.append_array(lobby_cells)
 	if kind == "elevator":
 		all_cells = _unique_cells(all_cells)
+	all_cells.sort_custom(_cell_less)
 	if all_cells.is_empty():
 		return _failure("CONSTRUCTION_GEOMETRY_UNAVAILABLE", "construction requires explicit target cells")
 	var common_result: Dictionary = _validate_cells(all_cells, base_state, snapshot)
@@ -61,7 +62,7 @@ func resolve(
 	var shape_result: Dictionary = _validate_shape(kind, normalized, snapshot)
 	if not bool(shape_result.get("valid", false)):
 		return shape_result
-	var construction_id: String = _construction_id(kind, all_cells)
+	var construction_id: String = _construction_id(kind, all_cells, snapshot)
 	for record: Dictionary in base_state.get("construction_records", []):
 		if String(record.get("construction_id", "")) == construction_id:
 			return _failure("ELEMENT_CONFLICT", "the construction target is already committed")
@@ -79,10 +80,11 @@ func resolve(
 		"connection": normalized.get("connection", {}).duplicate(true),
 	}
 	var candidate: Dictionary = base_state.duplicate(true)
-	_apply_cells(candidate, all_cells)
+	_apply_cells(candidate, all_cells, kind == "corridor")
 	var records: Array = candidate.get("construction_records", []).duplicate(true)
-	records.append(record)
-	records.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left.get("construction_id", "")) < String(right.get("construction_id", "")))
+	if kind != "corridor":
+		records.append(record)
+		records.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left.get("construction_id", "")) < String(right.get("construction_id", "")))
 	candidate["construction_records"] = records
 	candidate["construction_revision"] = int(candidate.get("construction_revision", 0)) + 1
 	var lobby_count: int = lobby_cells.size()
@@ -193,7 +195,13 @@ func _validate_shape(kind: String, intent: Dictionary, snapshot: ResolvedDistric
 				return _failure("CONSTRUCTION_GEOMETRY_UNAVAILABLE", "elevator stops must be contiguous")
 		return _valid()
 	if kind == "operations_room":
-		return _failure("CONSTRUCTION_GEOMETRY_UNAVAILABLE", "Operations Room footprint content is unresolved")
+		var cells: Array[Dictionary] = intent.get("cells", [])
+		var floor_ids: Dictionary = {}
+		for cell: Dictionary in cells:
+			floor_ids[String(cell.get("floor_id", ""))] = true
+		if floor_ids.size() != 1 or not _is_two_by_two(cells):
+			return _failure("CONSTRUCTION_GEOMETRY_UNAVAILABLE", "Operations Room requires a contiguous 2x2 footprint on one floor")
+		return _valid()
 	return _failure("CONSTRUCTION_TYPE_INVALID", "unsupported construction kind")
 
 
@@ -284,12 +292,17 @@ func _is_plot_active(state: Dictionary, plot_id: String, data: Dictionary) -> bo
 	return false
 
 
-func _apply_cells(state: Dictionary, cells: Array[Dictionary]) -> void:
+func _apply_cells(state: Dictionary, cells: Array[Dictionary], explicit_circulation: bool) -> void:
 	for cell: Dictionary in cells:
 		var floor_id: String = String(cell.get("floor_id", ""))
 		var floor_state: Dictionary = _floor_state(state, floor_id, int(cell.get("elevation", 0)))
-		floor_state["constructed_cells"].append([int(cell.get("x", 0)), int(cell.get("y", 0))])
-		floor_state["constructed_cells"] = _sort_cells(floor_state["constructed_cells"])
+		var pair: Array = [int(cell.get("x", 0)), int(cell.get("y", 0))]
+		if not _contains_cell(floor_state["constructed_cells"], pair):
+			floor_state["constructed_cells"].append(pair)
+			floor_state["constructed_cells"] = _sort_cells(floor_state["constructed_cells"])
+		if explicit_circulation and not _contains_cell(floor_state["explicit_circulation_cells"], pair):
+			floor_state["explicit_circulation_cells"].append(pair)
+			floor_state["explicit_circulation_cells"] = _sort_cells(floor_state["explicit_circulation_cells"])
 		_upsert_floor_state(state, String(cell.get("plot_id", "")), floor_state)
 
 
@@ -298,7 +311,7 @@ func _floor_state(state: Dictionary, floor_id: String, elevation: int) -> Dictio
 		for floor_state: Dictionary in plot_state.get("floor_states", []):
 			if String(floor_state.get("floor_id", "")) == floor_id:
 				return floor_state
-	return {"floor_id": floor_id, "elevation": elevation, "acquired_cells": [], "constructed_cells": []}
+	return {"floor_id": floor_id, "elevation": elevation, "acquired_cells": [], "constructed_cells": [], "explicit_circulation_cells": []}
 
 
 func _upsert_floor_state(state: Dictionary, plot_id: String, floor_state: Dictionary) -> void:
@@ -324,10 +337,10 @@ func _operations_room_fact(record: Dictionary, state: Dictionary) -> Dictionary:
 	}
 
 
-func _construction_id(kind: String, cells: Array[Dictionary]) -> String:
-	var parts: Array[String] = [kind]
+func _construction_id(kind: String, cells: Array[Dictionary], snapshot: ResolvedDistrictSnapshot) -> String:
+	var parts: Array[String] = [kind, snapshot.get_layout_id(), snapshot.get_fingerprint()]
 	for cell: Dictionary in cells:
-		parts.append("%s:%d:%d:%d" % [String(cell.get("floor_id", "")), int(cell.get("elevation", 0)), int(cell.get("x", 0)), int(cell.get("y", 0))])
+		parts.append("%s:%s:%d:%d:%d" % [String(cell.get("plot_id", "")), String(cell.get("floor_id", "")), int(cell.get("elevation", 0)), int(cell.get("x", 0)), int(cell.get("y", 0))])
 	return "construction/%s" % ":".join(parts)
 
 
@@ -338,17 +351,11 @@ func _normalize_cells(values: Variant, default_floor_id: String, default_elevati
 	for value: Variant in values:
 		var cell: Dictionary = {}
 		if value is Dictionary:
-			cell = value.duplicate(true)
+			cell = {"plot_id": String(value.get("plot_id", plot_id)), "floor_id": String(value.get("floor_id", default_floor_id)), "elevation": int(value.get("elevation", default_elevation)), "x": int(value.get("x", -1)), "y": int(value.get("y", -1))}
 		elif value is Array and value.size() >= 2:
-			cell = {"x": int(value[0]), "y": int(value[1])}
-		if cell.is_empty():
-			continue
-		cell["floor_id"] = String(cell.get("floor_id", default_floor_id))
-		cell["elevation"] = int(cell.get("elevation", default_elevation))
-		cell["plot_id"] = String(cell.get("plot_id", plot_id))
-		cell["x"] = int(cell.get("x", -1))
-		cell["y"] = int(cell.get("y", -1))
-		result.append(cell)
+			cell = {"plot_id": plot_id, "floor_id": default_floor_id, "elevation": default_elevation, "x": int(value[0]), "y": int(value[1])}
+		if not cell.is_empty():
+			result.append(cell)
 	return result
 
 
@@ -416,7 +423,13 @@ func _cell_key(cell: Dictionary) -> String:
 
 
 func _cell_less(left: Dictionary, right: Dictionary) -> bool:
-	return _cell_key(left) < _cell_key(right)
+	if int(left.get("elevation", 0)) != int(right.get("elevation", 0)):
+		return int(left.get("elevation", 0)) < int(right.get("elevation", 0))
+	if String(left.get("floor_id", "")) != String(right.get("floor_id", "")):
+		return String(left.get("floor_id", "")) < String(right.get("floor_id", ""))
+	if int(left.get("y", 0)) != int(right.get("y", 0)):
+		return int(left.get("y", 0)) < int(right.get("y", 0))
+	return int(left.get("x", 0)) < int(right.get("x", 0))
 
 
 func _sort_cells(cells: Array) -> Array:

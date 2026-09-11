@@ -68,6 +68,7 @@ func _test_fixture_projection() -> void:
 	_assert(bool(resolution.get("valid", false)), "H6 fixture resolves through H1/H2")
 	var snapshot: ResolvedDistrictSnapshot = resolution.get("snapshot") as ResolvedDistrictSnapshot
 	var runtime: DistrictRuntime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	_assert(bool(runtime.configure_session_gate(SessionMutationGate.new()).get("valid", false)), "H6 injects the District Runtime session gate")
 	var h3_ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
 	var progression_port: FakeProgression = FakeProgression.new()
 	progression_port.selected_plot_ids = [String(snapshot.get_data().get("plots", [])[1].get("id", ""))]

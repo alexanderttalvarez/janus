@@ -10,12 +10,17 @@ func build(snapshot: ResolvedDistrictSnapshot, state: Dictionary, zone_revision:
 	var vertical_links: Array[Dictionary] = []
 	var corridor_cells: Dictionary = {}
 	var facts_by_floor: Dictionary = {}
+	for plot_state: Dictionary in state.get("plot_states", []):
+		var plot_id: String = String(plot_state.get("runtime_plot_id", ""))
+		for floor_state: Dictionary in plot_state.get("floor_states", []):
+			var floor_id: String = String(floor_state.get("floor_id", ""))
+			var elevation: int = int(floor_state.get("elevation", 0))
+			for pair: Array in floor_state.get("explicit_circulation_cells", []):
+				var cell: Dictionary = {"plot_id": plot_id, "floor_id": floor_id, "elevation": elevation, "x": int(pair[0]), "y": int(pair[1])}
+				corridor_cells[_cell_key(cell)] = cell
 	for record: Dictionary in state.get("construction_records", []):
 		var kind: String = String(record.get("kind", ""))
-		if kind == "corridor":
-			for cell: Dictionary in record.get("cells", []):
-				corridor_cells[_cell_key(cell)] = cell.duplicate(true)
-		elif kind == "stairs":
+		if kind == "stairs":
 			var cells: Array = record.get("cells", [])
 			var by_floor: Dictionary = _first_cell_by_floor(cells)
 			var floor_ids: Array = by_floor.keys()

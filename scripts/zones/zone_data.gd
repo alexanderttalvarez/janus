@@ -5,6 +5,7 @@ extends Resource
 
 ## Zone type: Retail, FoodBeverage, Entertainment, Services, Anchor.
 enum ZoneType { RETAIL, FOOD_BEVERAGE, ENTERTAINMENT, SERVICES, ANCHOR }
+enum TileTypology { TENANT, DECORATION, TRANSIT }
 
 ## Zone type names: maps ZoneType enum to display strings.
 const ZONE_TYPE_NAMES: Array[String] = ["Retail", "Food & Beverage", "Entertainment", "Services", "Anchor"]
@@ -41,7 +42,7 @@ var subtype: String = ""
 @export var parcel_layout_seed: int = 0
 
 ## Per-tile typology classification.
-var typologies: Dictionary = {}  # Dictionary[Vector2i, GridTile.TileTypology]
+var typologies: Dictionary = {}  # Dictionary[Vector2i, ZoneData.TileTypology]
 
 ## Display name for this zone (optional, for UI).
 @export var zone_name: String = ""

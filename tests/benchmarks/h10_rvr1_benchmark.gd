@@ -70,6 +70,9 @@ func _setup() -> Dictionary:
 		return resolution
 	var snapshot: ResolvedDistrictSnapshot = resolution.get("snapshot") as ResolvedDistrictSnapshot
 	_runtime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	var gate_setup: Dictionary = _runtime.configure_session_gate(SessionMutationGate.new())
+	if not bool(gate_setup.get("valid", false)):
+		return gate_setup
 	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
 	ports.initialize(BenchmarkEconomy.new(), DistrictRuntimePorts.DistrictZonePort.new(), BenchmarkProgression.new())
 	_runtime.configure_ports(ports)
@@ -116,7 +119,7 @@ func _setup() -> Dictionary:
 		return {"valid": false, "diagnostics": [{"code": "TRAFFIC_BUILD_FAILED"}]}
 	_visitor_manager = VisitorManager.new()
 	_arrival = load("res://scripts/simulation/arrival_coordinator.gd").new() as ArrivalCoordinator
-	var arrival_setup: Dictionary = _arrival.initialize(_runtime, _public_realm.get_graph_snapshot(), gateway_result.get("gateway_eligibility"), _visitor_manager)
+	var arrival_setup: Dictionary = _arrival.initialize(_runtime, _public_realm.get_graph_snapshot(), gateway_result.get("gateway_eligibility"), _visitor_manager, _runtime.get_session_gate())
 	if not bool(arrival_setup.get("valid", false)):
 		return arrival_setup
 	_demand = ArrivalDemandSnapshot.new()

@@ -62,6 +62,8 @@ var _zoom_tween: Tween
 
 ## H6 immutable camera envelope. Null is an explicit no-pan safety state.
 var _camera_bounds_snapshot: CameraBoundsSnapshot
+var _projection_floor_height: float = 0.0
+var _floor_projection: ProjectionCoordinator
 
 # ── OnReady References ─────────────────────────────────────────────────
 
@@ -73,6 +75,8 @@ var _camera_bounds_snapshot: CameraBoundsSnapshot
 
 
 func _ready() -> void:
+	# Camera navigation remains available while simulation time is paused.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	_setup_camera()
 	_apply_zoom(_current_zoom)
 	# Push the initial camera_direction global for wall clipping (45° default
@@ -123,11 +127,6 @@ func _handle_input() -> void:
 		if mouse_delta.length() > 0.01:
 			pan_camera(mouse_delta * -1.0)
 
-	# Floor navigation
-	if Input.is_action_just_pressed("camera_floor_up"):
-		go_up()
-	elif Input.is_action_just_pressed("camera_floor_down"):
-		go_down()
 
 
 # ── Rotation ───────────────────────────────────────────────────────────
@@ -262,7 +261,7 @@ func get_current_floor() -> String:
 func _on_floor_changed() -> void:
 	var level := get_current_floor()
 	# Move camera Y to the new floor level.
-	var target_y := _get_floor_height(level)
+	var target_y := _get_floor_height(level) + 20.0
 	var tween := create_tween()
 	tween.set_ease(Tween.EASE_OUT)
 	tween.set_trans(Tween.TRANS_CUBIC)
@@ -272,14 +271,22 @@ func _on_floor_changed() -> void:
 	_apply_floor_visibility(level)
 
 
+func configure_projection_metrics(metrics: ProjectionMetrics) -> Dictionary:
+	if metrics == null or not bool(metrics.validate().get("valid", false)):
+		return {"valid": false, "diagnostics": [{"code": "PROJECTION_METRICS_REQUIRED"}]}
+	_projection_floor_height = metrics.floor_height
+	global_position.y = _get_floor_height(get_current_floor()) + 20.0
+	return {"valid": true, "diagnostics": []}
+
+
 func _get_floor_height(level: String) -> float:
-	# Parse floor level to height. Ground floor is at Y=0.
-	# F1=+3, F2=+6, B1=-3, etc.
+	if _projection_floor_height <= 0.0:
+		return global_position.y
 	if level == "G":
 		return 0.0
 	var prefix := level[0]
 	var num := level.substr(1).to_int()
-	var height := float(num) * 3.0
+	var height := float(num) * _projection_floor_height
 	return height if prefix == "F" else -height
 
 
@@ -287,10 +294,72 @@ func _get_floor_height(level: String) -> float:
 ## FULL (current) = all nodes visible
 ## EXTERIOR (below) = floor plane, walls, tiles, circulation visible; rest hidden
 ## HIDDEN (above) = all nodes hidden
-func _apply_floor_visibility(_current_level: String) -> void:
-	# TODO Phase 7/13: Iterate floor instances and set visibility per mode.
-	# For now, this is a placeholder — visitable culling is in Phase 7.
-	pass
+func _apply_floor_visibility(current_level: String) -> void:
+	if _floor_projection == null:
+		return
+	var projection_root: Node3D = _floor_projection.get_active_root()
+	if projection_root == null:
+		return
+	var current_elevation: int = _floor_elevation(current_level)
+	for child: Node in projection_root.get_children():
+		var floor: Floor = child as Floor
+		if floor == null:
+			continue
+		var elevation: int = int(floor.get_meta("elevation", 0))
+		var mode: int = Floor.VisibilityMode.FULL if elevation == current_elevation else (
+			Floor.VisibilityMode.EXTERIOR if elevation < current_elevation else Floor.VisibilityMode.HIDDEN
+		)
+		floor.set_visibility_mode(mode)
+	_apply_public_realm_visibility(current_elevation < 0)
+
+
+## Apply the underground presentation rule without disabling H5/H7 runtime state.
+## Public-realm and traffic presentation remain available at ground/upper floors,
+## but are hidden while viewing underground floors.
+func _apply_public_realm_visibility(is_underground: bool) -> void:
+	if _floor_projection != null:
+		var projection_root: Node3D = _floor_projection.get_active_root()
+		if projection_root != null:
+			var public_realm: Node3D = projection_root.get_node_or_null("PublicRealmProjections") as Node3D
+			if public_realm != null:
+				public_realm.visible = not is_underground
+
+	var scene_root: Node = get_tree().current_scene
+	var presentation_paths: Array[NodePath] = [
+		NodePath("World/Surroundings/PedestrianAreas"),
+		NodePath("World/TrafficLayout"),
+		NodePath("World/TrafficManager/ActiveCars"),
+	]
+	for presentation_path: NodePath in presentation_paths:
+		var presentation_node: Node3D = scene_root.get_node_or_null(presentation_path) as Node3D
+		if presentation_node != null:
+			presentation_node.visible = not is_underground
+
+
+## Bind the generated H4 floor projection used for ADR 16 floor presentation.
+func configure_floor_visibility(projection: ProjectionCoordinator) -> Dictionary:
+	if projection == null:
+		return {"valid": false, "diagnostics": [{"code": "FLOOR_PROJECTION_REQUIRED"}]}
+	if _floor_projection != null and _floor_projection.projection_committed.is_connected(_on_projection_committed):
+		_floor_projection.projection_committed.disconnect(_on_projection_committed)
+	_floor_projection = projection
+	if not _floor_projection.projection_committed.is_connected(_on_projection_committed):
+		_floor_projection.projection_committed.connect(_on_projection_committed)
+	_apply_floor_visibility(get_current_floor())
+	return {"valid": true, "diagnostics": []}
+
+
+func _on_projection_committed(_manifest: Dictionary) -> void:
+	_apply_floor_visibility(get_current_floor())
+
+
+func _floor_elevation(level: String) -> int:
+	if level == "G":
+		return 0
+	if level.length() < 2:
+		return 0
+	var magnitude: int = level.substr(1).to_int()
+	return magnitude if level.begins_with("F") else -magnitude if level.begins_with("B") else 0
 
 
 # ── Position Limits ────────────────────────────────────────────────────
@@ -333,6 +402,15 @@ func _get_mouse_delta() -> Vector2:
 	# Mouse relative motion is not available in Godot without InputEventMouseMotion.
 	# For middle-mouse pan, we use a simple velocity-based approach in _process.
 	return Vector2.ZERO  # Middle-mouse pan handled by InputEventMouseMotion in _input.
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("camera_floor_up"):
+		go_up()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("camera_floor_down"):
+		go_down()
+		get_viewport().set_input_as_handled()
 
 
 func _input(event: InputEvent) -> void:

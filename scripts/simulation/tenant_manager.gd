@@ -351,8 +351,20 @@ func deserialize(data: Dictionary) -> void:
 	_tenant_counter = int(data["tenant_counter"])
 	_evaluation_ordinals = data["evaluation_ordinals"].duplicate(true)
 	_next_evaluations = data["next_evaluations"].duplicate(true)
-	all_tenants = data["tenants"].duplicate(true)
-	_diagnostics = data["diagnostics"].duplicate(true)
+	var restored_tenants: Array[Dictionary] = []
+	for tenant: Variant in data["tenants"]:
+		if not tenant is Dictionary:
+			_diagnostics = [{"code": "TENANT_RECORD_INVALID"}]
+			return
+		restored_tenants.append((tenant as Dictionary).duplicate(true))
+	var restored_diagnostics: Array[Dictionary] = []
+	for diagnostic: Variant in data["diagnostics"]:
+		if not diagnostic is Dictionary:
+			_diagnostics = [{"code": "TENANT_DIAGNOSTIC_INVALID"}]
+			return
+		restored_diagnostics.append((diagnostic as Dictionary).duplicate(true))
+	all_tenants = restored_tenants
+	_diagnostics = restored_diagnostics
 	_evaluation_results = data["evaluation_results"].duplicate(true)
 
 

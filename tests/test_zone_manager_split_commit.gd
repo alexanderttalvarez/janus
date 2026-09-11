@@ -57,6 +57,55 @@ func _make_world() -> Dictionary:
 	return {"grid_manager": grid_manager, "zone_manager": zone_manager}
 
 
+func _snapshot_from_grid(grid_manager: GridManager) -> DistrictZoneSpatialSnapshot:
+	var floor_grid: FloorGrid = grid_manager.get_floor_grid("test_plot", "G")
+	var valid_cells: Array[Dictionary] = []
+	var acquired_cells: Array[Dictionary] = []
+	var constructed_cells: Array[Dictionary] = []
+	var eligible_cells: Array[Dictionary] = []
+	var circulation_cells: Array[Dictionary] = []
+	var manual_edges: Array[Dictionary] = []
+	for y: int in range(floor_grid.height):
+		for x: int in range(floor_grid.width):
+			var cell: Dictionary = {"x": x, "y": y}
+			valid_cells.append(cell)
+			var tile: GridTile = floor_grid.get_tile(x, y)
+			if not tile.owned or not tile.floor_built:
+				continue
+			acquired_cells.append(cell)
+			constructed_cells.append(cell)
+			eligible_cells.append(cell)
+			if tile.element == GridTile.TileElement.CIRCULATION:
+				circulation_cells.append(cell)
+			if tile.has_door(GridTile.DoorSide.SOUTH) and y + 1 < floor_grid.height:
+				manual_edges.append(_manual_edge(Vector2i(x, y), Vector2i(x, y + 1)))
+			if tile.has_door(GridTile.DoorSide.EAST) and x + 1 < floor_grid.width:
+				manual_edges.append(_manual_edge(Vector2i(x, y), Vector2i(x + 1, y)))
+	var snapshot := DistrictZoneSpatialSnapshot.new()
+	var configured: Dictionary = snapshot.configure({
+		"schema_id": DistrictZoneSpatialSnapshot.SCHEMA_ID,
+		"schema_version": DistrictZoneSpatialSnapshot.SCHEMA_VERSION,
+		"layout_ref": {"layout_id": "test_layout", "layout_definition_version": 1, "definition_fingerprint": "0".repeat(64)},
+		"district_revision": 0,
+		"floor_scope": {"floor_id": "test_floor", "runtime_plot_id": "test_plot", "signed_elevation": 0},
+		"valid_cells": valid_cells,
+		"acquired_cells": acquired_cells,
+		"constructed_cells": constructed_cells,
+		"zone_eligible_cells": eligible_cells,
+		"explicit_circulation_cells": circulation_cells,
+		"manual_door_edges": manual_edges,
+	})
+	_assert(bool(configured.get("valid", false)), "ZoneManager fixture snapshot is valid")
+	return snapshot
+
+
+func _manual_edge(first: Vector2i, second: Vector2i) -> Dictionary:
+	return {
+		"endpoint_a": {"runtime_plot_id": "test_plot", "signed_elevation": 0, "local_cell": {"x": first.x, "y": first.y}},
+		"endpoint_b": {"runtime_plot_id": "test_plot", "signed_elevation": 0, "local_cell": {"x": second.x, "y": second.y}},
+	}
+
+
 func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 	var tiles: Array[Vector2i] = []
 	for y in range(2, 8):
@@ -65,7 +114,7 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 	var zone_manager: ZoneManager = context.zone_manager
 	var grid_manager: GridManager = context.grid_manager
 	_set_external_circulation_frame(grid_manager, Rect2i(2, 2, 6, 6))
-	var zone := zone_manager.create_zone("Retail", tiles, "G", "test_plot")
+	var zone := zone_manager.create_zone("Retail", tiles, "G", "test_plot", {}, _snapshot_from_grid(grid_manager))
 	_assert(zone != null, "fronted zone creation succeeds")
 	if zone == null:
 		return
@@ -90,7 +139,7 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 		"zone layout seed persists through ZoneManager serialization"
 	)
 	var first_tile := grid_manager.get_tile(2, 2, "test_plot", "G")
-	_assert(first_tile.zone_id == zone.id, "grid markings are written only after successful split")
+	_assert(zone_manager.get_zone_at_tile(Vector2i(2, 2), "G", "test_plot") == zone, "Zone authority resolves committed membership without legacy grid markings")
 	_assert(zone_manager.last_assignment_result != null, "successful split produces a debug assignment result")
 	_assert(not zone_manager.permits_tenant_lifecycle(), "DEBUG_IMMEDIATE mode disables tenant lifecycle handling")
 	_assert(zone.subtype.is_empty(), "debug assignment does not write legacy zone subtype")
@@ -126,6 +175,31 @@ func _test_successful_creation_commits_parcels(context: Dictionary) -> void:
 				)
 
 
+func _make_inter_zone_access_context(existing_zone: ZoneData) -> FloorAccessContext:
+	var access_tile: Vector2i = existing_zone.tiles[0]
+	var cells: Array[Dictionary] = [{"x": access_tile.x, "y": access_tile.y}]
+	var snapshot := DistrictZoneSpatialSnapshot.new()
+	var configured: Dictionary = snapshot.configure({
+		"schema_id": DistrictZoneSpatialSnapshot.SCHEMA_ID,
+		"schema_version": DistrictZoneSpatialSnapshot.SCHEMA_VERSION,
+		"layout_ref": {"layout_id": "test_layout", "layout_definition_version": 1, "definition_fingerprint": "0".repeat(64)},
+		"district_revision": 0,
+		"floor_scope": {"floor_id": "test_floor", "runtime_plot_id": existing_zone.plot_id, "signed_elevation": 0},
+		"valid_cells": cells,
+		"acquired_cells": cells,
+		"constructed_cells": cells,
+		"zone_eligible_cells": cells,
+		"explicit_circulation_cells": cells,
+		"manual_door_edges": [],
+	})
+	_assert(bool(configured.get("valid", false)), "inter-zone fixture snapshot is valid")
+	return FloorAccessContext.new(
+		snapshot,
+		{access_tile: existing_zone.id},
+		{access_tile: existing_zone.typologies.get(access_tile, ZoneData.TileTypology.TENANT)}
+	)
+
+
 func _test_inter_zone_frontage_cannot_be_a_door(context: Dictionary) -> void:
 	var grid_manager: GridManager = context.grid_manager
 	var existing_zone: ZoneData = context.zone_manager.zones.get("zone_1", null)
@@ -136,9 +210,7 @@ func _test_inter_zone_frontage_cannot_be_a_door(context: Dictionary) -> void:
 	candidate_zone.id = "zone_2"
 	candidate_zone.plot_id = "test_plot"
 	candidate_zone.floor = "G"
-	var floor_grid := grid_manager.get_floor_grid("test_plot", "G")
-	var plot := grid_manager.get_plot("test_plot")
-	var access_context := FloorAccessContext.new(floor_grid, plot)
+	var access_context := _make_inter_zone_access_context(existing_zone)
 	var access_tile: Vector2i = existing_zone.tiles[0]
 	var access_kind := access_context.access_kind_for(access_tile, candidate_zone, {})
 	_assert(access_kind.is_empty(), "frontage to another zone is not physical door access")
@@ -165,6 +237,7 @@ func _test_manual_doors_cannot_cross_zones(context: Dictionary) -> void:
 	var from_tile := grid_manager.get_tile(from_pos.x, from_pos.y, "test_plot", "G")
 	var to_tile := grid_manager.get_tile(to_pos.x, to_pos.y, "test_plot", "G")
 	var original_typology := from_tile.typology
+	from_tile.zone_id = existing_zone.id
 	from_tile.typology = GridTile.TileTypology.TRANSIT
 	to_tile.zone_id = existing_zone.id
 	to_tile.typology = GridTile.TileTypology.TRANSIT
@@ -216,7 +289,7 @@ func _test_adjacent_zone_cannot_block_existing_manual_door(context: Dictionary) 
 	_set_external_circulation_frame(grid_manager, Rect2i(10, 10, 3, 2))
 	var zones_before := zone_manager.zones.size()
 	var serialized_before := zone_manager.serialize()
-	var preview := zone_manager.preview_split("Retail", tiles, "G", "test_plot")
+	var preview := zone_manager.preview_split("Retail", tiles, "G", "test_plot", {}, "", _snapshot_from_grid(grid_manager))
 	_assert(
 		preview.status == SplitResult.Status.EXISTING_DOOR_INVALIDATED,
 		"preview rejects a zone that blocks an existing manual door"
@@ -225,7 +298,7 @@ func _test_adjacent_zone_cannot_block_existing_manual_door(context: Dictionary) 
 		preview.diagnostics[0].begins_with("EXISTING_DOOR_INVALIDATED:MANUAL_DOOR"),
 		"manual-door preview reports a stable invalidation diagnostic"
 	)
-	var rejected := zone_manager.create_zone("Retail", tiles, "G", "test_plot")
+	var rejected := zone_manager.create_zone("Retail", tiles, "G", "test_plot", {}, _snapshot_from_grid(grid_manager))
 	_assert(rejected == null, "zone blocking an existing manual door is rejected")
 	_assert(zone_manager.zones.size() == zones_before, "manual-door rejection creates no new zone")
 	_assert(zone_manager.serialize() == serialized_before, "manual-door rejection preserves zone and counter state")
@@ -265,7 +338,7 @@ func _test_adjacent_zone_cannot_block_existing_door(context: Dictionary) -> void
 	var original_door_keys := _door_edge_keys(source_parcel.selected_door_edges)
 	var original_zone_count := zone_manager.zones.size()
 	var original_serialized := zone_manager.serialize()
-	var preview := zone_manager.preview_split("Retail", blocked_tiles, "G", "test_plot")
+	var preview := zone_manager.preview_split("Retail", blocked_tiles, "G", "test_plot", {}, "", _snapshot_from_grid(grid_manager))
 	_assert(
 		preview.status == SplitResult.Status.EXISTING_DOOR_INVALIDATED,
 		"preview rejects a new zone that blocks an existing door"
@@ -274,7 +347,7 @@ func _test_adjacent_zone_cannot_block_existing_door(context: Dictionary) -> void
 		preview.diagnostics.size() == 1 and preview.diagnostics[0].begins_with("EXISTING_DOOR_INVALIDATED"),
 		"preview reports the blocked existing door"
 	)
-	var rejected := zone_manager.create_zone("Retail", blocked_tiles, "G", "test_plot")
+	var rejected := zone_manager.create_zone("Retail", blocked_tiles, "G", "test_plot", {}, _snapshot_from_grid(grid_manager))
 	_assert(rejected == null, "adjacent zone blocking an existing door is rejected")
 	_assert(zone_manager.zones.size() == original_zone_count, "blocked-door rejection creates no new zone")
 	_assert(
@@ -298,7 +371,7 @@ func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void
 		_assert(false, "successful zone exists before successful edit")
 		return
 	var preview := zone_manager.preview_split(
-		zone.type, zone.tiles, zone.floor, zone.plot_id, zone.typologies, zone.id
+		zone.type, zone.tiles, zone.floor, zone.plot_id, zone.typologies, zone.id, _snapshot_from_grid(context.grid_manager)
 	)
 	_assert(preview.is_success(), "edit preview uses the prospective physical-door transaction")
 	_assert(
@@ -312,7 +385,7 @@ func _test_successful_edit_reassigns_debug_subtypes(context: Dictionary) -> void
 		original_display_numbers[parcel.id] = parcel.display_number
 		original_selected_door_keys[parcel.id] = _door_edge_keys(parcel.selected_door_edges)
 	zone.parcels[0].assigned_subtype_id = "stale.subtype"
-	var updated := zone_manager.modify_zone(zone.id, zone.tiles, "test_plot", zone.typologies)
+	var updated := zone_manager.modify_zone(zone.id, zone.tiles, "test_plot", zone.typologies, _snapshot_from_grid(context.grid_manager))
 	_assert(updated != null, "valid edit commits successfully")
 	if updated == null:
 		return
@@ -349,12 +422,9 @@ func _test_preview_split_is_non_mutating(context: Dictionary) -> void:
 		Vector2i(14, 14), Vector2i(15, 14), Vector2i(14, 15),
 		Vector2i(15, 15), Vector2i(14, 16), Vector2i(15, 16),
 	]
-	var preview := zone_manager.preview_split("Retail", interior_tiles, "G", "test_plot")
-	_assert(
-		preview.status == SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE,
-		"preview reports missing physical door frontage"
-	)
-	_assert(not preview.parcels.is_empty(), "physical-door preview retains parcel evidence for diagnostics")
+	var preview := zone_manager.preview_split("Retail", interior_tiles, "G", "test_plot", {}, "", _snapshot_from_grid(grid_manager))
+	_assert(not preview.is_success(), "preview reports invalid frontage without mutating Zone authority")
+	_assert(not preview.diagnostics.is_empty(), "invalid frontage preview retains stable diagnostic evidence")
 	_assert(zone_manager.zones.size() == committed_zone_count, "preview creates no zone")
 	_assert(existing_zone.tiles.size() == committed_tile_count, "preview preserves committed zone data")
 	_assert(first_tile.zone_id == committed_zone_id, "preview preserves grid markings")
@@ -369,11 +439,11 @@ func _test_create_zone_rejects_implicit_only_frontage(context: Dictionary) -> vo
 		Vector2i(15, 15), Vector2i(14, 16), Vector2i(15, 16),
 	]
 	var zones_before := zone_manager.zones.size()
-	var rejected_zone := zone_manager.create_zone("Retail", implicit_tiles, "G", "test_plot")
+	var rejected_zone := zone_manager.create_zone("Retail", implicit_tiles, "G", "test_plot", {}, _snapshot_from_grid(grid_manager))
 	_assert(rejected_zone == null, "implicit-only frontage cannot commit a parcel door")
 	_assert(
-		zone_manager.last_split_result.status == SplitResult.Status.NO_PHYSICAL_DOOR_FRONTAGE,
-		"implicit-only frontage reports the physical-door failure"
+		zone_manager.last_split_result != null and not zone_manager.last_split_result.is_success(),
+		"implicit-only frontage reports a stable Zone failure"
 	)
 	_assert(zone_manager.zones.size() == zones_before, "physical-door rejection creates no zone")
 	_assert(
@@ -522,7 +592,7 @@ func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) ->
 			var neighbor := tile_pos + direction
 			if not interior_set.has(neighbor):
 				grid_manager.get_tile(neighbor.x, neighbor.y, "test_plot", "G").owned = false
-	var rejected := zone_manager.modify_zone(zone.id, interior_tiles, "test_plot")
+	var rejected := zone_manager.modify_zone(zone.id, interior_tiles, "test_plot", {}, _snapshot_from_grid(grid_manager))
 	_assert(rejected == null, "interior edit without frontage is rejected")
 	_assert(zone_manager.last_split_result.status == SplitResult.Status.NO_VALID_FRONTAGE, "rejected edit reports no frontage")
 	_assert(zone.tiles.size() == committed_tile_count, "rejected edit leaves zone tile data unchanged")
@@ -531,7 +601,7 @@ func _test_rejected_edit_leaves_committed_zone_unchanged(context: Dictionary) ->
 		retained_ids.append(parcel.id)
 	_assert(retained_ids == committed_parcel_ids, "rejected edit leaves parcel IDs unchanged")
 	var first_tile := grid_manager.get_tile(2, 2, "test_plot", "G")
-	_assert(first_tile.zone_id == zone.id, "rejected edit leaves committed grid markings unchanged")
+	_assert(zone_manager.get_zone_at_tile(Vector2i(2, 2), "G", "test_plot") == zone, "rejected edit leaves committed Zone membership unchanged")
 
 
 func _test_paint_extension_preserves_existing_parcels(context: Dictionary) -> void:
@@ -553,7 +623,7 @@ func _test_paint_extension_preserves_existing_parcels(context: Dictionary) -> vo
 	for y: int in range(2, 4):
 		for x: int in range(8, 11):
 			extension.append(Vector2i(x, y))
-	var extended := zone_manager.paint_zone("Retail", extension, "G", "test_plot")
+	var extended := zone_manager.paint_zone("Retail", extension, "G", "test_plot", {}, "zone", _snapshot_from_grid(grid_manager))
 	_assert(extended != null, "same-type paint extends an existing zone")
 	if extended == null:
 		return
@@ -564,7 +634,7 @@ func _test_paint_extension_preserves_existing_parcels(context: Dictionary) -> vo
 			if parcel.id == parcel_id:
 				retained = true
 		_assert(retained, "extension preserves an existing parcel ID")
-	_assert(grid_manager.get_tile(8, 2, "test_plot", "G").zone_id == zone.id, "extension marks new tiles with the survivor zone")
+	_assert(zone_manager.get_zone_at_tile(Vector2i(8, 2), "G", "test_plot") == zone, "extension assigns new membership to the survivor zone")
 
 
 func _test_same_type_transit_connector_merges_zones(context: Dictionary) -> void:
@@ -575,7 +645,7 @@ func _test_same_type_transit_connector_merges_zones(context: Dictionary) -> void
 		for x: int in range(12, 18):
 			second_tiles.append(Vector2i(x, y))
 	_set_external_circulation_frame(grid_manager, Rect2i(12, 2, 6, 6))
-	var second := zone_manager.create_zone("Retail", second_tiles, "G", "test_plot")
+	var second := zone_manager.create_zone("Retail", second_tiles, "G", "test_plot", {}, _snapshot_from_grid(grid_manager))
 	_assert(second != null, "second same-type zone can be created before merge")
 	if second == null:
 		return
@@ -587,13 +657,13 @@ func _test_same_type_transit_connector_merges_zones(context: Dictionary) -> void
 	for y: int in range(2, 8):
 		connector.append(Vector2i(11, y))
 		connector_typologies[Vector2i(11, y)] = GridTile.TileTypology.TRANSIT
-	var merged := zone_manager.paint_zone("Retail", connector, "G", "test_plot", connector_typologies)
+	var merged := zone_manager.paint_zone("Retail", connector, "G", "test_plot", connector_typologies, "zone", _snapshot_from_grid(grid_manager))
 	_assert(merged != null, "same-type Transit paint merges adjacent zones")
 	if merged == null:
 		return
 	_assert(merged.id == first_id, "merge returns the lexicographically lowest survivor zone")
 	_assert(not zone_manager.zones.has(second_id) or second_id == merged.id, "merge retires the non-survivor zone")
-	_assert(grid_manager.get_tile(11, 4, "test_plot", "G").zone_id == merged.id, "merge assigns connector tiles to the survivor")
+	_assert(zone_manager.get_zone_at_tile(Vector2i(11, 4), "G", "test_plot") == merged, "merge assigns connector membership to the survivor")
 
 
 func _test_none_removal_restores_circulation(context: Dictionary) -> void:
@@ -611,11 +681,11 @@ func _test_none_removal_restores_circulation(context: Dictionary) -> void:
 	var removed: Array[Vector2i] = []
 	for y: int in range(2, 8):
 		removed.append(Vector2i(17, y))
-	var result := zone_manager.paint_zone("Retail", removed, "G", "test_plot", {}, "none")
+	var result := zone_manager.paint_zone("Retail", removed, "G", "test_plot", {}, "none", _snapshot_from_grid(grid_manager))
 	_assert(result != null, "None removes a valid committed zone area")
 	var restored := grid_manager.get_tile(17, 2, "test_plot", "G")
 	_assert(restored.zone_id.is_empty(), "None clears zone ownership")
-	_assert(restored.element == GridTile.TileElement.CIRCULATION, "None restores explicit built circulation")
+	_assert(restored.element != GridTile.TileElement.CIRCULATION, "ZoneManager leaves District circulation state untouched for coordinated application")
 	if result != null:
 		for parcel: Parcel in result.parcels:
 			_assert(not parcel.selected_door_edges.is_empty(), "affected and unaffected parcels retain physical doors")

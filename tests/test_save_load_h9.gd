@@ -53,6 +53,8 @@ func _setup_fixture() -> void:
 		Callable(self, "_validate_authorities"),
 		Callable(self, "_commit_authorities")
 	)
+	var boundary: Dictionary = _save_manager.configure_session_boundary(SessionMutationGate.new(), Callable(self, "_session_available"))
+	_assert(bool(boundary.get("valid", false)), "H9 save fixture configures the shared session mutation boundary")
 	_save_manager.game_loaded.connect(_on_game_loaded)
 	_save_manager.delete_save(TEST_SLOT)
 
@@ -82,6 +84,10 @@ func _make_authorities() -> Dictionary:
 		"synergy": {"zone_scores": {}},
 		"time": {"sim_time": 0.0, "visual_time": 0.0},
 	}
+
+
+func _session_available() -> bool:
+	return true
 
 
 func _get_authorities() -> Dictionary:

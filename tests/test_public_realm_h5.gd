@@ -123,6 +123,8 @@ func _init() -> void:
 	var h3_ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
 	h3_ports.initialize(FakeEconomy.new(), DistrictRuntimePorts.DistrictZonePort.new(), FakeProgression.new())
 	runtime.configure_ports(h3_ports)
+	var gate_setup: Dictionary = runtime.configure_session_gate(SessionMutationGate.new())
+	_assert(bool(gate_setup.get("valid", false)), "H5 injects the shared session mutation gate")
 	var created: Dictionary = runtime.create_session(snapshot)
 	runtime.set_street_conversion_validator(Callable(builder, "validate_conversion_intent"))
 	runtime.replace_session(snapshot, conversion_state)

@@ -2,7 +2,9 @@
 
 This index is the implementation order and approval record for the zone-and-parcel handoff sequence.
 
-**Current revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md) and ADR 33 apply. H6 supersedes H1's full resplitting; approved `tenant_interiors/H2` adds staged core/annex feasibility, not live Service cutover. Read the [interior readiness matrix](../tenant_interiors/_index.md) before activating those changes. Manual-door authority is ADRs 30/31, not legacy grid flags.
+**Current revision:** 2026-09-09 architecture clarification. [Current MVP](../../../game_design/current_mvp.md), ADR 33, and [ADR 35](../../decisions/35_public_band_access_snapshot_and_zone_injection.md) apply. H6 supersedes H1's full resplitting; approved `tenant_interiors/H2` adds staged core/annex feasibility, not live Service cutover. Read the [interior readiness matrix](../tenant_interiors/_index.md) before activating those changes. Manual-door authority is ADRs 30/31, not legacy grid flags. H5 is amended by ADR 35 for transient public-band snapshot injection and exact current-schema door provenance; this clarification is architecture-approved without asserting implementation or migration.
+
+**Current amendment, 2026-09-10:** [ADR 36](../../decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) amends H1 and H6: production Zone spatial input is the exact injected immutable District snapshot plus the separate ADR 35 snapshot, and paint that changes circulation/manual doors uses the coordinated District/Zone transaction. Architecture approval is binding; implementation, tests, and evidence are not asserted.
 
 ## Approved handoffs
 
@@ -12,7 +14,7 @@ This index is the implementation order and approval record for the zone-and-parc
 | 02 | [Immediate Debug Business Assignment](02_immediate_debug_business_assignment.md) | Approved — 2026-08-22 | Immediate deterministic parcel subtype assignment; no tenant lifecycle. Amended by Handoff 06 for locked parcels. |
 | 03 | [Parcel Number Debug Visualization](03_parcel_number_debug_visualization.md) | Approved — 2026-08-22 | Per-tile parcel numbers and center names for committed parcels. |
 | 04 | [Parcel Boundary Walls](04_parcel_boundary_walls.md) | Approved — 2026-08-24 | Thin interior walls between committed parcels, rendered through the global wall visualization modes. |
-| 05 | [Automatic Parcel Doors](05_automatic_parcel_doors.md) | Approved — 2026-08-24 | Deterministic physical parcel-door allocation and matching wall gaps. |
+| 05 | [Automatic Parcel Doors](05_automatic_parcel_doors.md) | Approved — 2026-08-24; amended by ADR 35 — 2026-09-09 | Deterministic physical parcel-door allocation, including injected public-band access, stable provenance, and matching wall gaps. |
 | 06 | [Paint-First Zone Mutation and Preservation](06_paint_first_zone_mutation.md) | Approved — 2026-08-26 | Paint-to-create/extend/merge, None removal, and preservation-first parcel transactions. |
 | 07 | [Zone Debug Visualization](07_zone_debug_visualization.md) | Approved — 2026-08-27 | Larger debug-only zone-center labels using committed names/types and mathematical centroids. |
 

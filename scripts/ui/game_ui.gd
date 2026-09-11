@@ -12,6 +12,8 @@ var _hud_model: Dictionary = {}
 
 
 func _ready() -> void:
+	# The simulation begins paused, but HUD controls must remain interactive.
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	var panel_manager: PanelManager = $PanelLayer/PanelManager as PanelManager
 	if panel_manager != null:
 		panel_manager.register_panel("finances", load("res://scenes/ui/finances_panel.tscn"))

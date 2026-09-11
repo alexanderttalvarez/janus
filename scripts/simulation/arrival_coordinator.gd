@@ -12,7 +12,7 @@ var _pedestrian_graph: PedestrianGraphSnapshot
 var _gateway_eligibility: GatewayEligibilitySnapshot
 var _visitor_manager: VisitorManager
 var _demand_authority: VisitorDemandAuthority
-var _gate: ArrivalCommitGate = ArrivalCommitGate.new()
+var _gate: ArrivalCommitGate
 var _dispatcher: ArrivalCommitDispatcher = ArrivalCommitDispatcher.new()
 var _transaction_counter: int = 0
 
@@ -21,17 +21,28 @@ func initialize(
 	p_district_runtime: DistrictRuntime,
 	p_pedestrian_graph: PedestrianGraphSnapshot,
 	p_gateway_eligibility: GatewayEligibilitySnapshot,
-	p_visitor_manager: VisitorManager
+	p_visitor_manager: VisitorManager,
+	session_gate: SessionMutationGate
 ) -> Dictionary:
 	if p_district_runtime == null or p_pedestrian_graph == null or p_gateway_eligibility == null or p_visitor_manager == null:
 		return _reject("ARRIVAL_DEPENDENCY_REQUIRED", "District Runtime, H5, H6, and VisitorManager are required")
+	if session_gate == null:
+		return _reject("SESSION_GATE_REQUIRED", "Arrival coordinator requires the session mutation gate")
+	if p_district_runtime.get_session_gate() != session_gate:
+		return _reject("SESSION_GATE_MISMATCH", "arrival and District Runtime must share the same session mutation gate")
+	_gate = ArrivalCommitGate.new()
+	var gate_configuration: Dictionary = _gate.configure(session_gate)
+	if not bool(gate_configuration.get("valid", false)):
+		return gate_configuration
 	_district_runtime = p_district_runtime
 	_pedestrian_graph = p_pedestrian_graph.duplicate_value()
 	_gateway_eligibility = p_gateway_eligibility.duplicate_value()
 	_district_runtime.set_arrival_revision_context(_pedestrian_graph.zone_revision, _gateway_eligibility.topology_revision)
 	_visitor_manager = p_visitor_manager
 	_visitor_manager.configure_arrival_coordinator(self)
-	_district_runtime.set_arrival_commit_gate(_gate)
+	var runtime_gate_result: Dictionary = _district_runtime.set_arrival_commit_gate(_gate)
+	if not bool(runtime_gate_result.get("valid", false)):
+		return runtime_gate_result
 	_visitor_manager.set_arrival_commit_gate(_gate)
 	if _dispatcher.get_subscriber_count() == 0:
 		_dispatcher.subscribe(Callable(self, "_publish_event_bus"))
@@ -64,14 +75,14 @@ func get_dispatcher() -> ArrivalCommitDispatcher:
 
 
 ## Demand is sampled independently from source selection.
-func on_visitor_tick() -> Dictionary:
+func on_visitor_tick(session_owner_token: String = "") -> Dictionary:
 	if _demand_authority == null:
 		return {"valid": true, "skipped": true, "diagnostics": []}
 	var demand: ArrivalDemandSnapshot = _demand_authority.capture_snapshot()
 	var target_count: int = mini(demand.desired_count, VisitorManager.MAX_VISITORS) if demand != null else 0
 	if demand == null or _visitor_manager.get_active_visitor_count() >= target_count:
 		return {"valid": true, "skipped": true, "diagnostics": []}
-	return realize_arrival(demand)
+	return realize_arrival(demand, session_owner_token)
 
 
 ## Return the canonical first equally eligible pedestrian source.
@@ -88,7 +99,7 @@ func allocate_source(demand: ArrivalDemandSnapshot) -> Dictionary:
 
 
 ## Execute the exact H8 immediate realization transaction.
-func realize_arrival(demand: ArrivalDemandSnapshot) -> Dictionary:
+func realize_arrival(demand: ArrivalDemandSnapshot, session_owner_token: String = "") -> Dictionary:
 	if demand == null or demand.snapshot_id.is_empty():
 		return _reject("DEMAND_SNAPSHOT_REQUIRED", "arrival realization requires a demand snapshot identity")
 	if _visitor_manager != null and _visitor_manager.get_active_visitor_count() >= VisitorManager.MAX_VISITORS:
@@ -97,9 +108,10 @@ func realize_arrival(demand: ArrivalDemandSnapshot) -> Dictionary:
 	if not bool(initial.get("valid", false)):
 		return initial
 	_transaction_counter += 1
-	var owner_token: String = "arrival_txn_%d" % _transaction_counter
-	if not _gate.acquire(owner_token):
-		return _reject("ARRIVAL_TRANSACTION_BUSY", "another arrival transaction is active")
+	var owner_token: String = session_owner_token if not session_owner_token.is_empty() else "arrival_txn_%d" % _transaction_counter
+	var gate_entered: bool = _gate.adopt_held_session_gate(owner_token) if not session_owner_token.is_empty() else _gate.acquire(owner_token)
+	if not gate_entered:
+		return _reject("SESSION_MUTATION_BUSY", "another session mutation is active")
 	if not _gate.enter_barrier(owner_token):
 		_gate.release(owner_token)
 		return _reject("ARRIVAL_BARRIER_FAILED", "arrival barrier could not be acquired")

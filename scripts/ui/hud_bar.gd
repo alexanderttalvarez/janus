@@ -27,6 +27,11 @@ func bind_presentation(presentation_root: GameUI) -> void:
 func _ready() -> void:
 	GameManager.speed_changed.connect(_on_speed_changed)
 	GameManager.wall_mode_changed.connect(_on_wall_mode_changed)
+	var scene_root: Node = get_tree().current_scene
+	var camera_manager: CameraManager = scene_root.get_node_or_null("CameraRig") as CameraManager if scene_root != null else null
+	if camera_manager != null:
+		camera_manager.floor_changed.connect(_on_floor_changed)
+		_on_floor_changed(camera_manager.get_current_floor())
 	_save_button.pressed.connect(func() -> void: save_requested.emit())
 	_load_button.pressed.connect(func() -> void: load_requested.emit())
 	_money_label.size = Vector2(160.0, 23.0)
@@ -73,6 +78,10 @@ func _on_speed_changed(speed: int) -> void:
 
 func _on_wall_mode_changed(mode: String) -> void:
 	_wall_mode_label.text = "Walls: %s" % mode
+
+
+func _on_floor_changed(floor_level: String) -> void:
+	_camera_label.text = "Floor: %s" % floor_level
 
 
 func _speed_text(speed: int) -> String:

@@ -177,9 +177,16 @@ func _test_state_boundary() -> void:
 	var floor: Dictionary = data["floors"][0]
 	var cell: Dictionary = data["cells"][0]
 	var changed: Dictionary = baseline.duplicate(true)
-	changed["plot_states"] = [{"runtime_plot_id": plot["id"], "section_state_overrides": [{"runtime_section_id": section["id"], "owned": not bool(section["initially_owned"]), "available": bool(section["initially_available"])}], "floor_states": [{"floor_id": floor["id"], "elevation": floor["elevation"], "acquired_cells": [[cell["x"], cell["y"]]], "constructed_cells": []}]}]
+	changed["plot_states"] = [{"runtime_plot_id": plot["id"], "section_state_overrides": [{"runtime_section_id": section["id"], "owned": not bool(section["initially_owned"]), "available": bool(section["initially_available"])}], "floor_states": [{"floor_id": floor["id"], "elevation": floor["elevation"], "acquired_cells": [[cell["x"], cell["y"]]], "constructed_cells": [], "explicit_circulation_cells": []}]}]
 	var changed_result: Dictionary = records.validate(changed, snapshot)
 	_assert(bool(changed_result.get("valid", false)), "nonempty sparse Plot state validates")
+	_assert(int(baseline.get("state_schema_version", -1)) == 3 and baseline.has("manual_door_edges") and not baseline.has("manual_door_records"), "DistrictState uses exact local v3 manual-door root")
+	var old_schema: Dictionary = baseline.duplicate(true)
+	old_schema["state_schema_version"] = 2
+	_assert(not bool(records.validate(old_schema, snapshot).get("valid", false)), "local District v2 rejects without conversion")
+	var circulation_without_construction: Dictionary = changed.duplicate(true)
+	circulation_without_construction["plot_states"][0]["floor_states"][0]["explicit_circulation_cells"] = [[cell["x"], cell["y"]]]
+	_assert(not bool(records.validate(circulation_without_construction, snapshot).get("valid", false)), "explicit circulation requires acquired constructed membership")
 	var forbidden: Dictionary = changed.duplicate(true)
 	forbidden["plot_states"][0]["floor_states"][0]["constructed_cells"] = [[cell["x"], cell["y"] + 1]]
 	var forbidden_result: Dictionary = records.validate(forbidden, snapshot)

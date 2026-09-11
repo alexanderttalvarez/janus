@@ -6,6 +6,8 @@
 
 **Current applicability, 2026-09-08:** H6/ADR 24 supersede full recalculation on mutation. Element 20 and approved staged `tenant_interiors/H2` supersede rectangular/min-max/ordinary-Anchor formation where stated. Read [Current MVP](../../../game_design/current_mvp.md) and the [interior readiness matrix](../tenant_interiors/_index.md); this historical base is not standalone Product parcel authority. Stable identity/frontage/preservation invariants remain.
 
+**ADR 36 applicability amendment, 2026-09-10:** [ADR 36](../../decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) replaces `GridManager`/`FloorGrid`/`PlotData` production input with the injected immutable floor-scoped District snapshot, the separate ADR 35 public-band snapshot, and the prospective Zone candidate. The historical body below is not permission for legacy ownership, queries, synchronization, or mutation. Implementation and evidence are not asserted.
+
 ## Purpose
 
 When a player finalizes or edits a zone, derive valid business-parcel geometry from its Tenant tiles. This handoff covers geometry, validation, stable parcel identity, and the two door concepts needed to validate access.

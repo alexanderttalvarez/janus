@@ -18,4 +18,8 @@ Authority order: concept premise; explicitly agreed design/current scope; accept
 
 This pass's changes to approved contracts are documentation-approved by the user's delegated authority on 2026-09-08, not invented prior approvals. They create new acceptance obligations where behavior changes; older PASS records do not prove those revisions. Accepted ADR bodies and evidence are preserved.
 
+[ADR 36](decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md), accepted 2026-09-10, is the current authority for DistrictState local v3, the floor-scoped District-to-Zone spatial snapshot, and coordinated Zone paint mutation. Save remains V2; no implementation or evidence is asserted.
+
+[ADR 37](decisions/37_district_construction_annex_schema.md), accepted 2026-09-10, corrects ADR 36's exact DistrictState v3 root by retaining the construction annex without corridor records or a second concurrency authority. Save V2 and the authority registry remain unchanged; no implementation or evidence is asserted.
+
 Use normal Godot composition and the smallest implementation satisfying owner, identity, deterministic behavior, failure, and acceptance contracts. Named example helpers, file layouts, class hierarchies, or skill lists are not mandates unless an active ADR requires the architectural boundary. No general FSM framework, new service locator, extra EventBus query layer, or speculative manager is a prerequisite.

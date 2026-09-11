@@ -10,6 +10,10 @@
 
 **Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md), element 03 and ADR 33/MVP H3 govern scope, prices, paid-action cancellation and the common gate. Required geometry is approved below; absence of an authored record is a content error, not an unresolved design choice. No mechanical elevator trip/capacity system is included.
 
+**ADR 36 clarification, 2026-09-10:** Explicit circulation is DistrictState v3-owned. Any construction mutation of it follows the existing H3 coordinated transaction and publishes only through the committed envelope/delta. This adds no construction gameplay, implementation claim, or evidence claim.
+
+**ADR 37 correction, 2026-09-10:** [ADR 37](../../decisions/37_district_construction_annex_schema.md) is binding for the exact DistrictState v3 annex. It retains stairs, elevators, and Operations Rooms as records, represents corridors only through `explicit_circulation_cells`, and defines `construction_revision` as District-owned content versioning rather than a second concurrency authority. Save V2, the authority registry, and evidence status are unchanged.
+
 Define the smallest authoritative construction program for player-built circulation and Operations Rooms. It accepts typed player intents, provides non-mutating previews, and commits legal placements atomically on acquired, buildable District cells.
 
 The MVP construction catalog is limited to corridors, adjacent-floor stairs, elevator shafts with per-floor lobbies, and Operations Rooms. A successful committed placement updates the owning District state, coordinates with Zone where required, captures an approved Economy charge where applicable, and publishes committed topology/vertical-link facts for Spatial H1. Presentation renders previews and results but never places elements itself.
@@ -65,7 +69,7 @@ MVP geometry policy is explicit: stairs occupy one contiguous 2×2 footprint and
 
 | Owner | Owns | Must not own |
 | --- | --- | --- |
-| District Runtime / construction authority | Construction intent resolution, detached candidates, sole District writes, construction identities, committed construction revision/delta, and coordinated transaction gate. | Zone writes, balance writes, mutable price/progression policy, UI state, or live navigation. |
+| District Runtime / construction boundary | Construction intent resolution, detached candidates, sole District writes, construction identities, District-owned construction-content revision/delta, and coordinated transaction gate. | A second concurrency authority, Zone writes, balance writes, mutable price/progression policy, UI state, or live navigation. |
 | `ZoneManager` | Sole zone/parcel writes and validation/preparation of prospective element changes affecting zone facts. | District construction state, Economy capture, or topology policy. |
 | `EconomyManager` | Quotes, reservations, guaranteed capture, committed balance/result, and debug-free-cost behavior. | Construction validity, geometry, or policy mutation. |
 | Progression authority | Immutable eligibility snapshot/revision, including required tech eligibility. | Prices, placement state, reservations, or balance. |
@@ -109,14 +113,14 @@ The Economy reservation may be cancelled before the envelope append when preview
 
 - Every requested cell uses an explicit `FloorAddress` plus plot-local cell identity.
 - Each cell must be in an acquired/owned District footprint, have acquired vertical space at its elevation, be currently buildable, and be available for construction under District H3. Owning a plot or selecting a plot/floor does not imply those facts.
-- Exactly one committed construction element occupies a tile. A new element cannot overlap a corridor, stair, shaft, lobby, Operations Room, fixed occupant, or any incompatible existing element.
+- Exactly one committed construction element occupies a tile. Prospective validation considers Zone state, fixed occupants, explicit circulation, and construction records; a new element cannot overlap any of them, and generic unzoned constructed space is never inferred as corridor.
 - Construction never silently replaces, clears, moves, or converts a committed element. Unsupported replacement/removal rejects.
 - Zone membership and typology remain `ZoneManager` facts. A construction candidate that changes or conflicts with Zone/parcel constraints must be prepared and accepted by `ZoneManager` in the same atomic transaction; District Runtime must not write zone data directly.
 - A rejection at any common or type-specific check commits no authority state and publishes no gameplay topology delta.
 
 ### Corridors
 
-A corridor is a one-tile construction request on a legal cell. Its price is the immutable zero-Kred corridor charge. The construction authority must not treat a corridor as authorization to paint a zone, fabricate a public route, or bypass Zone's explicit circulation/typology rules. A committed corridor contributes horizontal traversability only through the committed topology projection; it provides no vertical access.
+A corridor is a one-tile construction request on a legal cell. Its price is the immutable zero-Kred corridor charge. Commit adds the cell to `constructed_cells` if needed and to `explicit_circulation_cells`; no corridor `construction_record` is persisted. Its stable construction identity is deterministically derived from exact FloorCellAddress plus layout identity and remains unsaved. The construction boundary must not treat a corridor as authorization to paint a zone, fabricate a public route, or bypass Zone's explicit circulation/typology rules. A committed corridor contributes horizontal traversability only through the committed topology projection; it provides no vertical access.
 
 ### Stairs
 
@@ -132,13 +136,13 @@ The committed elevator has one stable shaft identity and an explicit canonical s
 
 An Operations Room request requires the approved immutable **2x2** catalog geometry record. Missing/malformed content rejects as policy unavailable; the footprint itself is settled. Its legal cells follow the common rules and it costs one immutable 2,000-Kred line per placement.
 
-On commit, the construction authority publishes a detached room fact containing stable `operations_room_id`, stable building ID, canonical floor identity, committed construction revision, and `committed_valid_for_staffing=true`. This is the sole construction input Staff H1 consumes. Staff independently owns staffing capacity, coverage, task, and payroll facts. Removing or invalidating a committed room is not authorized in this MVP; no room-reference mutation path is implied.
+On commit, the construction boundary publishes a detached room fact containing stable `operations_room_id` derived as `construction_id`, MVP building ID derived as `plot_id`, canonical floor identity, committed construction revision, and `committed_valid_for_staffing=true`. The derived IDs are not duplicated in persistence. This is the sole construction input Staff H1 consumes. Staff independently owns staffing capacity, coverage, task, and payroll facts. Removing or invalidating a committed room is not authorized in this MVP; no room-reference mutation path is implied.
 
 ## Topology and vertical-link publication
 
-After the commit envelope is appended, the circulation/topology projection rebuilds or incrementally derives detached, revisioned facts from committed District construction state. It does not inspect preview state, generated Nodes, transforms, live visitor positions, NavigationServer probes, or legacy navigation.
+After the commit envelope is appended, circulation/topology and Staff projections rebuild or incrementally derive detached facts only from committed `explicit_circulation_cells` plus `construction_records`. They do not inspect preview state, generated Nodes, `GridManager`, transforms, graph/projection state, live visitor positions, NavigationServer probes, or legacy navigation.
 
-The publication must provide the committed vertical-link facts required by Spatial H1 for a target elevation: canonical floor identity, valid public-route result where H5 data exists, presence/count of valid stairs, presence/count of valid elevators, source construction/topology revision, and commit identity. A stair counts only on the two elevations it actually connects. An elevator counts only on its committed stop floors. A rejected/stale/unavailable topology state is unavailable, not a guessed accessibility value.
+The publication must provide the committed vertical-link facts required by Spatial H1 for a target elevation: canonical floor identity, valid public-route result where H5 data exists, presence/count of valid stairs, presence/count of valid elevators, enclosing `state.construction_revision` bound with `district_revision` and commit identity, and topology version. `district_revision` is the sole optimistic concurrency guard; consumers cannot commit against `construction_revision` alone. A stair counts only on the two elevations it actually connects. An elevator counts only on its committed stop floors. A rejected/stale/unavailable topology state is unavailable, not a guessed accessibility value.
 
 Topology/projection consumers observe only the complete post-commit envelope. They may invalidate/rebuild derived data after it, but cannot delay, mutate, roll back, or publish a construction commit.
 
@@ -150,11 +154,11 @@ On success, one post-commit construction result/delta includes stable constructi
 
 ## Persistence and restoration
 
-Committed construction belongs in the District V2 authority snapshot. Persist canonical stable construction IDs, kind, explicit cell/floor identities, link/shaft-stop membership, Operations Room identity/building/floor reference, construction schema, and revisions needed for validation. Persist only committed facts.
+Committed construction belongs in the District authority snapshot inside Save V2. Persist ADR 37's exact `construction_schema_version`, `construction_revision`, and canonical `construction_records` for stairs, elevators, and Operations Rooms only. Active corridors persist only as FloorState `explicit_circulation_cells`; derived corridor IDs, `operations_room_id`, and MVP `building_id` are unsaved. `construction_revision` increments exactly once in a successful District commit changing records or explicit circulation, otherwise remains unchanged, and cannot exceed `district_revision`.
 
 Exclude previews, quotes, reservations, capture tokens, transaction gates, temporary detached candidates, topology caches/graphs, generated Nodes/transforms, UI selection, diagnostics, and Staff records. `ConstructionPolicy` is versioned content, not mutable save data.
 
-During atomic V2 staging, validate identity uniqueness, canonical ordering, one-element-per-tile, acquired/buildable ownership dependencies, stair adjacency, elevator shaft/lobby/stop consistency, and Operations Room references. A broken candidate rejects the full staged session; load never drops, relocates, recreates, or partially repairs construction. After successful atomic publication, topology and Staff room-reference projections rebuild from restored committed state without replaying construction or Economy events.
+During atomic V2 staging, validate ADR 37 exact keys, identity uniqueness, canonical ordering, revision invariants, one-element-per-tile, fixed/Zone conflicts, acquired/constructed/buildable/available/cap/policy dependencies, stair geometry, elevator shaft/lobby/stop consistency, and Operations Room references. Rebuild and validate candidate topology and Staff room-reference projections before session replacement. A broken candidate rejects the full staged session; load never drops, relocates, recreates, or partially repairs construction or replays construction/Economy events.
 
 ## Acceptance requirements
 
@@ -162,6 +166,7 @@ During atomic V2 staging, validate identity uniqueness, canonical ordering, one-
 - No construction commits outside explicit acquired, vertically acquired, buildable District cells.
 - One committed element occupies each tile; construction never silently replaces an element or a Zone fact.
 - Corridors are free only through the immutable policy and normal validation/transaction topology.
+- Corridors have no construction records; Zone paint only consumes/restores explicit-circulation membership, increments construction revision when that membership changes, and is not construction demolition/removal.
 - Stairs charge 500 Kreds per placement and connect exactly adjacent floors through approved footprint geometry.
 - Elevators charge 2,000 Kreds once per shaft plus 500 Kreds for every committed lobby, and publish only their selected stops.
 - Operations Rooms charge 2,000 Kreds and publish only the detached stable room facts Staff H1 requires; staffing remains external.
@@ -182,7 +187,7 @@ During atomic V2 staging, validate identity uniqueness, canonical ordering, one-
 - Operations Room exact 2,000-Kred charge, unresolved geometry rejection, detached Staff-compatible room-fact publication, and proof that construction does not create staff/payroll/coverage state.
 - Full District H3/Economy H1 transaction fault injection at every pre-append stage, including reservation cancellation and policy/revision staleness; prove either no mutation or one complete ordered envelope.
 - Spatial H1 topology contract tests proving stairs/elevators appear only after commit, on the correct elevations, with revisions, and never from preview/live agents/Nodes.
-- Save V2 exact round-trip, malformed/duplicate/overlapping construction rejection, invalid ownership/link/room-reference rejection, no transient token persistence, and topology/room-reference rebuild only after atomic restore.
+- Save V2 exact annex/key round-trip; corridor no-record and Zone consume/restore coverage; exact revision behavior; each retained kind round-trip; malformed geometry, duplicate/overlap/fixed-occupancy/cross-reference rejection; `manual_door_records` rejection and `manual_door_edges` acceptance; no transient/derived identity persistence; and candidate topology/room-reference rebuild before atomic restore.
 
 ## Risks and follow-up
 

@@ -39,7 +39,8 @@ var _authority_provider: Callable
 var _layout_provider: Callable
 var _staged_validator: Callable
 var _session_commit: Callable
-var _arrival_commit_gate: ArrivalCommitGate
+var _session_gate: SessionMutationGate
+var _runtime_available: Callable
 var _restore_in_progress: bool = false
 var _restore_barrier_active: bool = false
 var _restore_trace: Array[String] = []
@@ -64,10 +65,13 @@ func configure_runtime(
 	_session_commit = session_commit
 
 
-## Share the H8 gate with every save entry point, including UI callers that
-## bypass MainGame.save_game().
-func set_arrival_commit_gate(gate: ArrivalCommitGate) -> void:
-	_arrival_commit_gate = gate
+## Inject the sole session mutation boundary and readiness check.
+func configure_session_boundary(gate: SessionMutationGate, runtime_available: Callable) -> Dictionary:
+	if gate == null or not runtime_available.is_valid():
+		return _failure("SESSION_BOUNDARY_REQUIRED", "SaveManager requires the session gate and readiness provider")
+	_session_gate = gate
+	_runtime_available = runtime_available
+	return {"valid": true, "diagnostics": []}
 
 
 ## Return the exact authority key order required by the V2 envelope.
@@ -194,27 +198,39 @@ func save_game(slot: int, data: Dictionary = {}) -> Error:
 	if not _valid_slot(slot):
 		push_error("SaveManager: Invalid slot %d (1-%d)." % [slot, MAX_SLOTS])
 		return ERR_INVALID_PARAMETER
-	if _arrival_commit_gate != null and _arrival_commit_gate.is_held():
+	if not _session_available():
 		return ERR_BUSY
-	var envelope: Dictionary
+	if _session_gate == null:
+		return ERR_UNCONFIGURED
+	var owner_token: String = "save_capture:%d" % slot
+	var acquired: Dictionary = _session_gate.acquire(owner_token)
+	if not bool(acquired.get("valid", false)):
+		return ERR_BUSY
+	var envelope: Dictionary = {}
+	var capture_error: Error = OK
 	if data.is_empty():
 		if not _authority_provider.is_valid() or not _layout_provider.is_valid():
-			push_error("SaveManager: Runtime boundaries are not configured.")
-			return ERR_UNCONFIGURED
-		var authorities: Variant = _authority_provider.call()
-		var layout_ref: Variant = _layout_provider.call()
-		if not authorities is Dictionary or not layout_ref is Dictionary:
-			push_error("SaveManager: Runtime providers returned invalid data.")
-			return ERR_INVALID_DATA
-		envelope = build_v2_envelope(slot, authorities, layout_ref)
+			capture_error = ERR_UNCONFIGURED
+		else:
+			var authorities: Variant = _authority_provider.call()
+			var layout_ref: Variant = _layout_provider.call()
+			if not authorities is Dictionary or not layout_ref is Dictionary:
+				capture_error = ERR_INVALID_DATA
+			else:
+				envelope = build_v2_envelope(slot, authorities, layout_ref)
+	elif not data.has("save_schema_version"):
+		capture_error = ERR_UNAVAILABLE
 	else:
-		if not data.has("save_schema_version"):
-			return ERR_UNAVAILABLE
 		envelope = data.duplicate(true)
-	var validation: Dictionary = validate_v2_envelope(envelope, slot)
-	if not bool(validation.get("valid", false)):
-		push_error("SaveManager: V2 save rejected: %s" % validation.get("diagnostics", []))
-		return ERR_INVALID_DATA
+	if capture_error == OK:
+		var validation: Dictionary = validate_v2_envelope(envelope, slot)
+		if not bool(validation.get("valid", false)):
+			push_error("SaveManager: V2 save rejected: %s" % validation.get("diagnostics", []))
+			capture_error = ERR_INVALID_DATA
+	_session_gate.release(owner_token)
+	if capture_error != OK:
+		return capture_error
+	# File I/O is intentionally outside the session mutation gate.
 	var write_error: Error = _write_atomically(slot, JSON.stringify(envelope, "  ", true))
 	if write_error != OK:
 		push_error("SaveManager: Atomic save failed for slot %d: %s" % [slot, error_string(write_error)])
@@ -229,8 +245,8 @@ func load_game(slot: int) -> Dictionary:
 		return _failure("RESTORE_ALREADY_IN_PROGRESS", "another session restore is already staging")
 	if not _valid_slot(slot):
 		return _failure("INVALID_SLOT", "requested slot is outside the supported range")
-	if _arrival_commit_gate != null and _arrival_commit_gate.is_held():
-		return _failure("ARRIVAL_TRANSACTION_BUSY", "save/load is blocked while an arrival transaction is flushing")
+	if not _session_available() or _session_gate == null:
+		return _failure("SESSION_MUTATION_BUSY", "save/load is blocked until the session boundary is available")
 	_restore_in_progress = true
 	_restore_barrier_active = false
 	_restore_trace = ["restore_requested"]
@@ -254,13 +270,19 @@ func load_game(slot: int) -> Dictionary:
 	_restore_trace.append("candidate_staged")
 	if _restore_fault_stage == "projection_preparation":
 		return _restore_failure(slot, "RESTORE_PROJECTION_PREPARATION_INJECTED", "restore projection preparation failure injected")
+	var owner_token: String = "restore_replace:%d" % slot
+	var acquired: Dictionary = _session_gate.acquire(owner_token)
+	if not bool(acquired.get("valid", false)):
+		return _restore_failure(slot, "SESSION_MUTATION_BUSY", "another session mutation is active")
 	_restore_barrier_active = true
 	_restore_trace.append("commit_barrier")
 	if _restore_fault_stage == "commit":
 		_restore_barrier_active = false
+		_session_gate.release(owner_token)
 		return _restore_failure(slot, "RESTORE_COMMIT_INJECTED", "restore commit failure injected")
 	var commit_result: Variant = _session_commit.call(staged["authorities"], staged["layout_ref"])
 	_restore_barrier_active = false
+	_session_gate.release(owner_token)
 	if commit_result is Dictionary and not bool(commit_result.get("valid", false)):
 		return _restore_failure(slot, "SESSION_COMMIT_REJECTED", "session owner rejected the staged V2 state", commit_result.get("diagnostics", []))
 	if commit_result is bool and not bool(commit_result):
@@ -422,6 +444,10 @@ func _typed_diagnostics(values: Array) -> Array[Dictionary]:
 
 func _diagnostic(code: String, path: String, message: String) -> Dictionary:
 	return {"code": code, "path": path, "message": message}
+
+
+func _session_available() -> bool:
+	return _runtime_available.is_valid() and bool(_runtime_available.call()) and _session_gate != null and not _session_gate.is_busy()
 
 
 func _failure(code: String, message: String) -> Dictionary:

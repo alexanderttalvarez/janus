@@ -68,11 +68,22 @@ class DistrictZonePort extends RefCounted:
 	func get_revision() -> int:
 		return 0
 
-	func preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	func preview(
+		intent: Dictionary,
+		district_ref: Dictionary,
+		_spatial_snapshot: DistrictZoneSpatialSnapshot,
+		_public_band_access: PublicBandAccessSnapshot = null
+	) -> Dictionary:
 		return {"accepted": true, "preview": null, "diagnostics": []}
 
-	func prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
-		return {"accepted": true, "prepare_token": {"candidate": candidate_state.duplicate(true)}, "diagnostics": []}
+	func prepare(
+		intent: Dictionary,
+		district_ref: Dictionary,
+		_spatial_snapshot: DistrictZoneSpatialSnapshot,
+		_public_band_access: PublicBandAccessSnapshot = null,
+		_zone_plan: Dictionary = {}
+	) -> Dictionary:
+		return {"accepted": true, "prepare_token": {"district_ref": district_ref.duplicate(true)}, "diagnostics": []}
 
 	func commit(prepare_token: Dictionary) -> Dictionary:
 		return {"accepted": true, "diagnostics": []}
@@ -93,15 +104,26 @@ class ZoneManagerPort extends DistrictZonePort:
 	func get_revision() -> int:
 		return 0 if manager == null else int(manager.call("get_district_revision"))
 
-	func preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	func preview(
+		intent: Dictionary,
+		district_ref: Dictionary,
+		spatial_snapshot: DistrictZoneSpatialSnapshot,
+		public_band_access: PublicBandAccessSnapshot = null
+	) -> Dictionary:
 		if manager == null:
 			return {"accepted": false, "diagnostics": [{"code": "ZONE_MANAGER_REQUIRED", "message": "ZoneManager is required"}]}
-		return manager.call("preview_district_candidate", intent, candidate_state)
+		return manager.call("preview_district_candidate", intent, district_ref, spatial_snapshot, public_band_access)
 
-	func prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	func prepare(
+		intent: Dictionary,
+		district_ref: Dictionary,
+		spatial_snapshot: DistrictZoneSpatialSnapshot,
+		public_band_access: PublicBandAccessSnapshot = null,
+		zone_plan: Dictionary = {}
+	) -> Dictionary:
 		if manager == null:
 			return {"accepted": false, "diagnostics": [{"code": "ZONE_MANAGER_REQUIRED", "message": "ZoneManager is required"}]}
-		return manager.call("prepare_district_candidate", intent, candidate_state)
+		return manager.call("prepare_district_candidate", intent, district_ref, spatial_snapshot, public_band_access, zone_plan)
 
 	func commit(prepare_token: Dictionary) -> Dictionary:
 		return manager.call("commit_district_candidate", prepare_token)
@@ -144,7 +166,16 @@ class DistrictRuntimePortsBundle extends RefCounted:
 		economy_port: DistrictEconomyPort,
 		zone_port: DistrictZonePort,
 		progression_port: DistrictProgressionPort
-	) -> void:
+	) -> Dictionary:
+		if economy_port == null or zone_port == null or progression_port == null:
+			return {"valid": false, "diagnostics": [{"code": "DISTRICT_PORT_REQUIRED", "message": "Economy, Zone, and Progression ports are required"}]}
+		var economy_policy: Dictionary = economy_port.get_policy_snapshot()
+		var progression_policy: Dictionary = progression_port.get_policy_snapshot()
+		if economy_policy.is_empty():
+			return {"valid": false, "diagnostics": [{"code": "ECONOMY_POLICY_UNAVAILABLE", "message": "District Economy port requires configured policy content"}]}
+		if progression_policy.is_empty() or not bool(progression_policy.get("valid", true)):
+			return {"valid": false, "diagnostics": [{"code": "PROGRESSION_POLICY_UNAVAILABLE", "message": "District Progression port requires configured policy content"}]}
 		economy = economy_port
 		zone = zone_port
 		progression = progression_port
+		return {"valid": true, "economy_policy_revision": int(economy_policy.get("revision", -1)), "progression_policy_revision": int(progression_policy.get("revision", -1)), "diagnostics": []}

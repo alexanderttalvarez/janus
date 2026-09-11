@@ -28,7 +28,7 @@ func get_records() -> Array[Dictionary]:
 	if _district_runtime == null or not _district_runtime.has_session():
 		return []
 	var records: Array[Dictionary] = []
-	for value: Variant in _district_runtime.get_state().get("manual_door_records", []):
+	for value: Variant in _district_runtime.get_state().get("manual_door_edges", []):
 		if value is Dictionary:
 			records.append(value.duplicate(true))
 	return records
@@ -175,7 +175,18 @@ func _valid_cell(value: Variant) -> bool:
 
 
 func _record_key(record: Dictionary) -> String:
-	return "%s|%s|%d|%d,%d|%d,%d" % [String(record.get("runtime_plot_id", "")), String(record.get("floor_id", "")), int(record.get("elevation", 0)), int(record.get("from_cell", [0, 0])[0]), int(record.get("from_cell", [0, 0])[1]), int(record.get("to_cell", [0, 0])[0]), int(record.get("to_cell", [0, 0])[1])]
+	if record.has("endpoint_a") and record.has("endpoint_b"):
+		return "%s|%s" % [_endpoint_key(record["endpoint_a"]), _endpoint_key(record["endpoint_b"])]
+	var plot_id: String = String(record.get("runtime_plot_id", ""))
+	var elevation: int = int(record.get("elevation", 0))
+	var from: Array = record.get("from_cell", [0, 0])
+	var to: Array = record.get("to_cell", [0, 0])
+	return "%s|%s" % [_endpoint_key({"runtime_plot_id": plot_id, "signed_elevation": elevation, "local_cell": {"x": int(from[0]), "y": int(from[1])}}), _endpoint_key({"runtime_plot_id": plot_id, "signed_elevation": elevation, "local_cell": {"x": int(to[0]), "y": int(to[1])}})]
+
+
+func _endpoint_key(endpoint: Dictionary) -> String:
+	var cell: Dictionary = endpoint.get("local_cell", {})
+	return "%s|%+011d|%011d|%011d" % [String(endpoint.get("runtime_plot_id", "")), int(endpoint.get("signed_elevation", 0)), int(cell.get("y", -1)), int(cell.get("x", -1))]
 
 
 func _failure(code: String, message: String) -> Dictionary:

@@ -24,23 +24,19 @@ const CARDINAL_DIRECTIONS: Array[Vector2i] = [
 
 
 ## Split a zone into fronted rectangular cores, then grow reachable residual Tenant tiles without mutating input.
-static func split(
-	zone: ZoneData,
-	floor_grid: FloorGrid,
-	plot: PlotData,
-	access_context: FloorAccessContext = null
-) -> SplitResult:
-	if zone == null or floor_grid == null or plot == null:
+static func split(zone: ZoneData, access_context: FloorAccessContext) -> SplitResult:
+	if zone == null or access_context == null or access_context.spatial_snapshot == null:
 		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "MISSING_SPLIT_CONTEXT")
-	if zone.plot_id.is_empty() or zone.plot_id != plot.plot_id:
-		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_PLOT_CONTEXT")
-	var active_access_context := access_context if access_context != null else FloorAccessContext.new(floor_grid, plot)
+	var scope: Dictionary = access_context.spatial_snapshot.get_floor_scope()
+	if zone.plot_id.is_empty() or zone.plot_id != String(scope.get("runtime_plot_id", "")):
+		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_FLOOR_SCOPE")
+	var active_access_context := access_context
 
 	var source_tiles := _normalized_tiles(zone.tiles)
 	if source_tiles.is_empty():
 		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "EMPTY_ZONE")
 	for tile: Vector2i in source_tiles:
-		if not floor_grid.is_valid_tile(tile.x, tile.y):
+		if not active_access_context.is_zone_eligible(tile):
 			return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "INVALID_ZONE_TILE")
 	if not _is_connected(source_tiles):
 		return SplitResult.failure(SplitResult.Status.INVALID_ZONE_GEOMETRY, "DISCONNECTED_ZONE")
@@ -61,14 +57,14 @@ static func split(
 	var had_frontage := false
 
 	for component: Array[Vector2i] in components:
-		var frontage_edges := _frontage_edges(component, zone_tile_set, zone, floor_grid, plot, active_access_context)
+		var frontage_edges := _frontage_edges(component, zone_tile_set, zone, active_access_context)
 		if frontage_edges.is_empty():
 			residual_tiles.append_array(component)
 			diagnostics.append("COMPONENT_NO_VALID_FRONTAGE")
 			continue
 		had_frontage = true
 
-		var component_result := _split_component(component, frontage_edges, zone_tile_set, zone, floor_grid, plot, active_access_context, minimum_area)
+		var component_result := _split_component(component, frontage_edges, zone_tile_set, zone, active_access_context, minimum_area)
 		parcels.append_array(component_result.get("parcels", []))
 		residual_tiles.append_array(component_result.get("residual_tiles", []))
 		for diagnostic: String in component_result.get("diagnostics", []):
@@ -89,7 +85,7 @@ static func split(
 	# Final parcels may be non-rectangular, so rebuild their full geometry and frontage metadata.
 	for parcel: Parcel in parcels:
 		var final_tiles := _normalized_tiles(parcel.tiles)
-		parcel.set_geometry(final_tiles, _frontage_edges(final_tiles, zone_tile_set, zone, floor_grid, plot, active_access_context))
+		parcel.set_geometry(final_tiles, _frontage_edges(final_tiles, zone_tile_set, zone, active_access_context))
 	parcels.sort_custom(_compare_parcels)
 	return SplitResult.success(parcels, residual_tiles, _normalized_diagnostics(diagnostics))
 
@@ -103,8 +99,6 @@ static func _split_component(
 	frontage_edges: Array[Dictionary],
 	zone_tile_set: Dictionary,
 	zone: ZoneData,
-	floor_grid: FloorGrid,
-	plot: PlotData,
 	access_context: FloorAccessContext,
 	minimum_area: int
 ) -> Dictionary:
@@ -126,7 +120,7 @@ static func _split_component(
 		var remaining_slots: int = target_count - parcel_index
 		var desired_area: int = maxi(minimum_area, ceili(float(available.size()) / float(remaining_slots)))
 		var candidate := _select_candidate(
-			available, zone_tile_set, zone, floor_grid, plot, access_context, minimum_area, desired_area
+			available, zone_tile_set, zone, access_context, minimum_area, desired_area
 		)
 		if candidate.is_empty():
 			break
@@ -151,14 +145,12 @@ static func _select_candidate(
 	available: Dictionary,
 	zone_tile_set: Dictionary,
 	zone: ZoneData,
-	floor_grid: FloorGrid,
-	plot: PlotData,
 	access_context: FloorAccessContext,
 	minimum_area: int,
 	desired_area: int
 ) -> Dictionary:
 	var source_tiles := _sorted_set_positions(available)
-	var source_edges := _frontage_edges(source_tiles, zone_tile_set, zone, floor_grid, plot, access_context)
+	var source_edges := _frontage_edges(source_tiles, zone_tile_set, zone, access_context)
 	var candidates: Array[Dictionary] = []
 	for edge: Dictionary in source_edges:
 		var seed: Vector2i = edge.get("tile", Vector2i.ZERO)
@@ -168,7 +160,7 @@ static func _select_candidate(
 		if bounds.size == Vector2i.ZERO:
 			continue
 		var tiles := _tiles_in_bounds(bounds)
-		var candidate_edges := _frontage_edges(tiles, zone_tile_set, zone, floor_grid, plot, access_context)
+		var candidate_edges := _frontage_edges(tiles, zone_tile_set, zone, access_context)
 		if candidate_edges.is_empty():
 			continue
 		candidates.append({
@@ -347,8 +339,6 @@ static func _frontage_edges(
 	tiles: Array[Vector2i],
 	zone_tile_set: Dictionary,
 	zone: ZoneData,
-	floor_grid: FloorGrid,
-	plot: PlotData,
 	access_context: FloorAccessContext
 ) -> Array[Dictionary]:
 	var edges: Array[Dictionary] = []
@@ -367,6 +357,11 @@ static func _frontage_edges(
 					edge["transit_area_key"] = access_context.transit_area_key_for(
 						access, zone, zone_tile_set
 					)
+				elif access_kind == "public_band":
+					var public_edge: Dictionary = access_context.public_band_edge_for(access, zone, zone_tile_set)
+					if public_edge.is_empty():
+						continue
+					edge["public_band_access_edge_id"] = String(public_edge["access_edge_id"])
 				edges.append(edge)
 	edges.sort_custom(_compare_frontage_edges)
 	return edges
@@ -384,7 +379,7 @@ static func _access_kind(
 static func _tenant_tiles(zone: ZoneData, source_tiles: Array[Vector2i]) -> Array[Vector2i]:
 	var result: Array[Vector2i] = []
 	for tile: Vector2i in source_tiles:
-		if zone.typologies.get(tile, GridTile.TileTypology.TENANT) == GridTile.TileTypology.TENANT:
+		if zone.typologies.get(tile, ZoneData.TileTypology.TENANT) == ZoneData.TileTypology.TENANT:
 			result.append(tile)
 	return result
 

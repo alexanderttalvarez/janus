@@ -14,7 +14,7 @@ Root stays exact V2. Fixed registry: district -> zone_parcel -> economy -> progr
 
 | Authority | Exact local discriminator | Durable extension |
 |---|---|---|
-| Zone | state_schema_id = zone_parcel_core_annex; state_schema_version = 1 | H2 core/annex geometry, doors, exclusive committed queue envelopes and graph/queue-policy provenance |
+| Zone | state_schema_id = zone_parcel_core_annex; state_schema_version = 1 | H2 core/annex geometry, doors, exclusive committed queue envelopes and graph/queue-policy provenance; exact public-door representation is [ADR 35](../../decisions/35_public_band_access_snapshot_and_zone_injection.md) |
 | Tenant | state_schema_id = tenant_operational_interior; state_schema_version = 1 | H3 exact profile/variation/policy/proxy/layout provenance; no fixture meshes or generated manifest |
 | Visitor | state_schema_id = visitor_interior_service; state_schema_version = 1 | Capability, generation provenance, goals/progress, exclusions, result families and valid resume facts |
 
@@ -43,12 +43,13 @@ Write validated JSON through existing H9 temporary-file/flush/atomic-replacement
 
 1. Parse and enforce exact V2 root, registered owner keys, current local discriminators and capability. Resolve immutable layout/content identities from the approved registry, not save-supplied paths.
 2. Obtain the COMPLETE detached saved authority set. Owner validation and pure derived validation use only that set plus immutable content, never the current live session or a partially imported owner.
-3. Derive a temporary validation graph from saved District/Zone/Construction facts; derive legal envelopes and H1/H3 layouts from saved geometry/provenance. These are detached validation values, not globally registered Nodes or live authority.
-4. Validate every owner and then cross-owner references in registry order: geometry, preserved door/envelope IDs, layout fingerprints, bindings, unique IDs, captured visitor generation and resume anchors, cap, payroll/milestone markers and Time consistency. Recompute captured generation independently of current operational categories.
-5. Create an isolated candidate and import ALL durable snapshots in fixed registry order. Import emits no gameplay events, awards, rent, payroll, service results or boundary ticks.
-6. Rebuild derived candidate eligibility, indexes, public graph, spatial facts, layouts, empty Service state, Visitor logical state and projections in dependency order. Compare candidate graph/envelope/layout manifests to detached validation results. No envelope is synthesized to repair missing saved data.
-7. Initialize Service's last-consumed marker to restored Time visitor ordinal. Derive batch phase from stable service/policy identity and epoch zero. No retroactive completions/batches run. Next boundary occurs after the saved fractional remainder; reset is not a new cadence epoch.
-8. Prepare all bindings/projections before Session H2's single publication barrier. Atomically replace active session only when every participant is ready, dispose old roots after publication succeeds, emit exactly one game_loaded, then allow input/calendar.
+3. Validate the detached District candidate, then derive ADR 35's candidate `PublicBandAccessSnapshot` from that candidate and resolved `layout_ref`. Validate Zone `PUBLIC_BAND` selected-door stable IDs, endpoints, and directions against it before accepting the Zone candidate; do not replace or synthesize an edge.
+4. Derive a temporary validation graph from accepted saved District/Zone/Construction facts; derive legal envelopes and H1/H3 layouts from saved geometry/provenance. These are detached validation values, not globally registered Nodes or live authority. The public-band snapshot and graph remain unsaved candidate-only derivations.
+5. Validate every remaining owner and then cross-owner references in registry order: geometry, preserved door/envelope IDs, layout fingerprints, bindings, unique IDs, captured visitor generation and resume anchors, cap, payroll/milestone markers and Time consistency. Recompute captured generation independently of current operational categories.
+6. Create an isolated candidate and import ALL durable snapshots in fixed registry order. Import emits no gameplay events, awards, rent, payroll, service results or boundary ticks.
+7. Rebuild derived candidate eligibility, indexes, public graph, spatial facts, layouts, empty Service state, Visitor logical state and projections in dependency order. Compare candidate graph connector IDs, envelopes, and layout manifests to detached validation results. No public edge or envelope is synthesized to repair missing saved data.
+8. Initialize Service's last-consumed marker to restored Time visitor ordinal. Derive batch phase from stable service/policy identity and epoch zero. No retroactive completions/batches run. Next boundary occurs after the saved fractional remainder; reset is not a new cadence epoch.
+9. Prepare all bindings/projections before Session H2's single publication barrier. Atomically replace active session only when every participant is ready, dispose old roots after publication succeeds, emit exactly one game_loaded, then allow input/calendar.
 
 Any parse, validation, import, derived rebuild, projection or pre-publication failure destroys only the candidate and preserves the complete old session/projections/slot. Failed load never hot-switches service capability. Post-commit observer failures are diagnostics; no mixed rollback or second loaded event. Check old-session generation when publishing so a cancelled or superseded load cannot replace a newer session.
 
@@ -97,7 +98,7 @@ Transient rebuild is simpler than persisting every commitment but visibly resets
 - Exact-key/schema/type/content rejection matrix; zero and 200 visitors; category capture changed/empty since arrival; no reroll or ordinal advancement; historical result-family isolation.
 - Save each Visitor/service state, including simultaneous completion/catch-up/payroll; prove save leaves live commitments unchanged and load restores canonical records only.
 - Before/at/after visitor/day/week/month boundaries and batch/turnover boundaries at every speed; fractional-time round-trip, stable phase, no retroactive completion or duplicate rent/payroll/Tech awards.
-- Envelope/legal-door/layout byte parity; candidate-only sources; all imports before derived runtime; every validation/import/projection/write/publication-precondition fault preserves old session/slot.
+- Envelope/legal-door/layout byte parity, including ADR 35 stable public-edge provenance and graph connector-ID parity; District-first candidate snapshot derivation; candidate-only sources; all imports before derived runtime; every validation/import/projection/write/publication-precondition fault preserves old session/slot.
 - Repeated save/load/destroy, superseded loads and serialized writes; no retained roots/subscriptions/caches or duplicate loaded events.
 - Visual proof: minimum/preferred/oversized/annex and Anchor layouts, walls/doors/default bounds, safe exterior queues, capacity/occupancy cues, countdown, unsuitable versus indeterminate feedback and stale-source diagnostics.
 - Foundation regression plus all nine H4 typologies on the same candidate, then normal-play vertical/category unlock route; no proxy fallback or debug completion. Use [delivery and acceptance](../mvp/04_product_delivery_and_acceptance.md). District Gate R remains separate.

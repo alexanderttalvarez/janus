@@ -10,8 +10,6 @@ signal plot_selected(plot_id: String)
 
 const MAX_ADDITIONAL_PLOTS: int = 8
 const MAX_TOTAL_PLOTS: int = 9
-const PLOT_ACCESS_GRANTS_BY_LEVEL: Array[int] = [0, 0, 2, 2, 2, 2]
-const NORMAL_ELEVATIONS: Array[int] = [0, 1, 2, -1, -2, -3]
 const DEBUG_ELEVATIONS: Array[int] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -1, -2, -3, -4, -5]
 
 
@@ -23,6 +21,8 @@ class TechNode:
 	var grid_pos: Vector2i
 	var prerequisites: Array[String]  # IDs of required nodes.
 	var cost: int
+	var minimum_tier_index: int
+	var available_in_product: bool
 
 
 ## All defined tech nodes.
@@ -56,36 +56,50 @@ var plot_access_grants_consumed: int = 0
 var awarded_milestone_ids: Array[String] = []
 var _official_tier_id: String = ""
 var _official_tier_name: String = ""
+var _official_tier_index: int = 0
 var _official_policy_revision: int = 0
+var _policy_catalog: ProgressionPolicyCatalog
 
 
-func _ready() -> void:
-	define_tech_tree()
+func set_policy_catalog(catalog: ProgressionPolicyCatalog) -> Dictionary:
+	if catalog == null:
+		return _progression_failure("PROGRESSION_POLICY_UNAVAILABLE", "Progression policy catalog is required")
+	var validation: Dictionary = catalog.validate_content()
+	if not bool(validation.get("valid", false)):
+		return validation
+	_policy_catalog = catalog
+	var definition_result: Dictionary = define_tech_tree()
+	if not bool(definition_result.get("valid", false)):
+		return definition_result
+	authority_revision += 1
+	return {"valid": true, "content_policy_revision": ProgressionPolicyCatalog.POLICY_REVISION, "diagnostics": []}
 
 
-## Define the tech tree nodes.
-func define_tech_tree() -> void:
+## Define runtime node records only from approved immutable content.
+func define_tech_tree() -> Dictionary:
 	nodes.clear()
-	_add_node("basic_corridors", "Basic Corridors", "Unlock standard corridor placement.", Vector2i(0, 0), [], 0)
-	_add_node("stairs", "Stairs", "Unlock stair placement.", Vector2i(1, 0), [], 1)
-	_add_node("multi_floor", "Multi-Floor", "Unlock F1 and F2 vertical rights.", Vector2i(1, 1), ["stairs"], 2)
-	_add_node("underground", "Underground", "Unlock U1 through U3 vertical rights.", Vector2i(1, 2), ["multi_floor"], 3)
-	_add_node("escalator_1", "Escalators I", "Unlock escalator placement.", Vector2i(2, 0), [], 2)
-	_add_node("elevator_1", "Elevators I", "Unlock elevator placement.", Vector2i(4, 0), [], 2)
-	_add_node("escalator_2", "Escalators II", "Faster escalators.", Vector2i(2, 2), ["escalator_1"], 4)
-	_add_node("elevator_2", "Elevators II", "Larger capacity elevators.", Vector2i(4, 2), ["elevator_1"], 4)
-	_add_node("amenity_garden", "Gardens", "Place gardens for prestige.", Vector2i(1, 4), [], 3)
-	_add_node("amenity_seating", "Seating Areas", "Place seating for comfort.", Vector2i(3, 4), [], 3)
-	_add_node("staff_cleaner", "Cleaners", "Hire cleaning staff.", Vector2i(0, 2), [], 3)
-	_add_node("staff_security", "Security", "Hire security staff.", Vector2i(6, 2), [], 3)
-	_add_node("zone_anchor", "Anchor Stores", "Unlock anchor-type zones.", Vector2i(5, 4), [], 5)
+	if _policy_catalog == null:
+		return _progression_failure("PROGRESSION_POLICY_UNAVAILABLE", "Progression policy catalog is required")
+	for definition: Dictionary in _policy_catalog.get_node_definitions():
+		_add_node(definition)
+		var node_id: String = String(definition["node_id"])
+		if bool(definition.get("initially_unlocked", false)) and not unlocked.has(node_id):
+			unlocked.append(node_id)
+	unlocked.sort()
+	return {"valid": true, "diagnostics": []}
 
 
-func _add_node(id: String, name_key: String, desc: String, pos: Vector2i, pre: Array[String], cost: int) -> void:
-	var node := TechNode.new()
-	node.id = id; node.name_key = name_key; node.description_key = desc
-	node.grid_pos = pos; node.prerequisites = pre; node.cost = cost
-	nodes[id] = node
+func _add_node(definition: Dictionary) -> void:
+	var node: TechNode = TechNode.new()
+	node.id = String(definition["node_id"])
+	node.name_key = String(definition["display_name"])
+	node.description_key = ""
+	node.grid_pos = Vector2i.ZERO
+	node.prerequisites.assign(definition.get("prerequisites", []))
+	node.cost = int(definition["cost"])
+	node.minimum_tier_index = int(definition["minimum_tier_index"])
+	node.available_in_product = bool(definition["available_in_product"])
+	nodes[node.id] = node
 
 
 ## Return the monotonic progression revision.
@@ -95,9 +109,10 @@ func get_district_revision() -> int:
 
 ## Capture the committed tier facts supplied by PrestigeManager's typed event.
 func sync_official_tier(tier_id: String, tier_name: String, tier_index: int, policy_revision: int) -> void:
-	var source_changed: bool = _official_tier_id != tier_id or _official_policy_revision != policy_revision or _official_tier_name != tier_name
+	var source_changed: bool = _official_tier_id != tier_id or _official_policy_revision != policy_revision or _official_tier_name != tier_name or _official_tier_index != tier_index
 	_official_tier_id = tier_id
 	_official_tier_name = tier_name
+	_official_tier_index = tier_index
 	_official_policy_revision = policy_revision
 	if source_changed:
 		sync_mall_level(tier_index)
@@ -105,33 +120,62 @@ func sync_official_tier(tier_id: String, tier_name: String, tier_index: int, pol
 
 
 func sync_mall_level(level_index: int) -> void:
-	var bounded_level: int = clampi(level_index, 0, PLOT_ACCESS_GRANTS_BY_LEVEL.size() - 1)
-	for milestone_level: int in range(1, bounded_level + 1):
-		var milestone_id: String = "plot_access_mall_level_%d" % milestone_level
-		if awarded_milestone_ids.has(milestone_id):
-			continue
-		awarded_milestone_ids.append(milestone_id)
-		plot_access_grants_earned += PLOT_ACCESS_GRANTS_BY_LEVEL[milestone_level]
-		awarded_milestone_ids.sort()
-		authority_revision += 1
+	if _policy_catalog == null:
+		return
+	var bounded_level: int = clampi(level_index, 0, ProgressionPolicyCatalog.TIER_IDS.size() - 1)
+	_official_tier_index = bounded_level
+	if _official_tier_id.is_empty():
+		_official_tier_id = _policy_catalog.get_tier_id(bounded_level)
+	var points_awarded: int = 0
+	var grants_awarded: int = 0
+	for milestone: Dictionary in _policy_catalog.get_tech_milestones_through(bounded_level):
+		var milestone_id: String = String(milestone["milestone_id"])
+		if not awarded_milestone_ids.has(milestone_id):
+			awarded_milestone_ids.append(milestone_id)
+			points_awarded += int(milestone["points"])
+	for milestone: Dictionary in _policy_catalog.get_plot_access_milestones_through(bounded_level):
+		var milestone_id: String = String(milestone["milestone_id"])
+		if not awarded_milestone_ids.has(milestone_id):
+			awarded_milestone_ids.append(milestone_id)
+			grants_awarded += int(milestone["grants"])
+	if points_awarded == 0 and grants_awarded == 0:
+		return
+	awarded_milestone_ids.sort()
+	_available_points += points_awarded
+	total_earned += points_awarded
+	plot_access_grants_earned += grants_awarded
+	authority_revision += 1
+	if points_awarded > 0:
+		points_changed.emit(available_points, total_earned)
 
 
 func get_policy_snapshot() -> Dictionary:
-	var level_index: int = 0
-	var level_name: String = _official_tier_name
+	if _policy_catalog == null:
+		return _progression_failure("PROGRESSION_POLICY_UNAVAILABLE", "Progression policy catalog is required")
 	var god_mode: bool = _debug_god_mode_active()
 	var eligible_elevations: Array[int] = DEBUG_ELEVATIONS.duplicate() if god_mode else _normal_eligible_elevations()
 	var selected: Array[String] = selected_plot_ids.duplicate()
 	selected.sort()
+	var unlocked_ids: Array[String] = unlocked.duplicate()
+	unlocked_ids.sort()
 	var remaining: int = maxi(0, MAX_ADDITIONAL_PLOTS - selected.size()) if god_mode else maxi(0, plot_access_grants_earned - plot_access_grants_consumed)
+	var bus_tier_satisfied: bool = _official_tier_index >= 1
+	var bus_eligible: bool = god_mode or (unlocked.has("transport.bus_stop") and bus_tier_satisfied)
+	var transport_capabilities: Array[String] = ["PEDESTRIAN"]
+	var unavailable_capabilities: Array[String] = ["transport.other_non_pedestrian"]
+	if bus_eligible:
+		transport_capabilities.append("transport.bus_stop")
+	else:
+		unavailable_capabilities.append("transport.bus_stop")
 	return {
-		"schema_version": 1,
+		"valid": true,
+		"schema_version": ProgressionPolicyCatalog.SCHEMA_VERSION,
 		"revision": authority_revision,
-		"mall_level_index": level_index,
-		"mall_level": level_name,
+		"mall_level_index": _official_tier_index,
+		"mall_level": _official_tier_name,
 		"official_tier_id": _official_tier_id,
 		"official_policy_revision": _official_policy_revision,
-		"unlocked_node_ids": unlocked.duplicate(),
+		"unlocked_node_ids": unlocked_ids,
 		"available_points": available_points,
 		"total_earned": total_earned,
 		"plot_access_grants_earned": plot_access_grants_earned,
@@ -140,11 +184,20 @@ func get_policy_snapshot() -> Dictionary:
 		"selected_plot_ids": selected,
 		"elevation_eligibility": eligible_elevations,
 		"unavailable_elevations": _unavailable_elevations(eligible_elevations),
-		"street_conversion_eligible": god_mode or level_index >= 2,
-		"transport_capabilities": ["PEDESTRIAN"],
-		"unavailable_capabilities": ["NON_PEDESTRIAN_TRANSPORT"],
+		"street_conversion_eligible": god_mode or _official_tier_index >= 2,
+		"transport_capabilities": transport_capabilities,
+		"unavailable_capabilities": unavailable_capabilities,
+		"capability_eligibility": {
+			"transport.bus_stop": {
+				"eligible": bus_eligible,
+				"source_tech_node_id": "transport.bus_stop",
+				"minimum_tier_id": "small_market",
+				"tier_satisfied": bus_tier_satisfied,
+				"diagnostic": {} if bus_eligible else {"code": "CAPABILITY_UNAVAILABLE", "message": "Bus Stop requires its Tech node and Small Market"},
+			},
+		},
 		"god_mode": god_mode,
-		"content_policy_revision": 1,
+		"content_policy_revision": ProgressionPolicyCatalog.POLICY_REVISION,
 	}
 
 
@@ -191,12 +244,17 @@ func is_street_conversion_eligible() -> bool:
 func _normal_eligible_elevations() -> Array[int]:
 	var result: Array[int] = [0]
 	if unlocked.has("multi_floor"):
-		result.append(1)
-		result.append(2)
+		result.append_array([1, 2])
+	if unlocked.has("vertical_expansion_i"):
+		result.append_array([3, 4, 5])
+	if unlocked.has("vertical_expansion_ii"):
+		result.append_array([6, 7])
+	if unlocked.has("vertical_expansion_iii"):
+		result.append_array([8, 9])
 	if unlocked.has("underground"):
-		result.append(-1)
-		result.append(-2)
-		result.append(-3)
+		result.append_array([-1, -2])
+	if unlocked.has("deep_foundations"):
+		result.append_array([-3, -4, -5])
 	return result
 
 
@@ -274,36 +332,52 @@ func earn_points(amount: int) -> void:
 
 ## Check if a node can be unlocked.
 func can_unlock(node_id: String) -> bool:
-	if not nodes.has(node_id):
+	if not nodes.has(node_id) or unlocked.has(node_id):
 		return false
-	if unlocked.has(node_id):
+	var node: TechNode = nodes[node_id]
+	if not node.available_in_product:
 		return false
 	if _debug_god_mode_active():
 		return true
-	var node: TechNode = nodes[node_id]
-	if available_points < node.cost:
+	if _official_tier_index < node.minimum_tier_index or available_points < node.cost:
 		return false
-	for pre: String in node.prerequisites:
-		if not unlocked.has(pre):
+	for prerequisite: String in node.prerequisites:
+		if not unlocked.has(prerequisite):
 			return false
 	return true
 
 
-## Unlock a tech node.
-func unlock_node(node_id: String) -> bool:
-	if not can_unlock(node_id):
-		return false
+## Validate and atomically purchase one available Tech node.
+func unlock_node(node_id: String) -> Dictionary:
+	if _policy_catalog == null:
+		return _progression_failure("PROGRESSION_POLICY_UNAVAILABLE", "Progression policy catalog is required")
+	if not nodes.has(node_id):
+		return _progression_failure("TECH_NODE_UNKNOWN", "Tech node is not in approved content")
+	if unlocked.has(node_id):
+		return _progression_failure("TECH_NODE_ALREADY_UNLOCKED", "Tech node is already unlocked")
 	var node: TechNode = nodes[node_id]
+	if not node.available_in_product:
+		return _progression_failure("CAPABILITY_UNAVAILABLE", "Tech node is not available for player purchase")
 	if not _debug_god_mode_active():
-		available_points -= node.cost
+		if _official_tier_index < node.minimum_tier_index:
+			return _progression_failure("MALL_LEVEL_REQUIRED", "Tech node Mall Level requirement is not met")
+		for prerequisite: String in node.prerequisites:
+			if not unlocked.has(prerequisite):
+				return _progression_failure("TECH_PREREQUISITE_REQUIRED", "Tech node prerequisite is not unlocked")
+		if available_points < node.cost:
+			return _progression_failure("TECH_POINTS_INSUFFICIENT", "available Tech Points cannot cover this node")
+		_available_points -= node.cost
 	unlocked.append(node_id)
+	unlocked.sort()
 	authority_revision += 1
 	point_spent.emit(node_id)
-	var event_bus: Node = get_node_or_null("/root/EventBus")
+	points_changed.emit(available_points, total_earned)
+	progression_changed.emit(get_policy_snapshot())
+	var event_bus: Node = get_node_or_null("/root/EventBus") if is_inside_tree() else null
 	if event_bus != null:
 		event_bus.tech_point_spent.emit(node_id)
 		event_bus.tech_points_changed.emit(available_points, total_earned)
-	return true
+	return {"valid": true, "node_id": node_id, "cost": node.cost, "snapshot": get_policy_snapshot(), "diagnostics": []}
 
 
 func serialize() -> Dictionary:
@@ -317,7 +391,7 @@ func serialize() -> Dictionary:
 		"plot_access_grants_consumed": plot_access_grants_consumed,
 		"awarded_milestone_ids": awarded_milestone_ids.duplicate(),
 		"progression_revision": authority_revision,
-		"content_policy_revision": int(snapshot.get("content_policy_revision", 1)),
+		"content_policy_revision": int(snapshot.get("content_policy_revision", 0)),
 	}
 
 

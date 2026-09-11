@@ -3,16 +3,20 @@ extends RefCounted
 
 ## H2 closed sparse authority-state validator. H3 owns lifecycle and mutation.
 
-const STATE_SCHEMA_VERSION: int = 2
-const DISTRICT_FIELDS: Array[String] = ["state_schema_version", "district_revision", "layout_id", "layout_definition_version", "definition_fingerprint", "plot_states", "street_segment_states", "arrival_source_states", "demolished_fixed_occupant_ids", "construction_schema_version", "construction_revision", "construction_records", "manual_door_records"]
+const STATE_SCHEMA_VERSION: int = 3
+const DISTRICT_FIELDS: Array[String] = ["state_schema_version", "district_revision", "layout_id", "layout_definition_version", "definition_fingerprint", "plot_states", "street_segment_states", "arrival_source_states", "demolished_fixed_occupant_ids", "construction_schema_version", "construction_revision", "construction_records", "manual_door_edges"]
 const PLOT_FIELDS: Array[String] = ["runtime_plot_id", "section_state_overrides", "floor_states"]
 const SECTION_FIELDS: Array[String] = ["runtime_section_id", "owned", "available"]
-const FLOOR_FIELDS: Array[String] = ["floor_id", "elevation", "acquired_cells", "constructed_cells"]
+const FLOOR_FIELDS: Array[String] = ["floor_id", "elevation", "acquired_cells", "constructed_cells", "explicit_circulation_cells"]
 const STREET_FIELDS: Array[String] = ["street_segment_id", "converted"]
 const SOURCE_FIELDS: Array[String] = ["arrival_source_id", "enabled"]
 const CONSTRUCTION_RECORD_FIELDS: Array[String] = ["construction_id", "kind", "plot_id", "cells", "shaft_cells", "lobby_cells", "connection"]
+const CONSTRUCTION_CELL_FIELDS: Array[String] = ["plot_id", "floor_id", "elevation", "x", "y"]
+const CONSTRUCTION_CONNECTION_FIELDS: Array[String] = ["orientation", "stop_elevations"]
 const CONSTRUCTION_SCHEMA_VERSION: int = 1
-const MANUAL_DOOR_FIELDS: Array[String] = ["runtime_plot_id", "floor_id", "elevation", "from_cell", "to_cell"]
+const MANUAL_DOOR_EDGE_FIELDS: Array[String] = ["endpoint_a", "endpoint_b"]
+const FLOOR_CELL_ADDRESS_FIELDS: Array[String] = ["runtime_plot_id", "signed_elevation", "local_cell"]
+const LOCAL_CELL_FIELDS: Array[String] = ["x", "y"]
 
 
 func create_baseline(snapshot: ResolvedDistrictSnapshot) -> Dictionary:
@@ -29,7 +33,7 @@ func create_baseline(snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 		"construction_schema_version": CONSTRUCTION_SCHEMA_VERSION,
 		"construction_revision": 0,
 		"construction_records": [],
-		"manual_door_records": [],
+		"manual_door_edges": [],
 	}
 
 
@@ -44,15 +48,17 @@ func validate(state: Variant, snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 	_check_int(value, "construction_schema_version", "$", diagnostics)
 	_check_int(value, "construction_revision", "$", diagnostics)
 	if int(value.get("state_schema_version", -1)) != STATE_SCHEMA_VERSION:
-		_add(diagnostics, "STATE_SCHEMA_VERSION_INVALID", "$.state_schema_version", "state schema version must be 2")
+		_add(diagnostics, "STATE_SCHEMA_VERSION_INVALID", "$.state_schema_version", "state schema version must be 3")
 	if int(value.get("district_revision", -1)) < 0:
 		_add(diagnostics, "DISTRICT_REVISION_INVALID", "$.district_revision", "district revision must be nonnegative")
 	if int(value.get("construction_schema_version", -1)) != CONSTRUCTION_SCHEMA_VERSION:
 		_add(diagnostics, "CONSTRUCTION_SCHEMA_VERSION_INVALID", "$.construction_schema_version", "construction schema version must be 1")
-	if int(value.get("construction_revision", -1)) < 0:
-		_add(diagnostics, "CONSTRUCTION_REVISION_INVALID", "$.construction_revision", "construction revision must be nonnegative")
+	if int(value.get("construction_revision", -1)) < 0 or int(value.get("construction_revision", -1)) > int(value.get("district_revision", -1)):
+		_add(diagnostics, "CONSTRUCTION_REVISION_INVALID", "$.construction_revision", "construction revision must be nonnegative and cannot exceed district revision")
 	if String(value.get("layout_id", "")) != snapshot.get_layout_id():
 		_add(diagnostics, "LAYOUT_ID_MISMATCH", "$.layout_id", "state layout ID must match the snapshot")
+	if int(value.get("layout_definition_version", -1)) != int(snapshot.get_data().get("layout_definition_version", -2)):
+		_add(diagnostics, "LAYOUT_DEFINITION_VERSION_MISMATCH", "$.layout_definition_version", "state layout definition version must match the snapshot")
 	if String(value.get("definition_fingerprint", "")) != snapshot.get_fingerprint():
 		_add(diagnostics, "FINGERPRINT_MISMATCH", "$.definition_fingerprint", "state fingerprint must match the snapshot")
 	var data: Dictionary = snapshot.get_data()
@@ -67,8 +73,8 @@ func validate(state: Variant, snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 	_validate_street_states(value.get("street_segment_states", []), street_by_id, data, diagnostics)
 	_validate_source_states(value.get("arrival_source_states", []), source_by_id, diagnostics)
 	_validate_demolished(value.get("demolished_fixed_occupant_ids", []), occupant_by_id, diagnostics)
-	_validate_construction_records(value.get("construction_records", []), floor_by_id, allowed_cells_by_floor, diagnostics)
-	_validate_manual_door_records(value.get("manual_door_records", []), plot_ids, floor_by_id, allowed_cells_by_floor, diagnostics)
+	_validate_construction_records(value.get("construction_records", []), value, plot_ids, floor_by_id, allowed_cells_by_floor, diagnostics)
+	_validate_manual_door_edges(value.get("manual_door_edges", []), plot_ids, floor_by_id, allowed_cells_by_floor, diagnostics)
 	return {"valid": diagnostics.is_empty(), "state": value.duplicate(true) if diagnostics.is_empty() else {}, "diagnostics": diagnostics}
 
 
@@ -148,13 +154,15 @@ func _validate_floor_states(value: Array, floor_by_id: Dictionary, allowed_cells
 		previous_id = floor_id
 		var acquired: Variant = child.get("acquired_cells", null)
 		var constructed: Variant = child.get("constructed_cells", null)
-		if not acquired is Array or not constructed is Array:
+		var circulation: Variant = child.get("explicit_circulation_cells", null)
+		if not acquired is Array or not constructed is Array or not circulation is Array:
 			_add(diagnostics, "CELL_SET_INVALID", child_path, "floor cell sets must be arrays")
 			continue
-		if acquired.is_empty() and constructed.is_empty():
+		if acquired.is_empty() and constructed.is_empty() and circulation.is_empty():
 			_add(diagnostics, "EMPTY_FLOOR_STATE", child_path, "empty floor state records are forbidden")
 		_validate_cells(acquired, "%s.acquired_cells" % child_path, diagnostics)
 		_validate_cells(constructed, "%s.constructed_cells" % child_path, diagnostics)
+		_validate_cells(circulation, "%s.explicit_circulation_cells" % child_path, diagnostics)
 		var allowed_cells: Dictionary = allowed_cells_by_floor.get(floor_id, {})
 		for cell: Array in acquired:
 			if not allowed_cells.has("%d,%d" % [int(cell[0]), int(cell[1])]):
@@ -162,6 +170,9 @@ func _validate_floor_states(value: Array, floor_by_id: Dictionary, allowed_cells
 		for cell: Array in constructed:
 			if not _contains_cell(acquired, cell):
 				_add(diagnostics, "CONSTRUCTION_WITHOUT_ACQUISITION", child_path, "constructed cells must be acquired")
+		for cell: Array in circulation:
+			if not _contains_cell(constructed, cell) or not _contains_cell(acquired, cell):
+				_add(diagnostics, "CIRCULATION_WITHOUT_CONSTRUCTION", child_path, "explicit circulation cells must be constructed and acquired")
 
 
 func _validate_street_states(value: Variant, street_by_id: Dictionary, snapshot_data: Dictionary, diagnostics: Array[Dictionary]) -> void:
@@ -236,7 +247,7 @@ func _validate_demolished(value: Variant, occupant_by_id: Dictionary, diagnostic
 		previous_id = occupant_id
 
 
-func _validate_construction_records(value: Variant, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, diagnostics: Array[Dictionary]) -> void:
+func _validate_construction_records(value: Variant, state: Dictionary, plot_ids: Dictionary, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, diagnostics: Array[Dictionary]) -> void:
 	if not value is Array:
 		_add(diagnostics, "CONSTRUCTION_RECORDS_INVALID", "$.construction_records", "construction_records must be an array")
 		return
@@ -249,104 +260,228 @@ func _validate_construction_records(value: Variant, floor_by_id: Dictionary, all
 			_add(diagnostics, "CONSTRUCTION_RECORD_INVALID", path, "construction record must be an object")
 			continue
 		_check_exact_fields(record, CONSTRUCTION_RECORD_FIELDS, path, diagnostics)
-		_check_string(record, "construction_id", path, diagnostics)
-		_check_string(record, "kind", path, diagnostics)
-		_check_string(record, "plot_id", path, diagnostics)
 		var construction_id: String = String(record.get("construction_id", ""))
-		if construction_id.is_empty() or (index > 0 and construction_id <= previous_id):
-			_add(diagnostics, "CONSTRUCTION_ORDER_INVALID", path, "construction records must be unique and stable-ID ascending")
-		previous_id = construction_id
 		var kind: String = String(record.get("kind", ""))
-		if not ["corridor", "stairs", "elevator", "operations_room"].has(kind):
-			_add(diagnostics, "CONSTRUCTION_TYPE_INVALID", path, "construction record kind is not approved")
+		var plot_id: String = String(record.get("plot_id", ""))
+		if construction_id.is_empty() or (index > 0 and construction_id <= previous_id):
+			_add(diagnostics, "CONSTRUCTION_ORDER_INVALID", path, "construction records must be unique and construction-ID ascending")
+		previous_id = construction_id
+		if not ["stairs", "elevator", "operations_room"].has(kind):
+			_add(diagnostics, "CONSTRUCTION_TYPE_INVALID", path, "construction records permit only stairs, elevator, and operations_room")
+		if not plot_ids.has(plot_id):
+			_add(diagnostics, "CONSTRUCTION_PLOT_UNKNOWN", path, "construction Plot must resolve")
 		var cells: Variant = record.get("cells", null)
-		if not cells is Array or cells.is_empty():
-			_add(diagnostics, "CONSTRUCTION_CELLS_INVALID", path, "construction record requires explicit cells")
-			continue
-		for cell: Variant in cells:
-			if not cell is Dictionary:
-				_add(diagnostics, "CONSTRUCTION_CELL_INVALID", path, "construction cells must be objects")
-				continue
-			var floor_id: String = String(cell.get("floor_id", ""))
-			var x: int = int(cell.get("x", -1))
-			var y: int = int(cell.get("y", -1))
-			var key: String = "%s:%d:%d" % [floor_id, x, y]
-			if not floor_by_id.has(floor_id) or not allowed_cells_by_floor.get(floor_id, {}).has("%d,%d" % [x, y]):
-				_add(diagnostics, "CONSTRUCTION_CELL_FORBIDDEN", path, "construction cell must belong to immutable floor rights")
-			if occupied.has(key):
-				_add(diagnostics, "CONSTRUCTION_CELL_OVERLAP", path, "one committed construction element occupies each tile")
-			occupied[key] = true
-			if typeof(cell.get("elevation", null)) != TYPE_INT:
-				_add(diagnostics, "CONSTRUCTION_CELL_INVALID", path, "construction cell elevation must be an integer")
+		var shaft_cells: Variant = record.get("shaft_cells", null)
+		var lobby_cells: Variant = record.get("lobby_cells", null)
 		var connection: Variant = record.get("connection", null)
-		if not connection is Dictionary:
-			_add(diagnostics, "CONSTRUCTION_CONNECTION_INVALID", path, "construction connection metadata must be an object")
-		for field: String in ["shaft_cells", "lobby_cells"]:
-			if not (record.get(field, null) is Array):
-				_add(diagnostics, "CONSTRUCTION_CELL_SET_INVALID", path, "%s must be an array" % field)
+		if not cells is Array or cells.is_empty() or not shaft_cells is Array or not lobby_cells is Array:
+			_add(diagnostics, "CONSTRUCTION_CELL_SET_INVALID", path, "construction cell collections must be arrays and cells must be nonempty")
+			continue
+		if not connection is Dictionary or not _has_exact_fields(connection, CONSTRUCTION_CONNECTION_FIELDS) or not connection.get("orientation") is String or not connection.get("stop_elevations") is Array:
+			_add(diagnostics, "CONSTRUCTION_CONNECTION_INVALID", path, "construction connection must have exact orientation and stop_elevations")
+			continue
+		for field: String in ["cells", "shaft_cells", "lobby_cells"]:
+			_validate_construction_cell_array(record[field], plot_id, state, floor_by_id, allowed_cells_by_floor, occupied if field == "cells" else {}, "%s.%s" % [path, field], diagnostics)
+		_validate_construction_shape(kind, cells, shaft_cells, lobby_cells, connection, path, diagnostics)
 
 
-func _validate_manual_door_records(value: Variant, plot_ids: Dictionary, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, diagnostics: Array[Dictionary]) -> void:
+func _validate_construction_cell_array(cells: Array, plot_id: String, state: Dictionary, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, occupied: Dictionary, path: String, diagnostics: Array[Dictionary]) -> void:
+	var previous: Dictionary = {}
+	var seen: Dictionary = {}
+	for index: int in range(cells.size()):
+		var cell_path: String = "%s[%d]" % [path, index]
+		var value: Variant = cells[index]
+		if not value is Dictionary or not _has_exact_fields(value, CONSTRUCTION_CELL_FIELDS):
+			_add(diagnostics, "CONSTRUCTION_CELL_INVALID", cell_path, "construction cell must be an exact ConstructionCellAddress")
+			continue
+		var cell: Dictionary = value
+		if not cell.get("plot_id") is String or not cell.get("floor_id") is String or not cell.get("elevation") is int or not cell.get("x") is int or not cell.get("y") is int:
+			_add(diagnostics, "CONSTRUCTION_CELL_INVALID", cell_path, "construction cell fields have invalid types")
+			continue
+		var floor_id: String = String(cell["floor_id"])
+		var x: int = int(cell["x"])
+		var y: int = int(cell["y"])
+		if String(cell["plot_id"]) != plot_id or not floor_by_id.has(floor_id) or String(floor_by_id[floor_id].get("plot_id", "")) != plot_id or int(floor_by_id[floor_id].get("elevation", 999999)) != int(cell["elevation"]):
+			_add(diagnostics, "CONSTRUCTION_CELL_SCOPE_INVALID", cell_path, "construction cell must resolve to its record Plot and floor")
+		if not allowed_cells_by_floor.get(floor_id, {}).has("%d,%d" % [x, y]):
+			_add(diagnostics, "CONSTRUCTION_CELL_FORBIDDEN", cell_path, "construction cell must belong to immutable floor rights")
+		var key: String = "%s:%d:%d" % [floor_id, x, y]
+		if seen.has(key):
+			_add(diagnostics, "CONSTRUCTION_CELL_DUPLICATE", cell_path, "construction cell arrays must be duplicate-free")
+		seen[key] = true
+		if not previous.is_empty() and not _construction_cell_less(previous, cell):
+			_add(diagnostics, "CONSTRUCTION_CELL_ORDER_INVALID", cell_path, "construction cells must use canonical elevation/floor/y/x order")
+		previous = cell
+		if not _state_has_floor_cell(state, plot_id, floor_id, [x, y], "constructed_cells"):
+			_add(diagnostics, "CONSTRUCTION_RECORD_CELL_NOT_CONSTRUCTED", cell_path, "record cells must be present in FloorState.constructed_cells")
+		if not occupied.is_empty() and occupied.has(key):
+			_add(diagnostics, "CONSTRUCTION_CELL_OVERLAP", cell_path, "construction records cannot overlap")
+		occupied[key] = true
+
+
+func _validate_construction_shape(kind: String, cells: Array, shaft_cells: Array, lobby_cells: Array, connection: Dictionary, path: String, diagnostics: Array[Dictionary]) -> void:
+	var stops: Array = connection.get("stop_elevations", [])
+	for stop: Variant in stops:
+		if typeof(stop) != TYPE_INT:
+			_add(diagnostics, "CONSTRUCTION_STOP_INVALID", path, "stop elevations must be integers")
+			return
+	for index: int in range(1, stops.size()):
+		if int(stops[index]) <= int(stops[index - 1]):
+			_add(diagnostics, "CONSTRUCTION_STOP_ORDER_INVALID", path, "stop elevations must be unique and ascending")
+	if kind == "stairs":
+		if not shaft_cells.is_empty() or not lobby_cells.is_empty() or cells.size() != 8 or stops.size() != 2 or int(stops[1]) != int(stops[0]) + 1 or not ["NORTH", "EAST", "SOUTH", "WEST"].has(String(connection.get("orientation", ""))):
+			_add(diagnostics, "STAIRS_GEOMETRY_INVALID", path, "stairs require two adjacent 2x2 floors and cardinal orientation")
+		elif not _two_by_two_per_stop(cells, stops):
+			_add(diagnostics, "STAIRS_GEOMETRY_INVALID", path, "stairs require matching 2x2 footprints")
+	elif kind == "operations_room":
+		if not shaft_cells.is_empty() or not lobby_cells.is_empty() or cells.size() != 4 or stops.size() != 1 or String(connection.get("orientation", "")) != "NONE" or not _two_by_two_per_stop(cells, stops):
+			_add(diagnostics, "OPERATIONS_ROOM_GEOMETRY_INVALID", path, "Operations Room requires one 2x2 floor and NONE orientation")
+	elif kind == "elevator":
+		if shaft_cells.is_empty() or shaft_cells.size() != lobby_cells.size() or stops.size() != shaft_cells.size() or not stops.has(0) or String(connection.get("orientation", "")) != "NONE":
+			_add(diagnostics, "ELEVATOR_GEOMETRY_INVALID", path, "elevator requires one shaft and distinct lobby per contiguous stop including ground")
+			return
+		for index: int in range(1, stops.size()):
+			if int(stops[index]) != int(stops[index - 1]) + 1:
+				_add(diagnostics, "ELEVATOR_GEOMETRY_INVALID", path, "elevator stops must be contiguous")
+		var union: Dictionary = {}
+		for cell: Dictionary in shaft_cells + lobby_cells:
+			union[_construction_cell_key(cell)] = true
+		if union.size() != cells.size():
+			_add(diagnostics, "ELEVATOR_UNION_INVALID", path, "elevator cells must be the exact shaft/lobby union")
+		for cell: Dictionary in cells:
+			if not union.has(_construction_cell_key(cell)):
+				_add(diagnostics, "ELEVATOR_UNION_INVALID", path, "elevator cells must be the exact shaft/lobby union")
+
+
+func _two_by_two_per_stop(cells: Array, stops: Array) -> bool:
+	for stop: int in stops:
+		var floor_cells: Array = []
+		for cell: Dictionary in cells:
+			if int(cell.get("elevation", 999999)) == stop:
+				floor_cells.append(cell)
+		if floor_cells.size() != 4:
+			return false
+		var minimum_x: int = 999999
+		var minimum_y: int = 999999
+		var keys: Dictionary = {}
+		for cell: Dictionary in floor_cells:
+			minimum_x = mini(minimum_x, int(cell["x"]))
+			minimum_y = mini(minimum_y, int(cell["y"]))
+			keys["%d,%d" % [int(cell["x"]), int(cell["y"])]] = true
+		for y: int in range(minimum_y, minimum_y + 2):
+			for x: int in range(minimum_x, minimum_x + 2):
+				if not keys.has("%d,%d" % [x, y]):
+					return false
+	return true
+
+
+func _construction_cell_less(left: Dictionary, right: Dictionary) -> bool:
+	if int(left.get("elevation", 0)) != int(right.get("elevation", 0)):
+		return int(left.get("elevation", 0)) < int(right.get("elevation", 0))
+	if String(left.get("floor_id", "")) != String(right.get("floor_id", "")):
+		return String(left.get("floor_id", "")) < String(right.get("floor_id", ""))
+	if int(left.get("y", 0)) != int(right.get("y", 0)):
+		return int(left.get("y", 0)) < int(right.get("y", 0))
+	return int(left.get("x", 0)) < int(right.get("x", 0))
+
+
+func _construction_cell_key(cell: Dictionary) -> String:
+	return "%s|%+011d|%s|%011d|%011d" % [String(cell.get("plot_id", "")), int(cell.get("elevation", 0)), String(cell.get("floor_id", "")), int(cell.get("y", -1)), int(cell.get("x", -1))]
+
+
+func _state_has_floor_cell(state: Dictionary, plot_id: String, floor_id: String, cell: Array, field: String) -> bool:
+	for plot_state: Dictionary in state.get("plot_states", []):
+		if String(plot_state.get("runtime_plot_id", "")) != plot_id:
+			continue
+		for floor_state: Dictionary in plot_state.get("floor_states", []):
+			if String(floor_state.get("floor_id", "")) == floor_id and _contains_cell(floor_state.get(field, []), cell):
+				return true
+	return false
+
+
+func _validate_manual_door_edges(value: Variant, plot_ids: Dictionary, floor_by_id: Dictionary, allowed_cells_by_floor: Dictionary, diagnostics: Array[Dictionary]) -> void:
 	if not value is Array:
-		_add(diagnostics, "MANUAL_DOOR_RECORDS_INVALID", "$.manual_door_records", "manual_door_records must be an array")
+		_add(diagnostics, "MANUAL_DOOR_EDGES_INVALID", "$.manual_door_edges", "manual_door_edges must be an array")
 		return
 	var previous_key: String = ""
-	var seen: Dictionary = {}
 	for index: int in range(value.size()):
-		var path: String = "$.manual_door_records[%d]" % index
+		var path: String = "$.manual_door_edges[%d]" % index
 		var record: Variant = value[index]
 		if not record is Dictionary:
-			_add(diagnostics, "MANUAL_DOOR_RECORD_INVALID", path, "manual door record must be an object")
+			_add(diagnostics, "MANUAL_DOOR_EDGE_INVALID", path, "manual door edge must be an object")
 			continue
-		_check_exact_fields(record, MANUAL_DOOR_FIELDS, path, diagnostics)
-		_check_string(record, "runtime_plot_id", path, diagnostics)
-		_check_string(record, "floor_id", path, diagnostics)
-		_check_int(record, "elevation", path, diagnostics)
-		var plot_id: String = String(record.get("runtime_plot_id", ""))
-		var floor_id: String = String(record.get("floor_id", ""))
+		_check_exact_fields(record, MANUAL_DOOR_EDGE_FIELDS, path, diagnostics)
+		var endpoint_a: Variant = record.get("endpoint_a", null)
+		var endpoint_b: Variant = record.get("endpoint_b", null)
+		if not _valid_floor_cell_address(endpoint_a) or not _valid_floor_cell_address(endpoint_b):
+			_add(diagnostics, "MANUAL_DOOR_ENDPOINT_INVALID", path, "manual door endpoints must be exact FloorCellAddress values")
+			continue
+		var a: Dictionary = endpoint_a
+		var b: Dictionary = endpoint_b
+		var plot_id: String = String(a["runtime_plot_id"])
+		var elevation: int = int(a["signed_elevation"])
+		if plot_id != String(b["runtime_plot_id"]) or elevation != int(b["signed_elevation"]):
+			_add(diagnostics, "MANUAL_DOOR_SCOPE_MISMATCH", path, "manual door endpoints must share Plot and elevation")
 		if not plot_ids.has(plot_id):
-			_add(diagnostics, "MANUAL_DOOR_PLOT_UNKNOWN", path, "manual door plot is not in the immutable snapshot")
-		if not floor_by_id.has(floor_id) or String(floor_by_id.get(floor_id, {}).get("plot_id", "")) != plot_id:
-			_add(diagnostics, "MANUAL_DOOR_FLOOR_UNKNOWN", path, "manual door floor must belong to its Plot")
-		elif int(record.get("elevation", 0)) != int(floor_by_id[floor_id].get("elevation", 0)):
-			_add(diagnostics, "MANUAL_DOOR_ELEVATION_MISMATCH", path, "manual door elevation must match its immutable floor")
-		var from_cell: Variant = record.get("from_cell", null)
-		var to_cell: Variant = record.get("to_cell", null)
-		if not _valid_manual_door_cell(from_cell) or not _valid_manual_door_cell(to_cell):
-			_add(diagnostics, "MANUAL_DOOR_CELL_INVALID", path, "manual door endpoints must be nonnegative [x,y] integer pairs")
-			continue
-		var from: Array = [int(from_cell[0]), int(from_cell[1])]
-		var to: Array = [int(to_cell[0]), int(to_cell[1])]
-		if from == to or absi(from[0] - to[0]) + absi(from[1] - to[1]) != 1:
-			_add(diagnostics, "MANUAL_DOOR_EDGE_INVALID", path, "manual door endpoints must be distinct orthogonally adjacent cells")
-		if _cell_compare(from, to) >= 0:
-			_add(diagnostics, "MANUAL_DOOR_EDGE_NON_CANONICAL", path, "manual door endpoints must be in canonical row-major order")
-		var allowed_cells: Dictionary = allowed_cells_by_floor.get(floor_id, {})
-		if not allowed_cells.has("%d,%d" % [from[0], from[1]]) or not allowed_cells.has("%d,%d" % [to[0], to[1]]):
+			_add(diagnostics, "MANUAL_DOOR_PLOT_UNKNOWN", path, "manual door Plot is unknown")
+		var floor_id: String = _floor_id_for_scope(floor_by_id, plot_id, elevation)
+		if floor_id.is_empty():
+			_add(diagnostics, "MANUAL_DOOR_FLOOR_UNKNOWN", path, "manual door floor scope must resolve exactly")
+		var cell_a: Dictionary = a["local_cell"]
+		var cell_b: Dictionary = b["local_cell"]
+		if absi(int(cell_a["x"]) - int(cell_b["x"])) + absi(int(cell_a["y"]) - int(cell_b["y"])) != 1:
+			_add(diagnostics, "MANUAL_DOOR_EDGE_INVALID", path, "manual door endpoints must be distinct and orthogonally adjacent")
+		if _compare_floor_cell_addresses(a, b) >= 0:
+			_add(diagnostics, "MANUAL_DOOR_EDGE_NON_CANONICAL", path, "manual door endpoint order must be canonical")
+		var allowed: Dictionary = allowed_cells_by_floor.get(floor_id, {})
+		if not allowed.has("%d,%d" % [int(cell_a["x"]), int(cell_a["y"])]) or not allowed.has("%d,%d" % [int(cell_b["x"]), int(cell_b["y"])]):
 			_add(diagnostics, "MANUAL_DOOR_CELL_FORBIDDEN", path, "manual door endpoints must resolve in the immutable floor")
-		var identity: String = _manual_door_key(plot_id, floor_id, int(record.get("elevation", 0)), from, to)
-		if seen.has(identity):
-			_add(diagnostics, "MANUAL_DOOR_DUPLICATE", path, "manual door edges must be unique")
-		seen[identity] = true
+		var identity: String = _manual_door_edge_key(record)
 		if index > 0 and identity <= previous_key:
-			_add(diagnostics, "STATE_ORDER_INVALID", path, "manual door records must be stable identity ascending")
+			_add(diagnostics, "STATE_ORDER_INVALID", path, "manual door edges must be duplicate-free and canonically ordered")
 		previous_key = identity
 
 
-func _valid_manual_door_cell(value: Variant) -> bool:
-	return value is Array and value.size() == 2 and typeof(value[0]) == TYPE_INT and typeof(value[1]) == TYPE_INT and int(value[0]) >= 0 and int(value[1]) >= 0
+func _valid_floor_cell_address(value: Variant) -> bool:
+	if not value is Dictionary or not _has_exact_fields(value, FLOOR_CELL_ADDRESS_FIELDS):
+		return false
+	var cell: Variant = value.get("local_cell", null)
+	return value.get("runtime_plot_id") is String and not String(value["runtime_plot_id"]).is_empty() and value.get("signed_elevation") is int and cell is Dictionary and _has_exact_fields(cell, LOCAL_CELL_FIELDS) and cell.get("x") is int and cell.get("y") is int and int(cell["x"]) >= 0 and int(cell["y"]) >= 0
 
 
-func _cell_compare(left: Array, right: Array) -> int:
-	if int(left[1]) != int(right[1]):
-		return -1 if int(left[1]) < int(right[1]) else 1
-	if int(left[0]) == int(right[0]):
-		return 0
-	return -1 if int(left[0]) < int(right[0]) else 1
+func _floor_id_for_scope(floor_by_id: Dictionary, plot_id: String, elevation: int) -> String:
+	var result: String = ""
+	for floor_id: String in floor_by_id:
+		var floor: Dictionary = floor_by_id[floor_id]
+		if String(floor.get("plot_id", "")) == plot_id and int(floor.get("elevation", 999999)) == elevation:
+			if not result.is_empty():
+				return ""
+			result = floor_id
+	return result
 
 
-func _manual_door_key(plot_id: String, floor_id: String, elevation: int, from: Array, to: Array) -> String:
-	return "%s|%s|%d|%d,%d|%d,%d" % [plot_id, floor_id, elevation, from[0], from[1], to[0], to[1]]
+func _compare_floor_cell_addresses(left: Dictionary, right: Dictionary) -> int:
+	var left_key: String = _floor_cell_address_key(left)
+	var right_key: String = _floor_cell_address_key(right)
+	return -1 if left_key < right_key else (1 if left_key > right_key else 0)
+
+
+func _floor_cell_address_key(endpoint: Dictionary) -> String:
+	var cell: Dictionary = endpoint.get("local_cell", {})
+	return "%s|%+011d|%011d|%011d" % [String(endpoint.get("runtime_plot_id", "")), int(endpoint.get("signed_elevation", 0)), int(cell.get("y", -1)), int(cell.get("x", -1))]
+
+
+func _manual_door_edge_key(record: Dictionary) -> String:
+	return "%s|%s" % [_floor_cell_address_key(record.get("endpoint_a", {})), _floor_cell_address_key(record.get("endpoint_b", {}))]
+
+
+func _has_exact_fields(value: Dictionary, fields: Array[String]) -> bool:
+	if value.size() != fields.size():
+		return false
+	for field: String in fields:
+		if not value.has(field):
+			return false
+	return true
 
 
 func _validate_cells(value: Array, path: String, diagnostics: Array[Dictionary]) -> void:

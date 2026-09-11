@@ -47,12 +47,35 @@ class FakeZone extends DistrictRuntimePorts.DistrictZonePort:
 	var fail_prepare: bool = false
 	var fail_commit: bool = false
 	var calls: Array[String] = []
+	var district_effects: Dictionary = {}
+	var last_preview_marker: int = 0
+	var prepared_preview_marker: int = -1
+	var prepared_state: Dictionary = {}
+	var prepared_snapshot: DistrictZoneSpatialSnapshot
 
 	func get_revision() -> int:
 		return revision
 
-	func prepare(_intent: Dictionary, _candidate_state: Dictionary) -> Dictionary:
+	func preview(
+		_intent: Dictionary,
+		_candidate_state: Dictionary,
+		_spatial_snapshot: DistrictZoneSpatialSnapshot,
+		_public_band_access: PublicBandAccessSnapshot = null
+	) -> Dictionary:
+		last_preview_marker += 1
+		return {"accepted": true, "preview": null, "district_effects": district_effects.duplicate(true), "plan_marker": last_preview_marker, "diagnostics": []}
+
+	func prepare(
+		_intent: Dictionary,
+		_candidate_state: Dictionary,
+		_spatial_snapshot: DistrictZoneSpatialSnapshot,
+		_public_band_access: PublicBandAccessSnapshot = null,
+		_zone_plan: Dictionary = {}
+	) -> Dictionary:
 		calls.append("prepare")
+		prepared_preview_marker = int(_zone_plan.get("plan_marker", -1))
+		prepared_state = _candidate_state.duplicate(true)
+		prepared_snapshot = _spatial_snapshot.duplicate_snapshot() if _spatial_snapshot != null else null
 		if fail_prepare:
 			return {"accepted": false, "diagnostics": [{"code": "FAKE_ZONE_PREPARE_FAILED"}]}
 		if mutate_revision_on_prepare:
@@ -122,6 +145,7 @@ func _init() -> void:
 	_test_lifecycle_and_preview()
 	_test_section_activation_and_revision()
 	_test_vertical_space_and_construction()
+	_test_zone_district_effect_application()
 	_test_manual_door_authority()
 	_test_manual_door_zone_candidate()
 	_test_atomic_rejection_and_fault_isolation()
@@ -144,6 +168,8 @@ func _setup_runtime(fixture_id: String) -> void:
 	_assert(bool(resolution.get("valid", false)), "%s snapshot resolves for H3" % fixture_id)
 	var snapshot: ResolvedDistrictSnapshot = resolution.get("snapshot") as ResolvedDistrictSnapshot
 	_runtime = load("res://scripts/district/district_runtime.gd").new()
+	var gate_setup: Dictionary = _runtime.configure_session_gate(SessionMutationGate.new())
+	_assert(bool(gate_setup.get("valid", false)), "%s runtime accepts an injected session mutation gate" % fixture_id)
 	_economy = FakeEconomy.new()
 	_zone = FakeZone.new()
 	_progression = FakeProgression.new()
@@ -227,6 +253,89 @@ func _test_vertical_space_and_construction() -> void:
 	_assert(not bool(invalid_upper.get("valid", false)) and _has_code(invalid_upper.get("diagnostics", []), "VERTICAL_SEQUENCE_REQUIRED"), "upper space requires the adjacent elevation first")
 
 
+func _test_zone_district_effect_application() -> void:
+	var snapshot: ResolvedDistrictSnapshot = _runtime.get_snapshot()
+	var data: Dictionary = snapshot.get_data()
+	var plot: Dictionary = data["plots"][0]
+	var floor: Dictionary = _floor_for(data["floors"], plot["id"], 0)
+	var cells: Array = _find_adjacent_cells(plot["buildability_mask"])
+	var cell: Array = cells[0]
+	var manual_edge: Dictionary = {
+		"endpoint_a": {"runtime_plot_id": plot["id"], "signed_elevation": floor["elevation"], "local_cell": {"x": int(cells[0][0]), "y": int(cells[0][1])}},
+		"endpoint_b": {"runtime_plot_id": plot["id"], "signed_elevation": floor["elevation"], "local_cell": {"x": int(cells[1][0]), "y": int(cells[1][1])}},
+	}
+	var runtime := DistrictRuntime.new()
+	_assert(bool(runtime.configure_session_gate(SessionMutationGate.new()).get("valid", false)), "zone-effects runtime accepts the shared session gate")
+	var economy := FakeEconomy.new()
+	var zone := FakeZone.new()
+	var progression := FakeProgression.new()
+	var ports := DistrictRuntimePorts.DistrictRuntimePortsBundle.new()
+	ports.initialize(economy, zone, progression)
+	runtime.configure_ports(ports)
+	var state: Dictionary = DistrictStateRecords.new().create_baseline(snapshot)
+	state["plot_states"] = [{
+		"runtime_plot_id": plot["id"],
+		"section_state_overrides": [],
+		"floor_states": [{
+			"floor_id": floor["id"],
+			"elevation": floor["elevation"],
+			"acquired_cells": cells.duplicate(true),
+			"constructed_cells": cells.duplicate(true),
+			"explicit_circulation_cells": [cell.duplicate()],
+		}],
+	}]
+	state["manual_door_edges"] = [manual_edge]
+	_assert(bool(runtime.create_session(snapshot, state).get("valid", false)), "zone-effects fixture creates with explicit circulation")
+	zone.district_effects = {
+		"remove_explicit_circulation_cells": [{"x": int(cell[0]), "y": int(cell[1])}],
+		"add_explicit_circulation_cells": [],
+		"remove_manual_door_edges": [manual_edge],
+	}
+	var committed: Dictionary = runtime.commit_transaction({
+		"operation": DistrictRuntime.OP_PAINT_ZONE,
+		"expected_district_revision": 0,
+		"runtime_plot_id": plot["id"],
+		"floor_id": floor["id"],
+		"elevation": floor["elevation"],
+		"zone_plot_id": plot["id"],
+		"zone_floor_label": "G",
+		"zone_type": "Retail",
+		"cells": [cell.duplicate()],
+		"typologies": {},
+		"paint_mode": "zone",
+	})
+	_assert(bool(committed.get("valid", false)), "DistrictRuntime commits Zone paint and District effects atomically")
+	var committed_floor: Dictionary = runtime.get_state()["plot_states"][0]["floor_states"][0]
+	_assert(committed_floor["explicit_circulation_cells"].is_empty(), "Zone paint consumes explicit circulation in DistrictState")
+	_assert(int(runtime.get_state().get("construction_revision", -1)) == 1, "circulation effect advances construction revision")
+	_assert(runtime.get_state().get("manual_door_edges", []).is_empty(), "obsolete same-zone manual door edge is removed in the atomic District candidate")
+	_assert(zone.prepared_preview_marker == zone.last_preview_marker, "prepare receives the exact accepted Zone preview plan")
+	_assert(zone.prepared_snapshot != null and not zone.prepared_snapshot.has_cell("explicit_circulation_cells", Vector2i(int(cell[0]), int(cell[1]))), "prepare receives the prospective post-effect spatial snapshot")
+	zone.district_effects = {
+		"remove_explicit_circulation_cells": [],
+		"add_explicit_circulation_cells": [{"x": int(cell[0]), "y": int(cell[1])}],
+		"remove_manual_door_edges": [],
+	}
+	var restored: Dictionary = runtime.commit_transaction({
+		"operation": DistrictRuntime.OP_PAINT_ZONE,
+		"expected_district_revision": 1,
+		"runtime_plot_id": plot["id"],
+		"floor_id": floor["id"],
+		"elevation": floor["elevation"],
+		"zone_plot_id": plot["id"],
+		"zone_floor_label": "G",
+		"zone_type": "Retail",
+		"cells": [cell.duplicate()],
+		"typologies": {},
+		"paint_mode": "none",
+	})
+	_assert(bool(restored.get("valid", false)), "None paint restores District circulation through the same transaction")
+	var restored_floor: Dictionary = runtime.get_state()["plot_states"][0]["floor_states"][0]
+	_assert(restored_floor["explicit_circulation_cells"] == [cell], "None paint restores explicit circulation without changing built rights")
+	_assert(restored_floor["acquired_cells"] == cells and restored_floor["constructed_cells"] == cells, "None paint preserves acquired and constructed cells")
+	runtime.free()
+
+
 func _test_manual_door_authority() -> void:
 	var snapshot: ResolvedDistrictSnapshot = _runtime.get_snapshot()
 	var data: Dictionary = snapshot.get_data()
@@ -237,6 +346,8 @@ func _test_manual_door_authority() -> void:
 	if cells.size() != 2:
 		return
 	var door_runtime: DistrictRuntime = load("res://scripts/district/district_runtime.gd").new() as DistrictRuntime
+	var door_gate_setup: Dictionary = door_runtime.configure_session_gate(SessionMutationGate.new())
+	_assert(bool(door_gate_setup.get("valid", false)), "manual-door runtime accepts an injected session mutation gate")
 	var door_economy: FakeEconomy = FakeEconomy.new()
 	var door_zone_port: FakeZone = FakeZone.new()
 	var door_progression: FakeProgression = FakeProgression.new()
@@ -252,6 +363,7 @@ func _test_manual_door_authority() -> void:
 			"elevation": floor["elevation"],
 			"acquired_cells": cells.duplicate(true),
 			"constructed_cells": cells.duplicate(true),
+			"explicit_circulation_cells": [],
 		}],
 	}]
 	_assert(bool(door_runtime.create_session(snapshot, door_state).get("valid", false)), "manual-door fixture session creates with acquired constructed cells")
@@ -274,14 +386,14 @@ func _test_manual_door_authority() -> void:
 	_assert(bool(preview.get("valid", false)) and door_runtime.get_revision() == 0, "manual-door preview composes detached district and zone views without mutation")
 	var commit: Dictionary = authority.commit_manual_door(intent)
 	_assert(bool(commit.get("valid", false)) and door_runtime.get_revision() == 1, "manual-door commit uses one H3 transaction")
-	_assert(door_runtime.get_state().get("manual_door_records", []).size() == 1, "manual-door record is owned by DistrictRuntime")
+	_assert(door_runtime.get_state().get("manual_door_edges", []).size() == 1, "manual-door edge is owned by DistrictRuntime")
 	_assert(bool(DistrictStateRecords.new().validate(door_runtime.get_state(), snapshot).get("valid", false)), "committed manual-door records validate at the H2 boundary")
 	intent["expected_district_revision"] = 1
 	var duplicate: Dictionary = authority.commit_manual_door(intent)
 	_assert(not bool(duplicate.get("valid", false)) and _has_code(duplicate.get("diagnostics", []), "MANUAL_DOOR_ALREADY_SET"), "duplicate manual-door placement rejects atomically")
 	intent["enabled"] = false
 	var removal: Dictionary = authority.commit_manual_door(intent)
-	_assert(bool(removal.get("valid", false)) and door_runtime.get_state().get("manual_door_records", []).is_empty(), "manual-door removal is revision guarded and atomic")
+	_assert(bool(removal.get("valid", false)) and door_runtime.get_state().get("manual_door_edges", []).is_empty(), "manual-door removal is revision guarded and atomic")
 	intent["enabled"] = true
 	intent["expected_district_revision"] = door_runtime.get_revision()
 	intent["expected_zone_revision"] = 1
@@ -304,9 +416,12 @@ func _test_manual_door_zone_candidate() -> void:
 	manager.zones[zone.id] = zone
 	var paint_intent: Dictionary = {"zone_plot_id": "plot_a", "zone_floor_label": "G", "zone_type": zone.type, "cells": [[1, 0]], "typologies": {Vector2i(1, 0): 0}, "paint_mode": "zone"}
 	var candidate: Dictionary = manager._build_manual_door_zone_candidate(paint_intent)
-	var record: Dictionary = {"runtime_plot_id": "plot_a", "floor_id": "floor_a", "elevation": 0, "from_cell": [0, 0], "to_cell": [1, 0]}
+	var record: Dictionary = {
+		"endpoint_a": {"runtime_plot_id": "plot_a", "signed_elevation": 0, "local_cell": {"x": 0, "y": 0}},
+		"endpoint_b": {"runtime_plot_id": "plot_a", "signed_elevation": 0, "local_cell": {"x": 1, "y": 0}},
+	}
 	var validation: Dictionary = manager._validate_manual_door_records_against_zone_candidate([record], candidate)
-	_assert(not bool(validation.get("valid", false)) and _has_code(validation.get("diagnostics", []), "EXISTING_DOOR_INVALIDATED"), "prospective zone candidate rejects an invalidated manual door")
+	_assert(bool(validation.get("valid", false)) and validation.get("obsolete_edges", []).size() == 1, "prospective zone candidate identifies a same-zone manual door for atomic removal")
 	manager.free()
 
 

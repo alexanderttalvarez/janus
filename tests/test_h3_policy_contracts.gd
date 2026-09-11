@@ -28,11 +28,12 @@ func _test_progression() -> void:
 	_assert(bool(resolution.get("valid", false)), "Fixture C resolves for progression")
 	var snapshot: ResolvedDistrictSnapshot = resolution.get("snapshot") as ResolvedDistrictSnapshot
 	var progression: TechTreeManager = load("res://scripts/simulation/tech_tree_manager.gd").new() as TechTreeManager
+	_assert(bool(progression.set_policy_catalog(ProgressionPolicyCatalog.new()).get("valid", false)), "approved Progression content configures explicitly")
 	root.add_child(progression)
 	progression.sync_mall_level(5)
 	progression.sync_mall_level(5)
-	_assert(progression.plot_access_grants_earned == 8, "all five mall milestones grant exactly eight additional selections")
-	_assert(progression.awarded_milestone_ids.size() == 5, "mall milestone identities prevent duplicate grants")
+	_assert(progression.plot_access_grants_earned == 8, "four Plot Access milestones grant exactly eight additional selections")
+	_assert(progression.total_earned == 40 and progression.awarded_milestone_ids.size() == 9, "Tech and Plot milestone identities prevent duplicate direct-jump awards")
 	var selected_result: Dictionary = {}
 	for plot: Dictionary in snapshot.get_data().get("plots", []):
 		selected_result = progression.select_plot(String(plot.get("id", "")), snapshot)
@@ -42,20 +43,23 @@ func _test_progression() -> void:
 	var policy: Dictionary = progression.get_policy_snapshot()
 	_assert(int(policy.get("plot_access_grants_remaining", -1)) == 7, "Plot selection consumes one committed Plot Access grant")
 	_assert(not progression.is_elevation_eligible(3) and not progression.is_elevation_eligible(-4), "higher normal elevations are explicitly unavailable")
-	_assert(not bool(policy.get("street_conversion_eligible", true)), "Street conversion is gated below Neighborhood Center")
+	_assert(bool(policy.get("street_conversion_eligible", false)), "Street conversion is eligible above Neighborhood Center")
 	progression.free()
 
 
 func _test_economy() -> void:
 	var economy: EconomyManager = load("res://scripts/simulation/economy_manager.gd").new() as EconomyManager
+	_assert(bool(economy.set_policy_snapshot(EconomyPolicySnapshot.approved_values()).get("valid", false)), "approved Economy policy configures explicitly")
 	root.add_child(economy)
-	var progression_policy: Dictionary = {"revision": 1, "elevation_eligibility": [0, 1, 2, -1, -2, -3]}
+	var progression_policy: Dictionary = {"revision": 1, "elevation_eligibility": [0, 1, 2, -1, -2]}
 	var policy: Dictionary = economy.get_policy_snapshot()
 	var quote: Dictionary = economy.district_quote({"intent": {"operation": "ACQUIRE_SPACE", "elevation": 1, "tile_count": 1}, "economy_policy_snapshot": policy, "progression_policy_snapshot": progression_policy})
 	_assert(bool(quote.get("accepted", false)) and int(quote.get("value", -1)) == 1200, "vertical-space quotes use the immutable H2 price table")
 	var reservation: Dictionary = economy.reserve_quote(quote)
 	var stale_quote: Dictionary = quote.duplicate(true)
-	economy.set_policy_snapshot({"revision": 2})
+	var replacement_policy: Dictionary = EconomyPolicySnapshot.approved_values()
+	replacement_policy["revision"] = 2
+	_assert(bool(economy.set_policy_snapshot(replacement_policy).get("valid", false)), "a complete replacement Economy policy is accepted")
 	var stale_reservation: Dictionary = economy.reserve_quote(stale_quote)
 	_assert(not bool(stale_reservation.get("accepted", false)) and _has_code(stale_reservation.get("diagnostics", []), "STALE_QUOTE"), "policy revision changes invalidate old quotes")
 	policy = economy.get_policy_snapshot()
