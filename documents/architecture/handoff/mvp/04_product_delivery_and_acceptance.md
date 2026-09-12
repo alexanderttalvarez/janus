@@ -2,6 +2,8 @@
 
 **Status:** Approved work and evidence specification, 2026-09-08 follow-on non-code request. Architecture reference: [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md). Complete implementation conformance remains NOT VERIFIED; the linked bounded P00 audit records partial findings and a failed preflight. Every acceptance test/visual/release result is PENDING unless linked to actual candidate-bound evidence. This document neither expands [Current MVP](../../../game_design/current_mvp.md) nor invents a completion percentage.
 
+**ADR 38 amendment, 2026-09-12:** P03's normal-play build control is the scene-owned G rectangle acquisition/corridor flow in [ADR 38](../../decisions/38_construction_tool_and_affected_scope_invalidation.md). Each drag is one atomic operation with per-cell pricing summed once; required evidence includes operation-scoped synchronous invalidation and proof that `ACQUIRE_SPACE` returns with no H4-H7 or wall rebuild. A god-mode-only, non-persistent acquisition-status overlay is permitted for interim feedback.
+
 ## Engineer entry and gate order
 
 Read Current MVP -> ADR 33/34 -> [foundation sequence](01_implementation_sequence_and_scope.md) with [integration clarification](03_foundation_integration_clarifications.md) -> relevant program contracts -> [Product gate](02_product_mvp_tenant_interiors_scope.md).

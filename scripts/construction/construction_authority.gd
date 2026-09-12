@@ -90,6 +90,7 @@ func resolve(
 	var lobby_count: int = lobby_cells.size()
 	var lines: Array[Dictionary] = policy.charge_lines_for(kind, lobby_count)
 	var delta: Dictionary = {
+		"operation": "CONSTRUCT",
 		"kind": "construction_committed",
 		"construction_ids": [construction_id],
 		"affected_ids": [construction_id],
@@ -151,7 +152,7 @@ func _normalized_for_economy(intent: Dictionary, policy: ConstructionPolicy, lin
 
 func _validate_shape(kind: String, intent: Dictionary, snapshot: ResolvedDistrictSnapshot) -> Dictionary:
 	if kind == "corridor":
-		return _valid() if intent.get("cells", []).size() == 1 else _failure("CONSTRUCTION_GEOMETRY_UNAVAILABLE", "corridors occupy exactly one tile")
+		return _valid() if not intent.get("cells", []).is_empty() else _failure("CONSTRUCTION_GEOMETRY_UNAVAILABLE", "corridors require at least one target cell")
 	if kind == "stairs":
 		var cells: Array[Dictionary] = intent.get("cells", [])
 		if cells.size() != 8:

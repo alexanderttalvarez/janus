@@ -18,6 +18,8 @@ var _latest_state: Dictionary = {}
 var _proxy_anchor_resolutions: Dictionary = {}
 var _disposed: bool = false
 
+enum InvalidationScope { NONE, GEOMETRY, TOPOLOGY }
+
 
 func initialize(runtime: DistrictRuntime, coordinator: ProjectionCoordinator, metrics: ProjectionMetrics) -> Dictionary:
 	if runtime == null or coordinator == null or metrics == null:
@@ -77,6 +79,32 @@ func rebuild() -> Dictionary:
 	pedestrian_graph_delta_published.emit(_graph_delta(previous_graph, _graph))
 	public_realm_rebuilt.emit(committed.get("manifest", {}))
 	return {"valid": true, "manifest": committed.get("manifest", {}), "graph": _graph, "diagnostics": []}
+
+
+## Refresh committed traversal facts without replacing H4/public-realm geometry.
+func refresh_topology() -> Dictionary:
+	if _disposed or _runtime == null or _builder == null:
+		return _reject("PUBLIC_REALM_DISPOSED", "public realm projection is not configured")
+	var captured: Dictionary = _runtime.get_state_read()
+	var snapshot: ResolvedDistrictSnapshot = captured.get("snapshot") as ResolvedDistrictSnapshot
+	var traversal: DistrictTraversalReadView = _runtime.get_traversal_read_view()
+	if snapshot == null or traversal == null:
+		return _reject("PUBLIC_REALM_INPUT_MISSING", "public realm topology inputs are unavailable")
+	var built: Dictionary = _builder.build(snapshot, captured.get("state", {}), traversal, _metrics)
+	if not bool(built.get("valid", false)):
+		return _reject_diagnostics(built.get("diagnostics", []))
+	var previous_graph: PedestrianGraphSnapshot = _graph
+	_graph = built.get("graph") as PedestrianGraphSnapshot
+	_latest_realm = {
+		"definition_fingerprint": snapshot.get_fingerprint(),
+		"district_revision": int(captured.get("district_revision", -1)),
+		"zone_revision": traversal.zone_revision,
+		"segments": built.get("segments", []).duplicate(true),
+		"intersections": built.get("intersections", []).duplicate(true),
+	}
+	_latest_state = captured.get("state", {}).duplicate(true)
+	pedestrian_graph_delta_published.emit(_graph_delta(previous_graph, _graph))
+	return {"valid": true, "graph": _graph, "geometry_rebuilt": false, "diagnostics": []}
 
 
 func preview_conversion(street_segment_id: String) -> Dictionary:
@@ -199,8 +227,27 @@ func dispose() -> void:
 	_proxy_anchor_resolutions.clear()
 
 
-func _on_district_delta_committed(_envelope: Dictionary) -> void:
-	rebuild()
+static func invalidation_for_operation(operation: String) -> int:
+	if operation == DistrictRuntime.OP_ACQUIRE_SECTION or operation == DistrictRuntime.OP_CONVERT_STREET:
+		return InvalidationScope.GEOMETRY
+	if operation in [
+		DistrictRuntime.OP_CONSTRUCT,
+		DistrictRuntime.OP_DEMOLISH_CONSTRUCTION,
+		DistrictRuntime.OP_DEMOLISH_FIXED_OCCUPANT,
+		DistrictRuntime.OP_PAINT_ZONE,
+		DistrictRuntime.OP_SET_MANUAL_DOOR,
+	]:
+		return InvalidationScope.TOPOLOGY
+	return InvalidationScope.NONE
+
+
+func _on_district_delta_committed(envelope: Dictionary) -> void:
+	var operation: String = String(envelope.get("delta", {}).get("operation", ""))
+	match invalidation_for_operation(operation):
+		InvalidationScope.GEOMETRY:
+			rebuild()
+		InvalidationScope.TOPOLOGY:
+			refresh_topology()
 
 
 func _reject(code: String, message: String) -> Dictionary:

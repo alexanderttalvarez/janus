@@ -334,8 +334,16 @@ func _primitive_count(batches: Array[ProjectionDescriptorBatch]) -> int:
 	return count
 
 
-func _on_district_delta_committed(_envelope: Dictionary) -> void:
-	rebuild()
+static func invalidates_district_operation(_operation: String) -> bool:
+	# ADR 38: current state-only transactions do not change base floor geometry.
+	# Session replacement is rebuilt explicitly by MainGame after candidate load.
+	return false
+
+
+func _on_district_delta_committed(envelope: Dictionary) -> void:
+	var operation: String = String(envelope.get("delta", {}).get("operation", ""))
+	if invalidates_district_operation(operation):
+		rebuild()
 
 
 func _make_runtime_request() -> Dictionary:

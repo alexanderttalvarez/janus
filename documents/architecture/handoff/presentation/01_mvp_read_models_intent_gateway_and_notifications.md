@@ -8,6 +8,8 @@
 
 ## Purpose
 
+**ADR 38 production control amendment, 2026-09-11:** The Build toolbar owns mode selection for a scene-owned `ConstructionTool`: `Acquire Ground Space`, `Build Corridor`, existing zone types, doors, and Back/Cancel/Confirm controls. Acquisition and construction submit separate one-cell G preview/confirm requests through this handoff's single `UIIntentGateway`; the tool stores no authority or save state and shows source diagnostics plus transient committed feedback only.
+
 **Revision:** 2026-09-08 delegated consistency pass. [Current MVP](../../../game_design/current_mvp.md) and [MVP H3](../mvp/03_foundation_integration_clarifications.md) add minimal non-debug Tech purchase and room hire/fire action lists, not full graph/Staff panels. Include unpaid fit-out cancellation while Locked/Constructing through the existing Tenant/Zone intent. Sources own condition active/resolved facts; dismissal is presentation-only. ADR 33 amends old global-singleton/UI-layer examples. Missing sources stay unavailable; interior-specific read views/cutover remain draft H5.
 
 **Follow-on review, 2026-09-08:** The preceding draft disposition records the earlier consistency pass. [ADR 34](../../decisions/34_product_mvp_runtime_and_cutover.md) separately architecture-approves interior H4/H5. Foundation -> detached interior H1-H3 -> H4 implementation passes -> H5 candidate cutover passes -> Product acceptance; external Gate R is separate. Interior presentation remains source-backed and requires those implementation/cutover passes before live integration. Implementation/cutover remain NOT VERIFIED; Product acceptance/Gate R remain PENDING. Documentation approval fabricates no read facts.

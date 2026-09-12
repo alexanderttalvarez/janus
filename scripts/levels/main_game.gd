@@ -19,10 +19,12 @@ extends Node3D
 @onready var _synergy_manager: SynergyManager = $Simulation/SynergyManager
 @onready var _zone_manager: ZoneManager = $World/ZoneManager
 @onready var _zone_tool: ZoneTool = $ZoneTool
+@onready var _construction_tool: ConstructionTool = $ConstructionTool
 @onready var _door_tool: DoorTool = $DoorTool
 @onready var _wall_manager: WallManager = $World/WallManager
 @onready var _traffic_manager: TrafficManager = $World/TrafficManager
 var _district_runtime: DistrictRuntime
+var _construction_intent_gateway: ConstructionIntentGateway
 var _manual_door_authority: ManualDoorAuthority
 var _initial_snapshot: ResolvedDistrictSnapshot
 var _projection_coordinator: ProjectionCoordinator
@@ -64,6 +66,7 @@ func _ready() -> void:
 	_initialize_arrivals()
 	_initialize_calendar_delivery()
 	_initialize_zone_tool()
+	_initialize_construction_tool()
 	_initialize_walls()
 	_initialize_save_manager()
 	if not _composition_is_complete():
@@ -185,6 +188,8 @@ func _composition_is_complete() -> bool:
 		and _district_runtime != null
 		and _district_runtime.has_session()
 		and _manual_door_authority != null
+		and _construction_intent_gateway != null
+		and _construction_tool != null
 		and _time_manager != null
 		and _projection_coordinator != null
 		and _public_realm_projection != null
@@ -240,8 +245,6 @@ func _initialize_district_runtime() -> void:
 	var manual_door_script: Script = load("res://scripts/walls/manual_door_authority.gd")
 	_manual_door_authority = manual_door_script.new() as ManualDoorAuthority
 	_manual_door_authority.configure(_district_runtime, _zone_manager)
-	if not _district_runtime.district_delta_committed.is_connected(_on_district_delta_committed):
-		_district_runtime.district_delta_committed.connect(_on_district_delta_committed)
 	_traversal_topology_source = load("res://scripts/district/district_traversal_topology_source.gd").new() as DistrictTraversalTopologySource
 	_traversal_topology_source.configure(_zone_manager)
 
@@ -550,6 +553,8 @@ func _initialize_service_proxies() -> void:
 		_tenant_manager.tenant_released.connect(_on_tenant_proxy_source_changed)
 	if not _public_realm_projection.public_realm_rebuilt.is_connected(_on_public_realm_proxy_source_changed):
 		_public_realm_projection.public_realm_rebuilt.connect(_on_public_realm_proxy_source_changed)
+	if not _public_realm_projection.pedestrian_graph_delta_published.is_connected(_on_public_realm_graph_delta):
+		_public_realm_projection.pedestrian_graph_delta_published.connect(_on_public_realm_graph_delta)
 	if not EventBus.zone_created.is_connected(_on_proxy_zone_created):
 		EventBus.zone_created.connect(_on_proxy_zone_created)
 	if not EventBus.zone_modified.is_connected(_on_proxy_zone_modified):
@@ -566,6 +571,10 @@ func _on_tenant_proxy_source_changed(_tenant_id: String, _zone_id: String, _parc
 
 
 func _on_public_realm_proxy_source_changed(_manifest: Dictionary) -> void:
+	_refresh_service_proxy_snapshot()
+
+
+func _on_public_realm_graph_delta(_delta: Dictionary) -> void:
 	_refresh_service_proxy_snapshot()
 
 
@@ -682,23 +691,48 @@ func _initialize_zone_tool() -> void:
 		_projection_coordinator,
 		_get_initial_floor_address(),
 		_get_initial_projection_plot_id(),
-		_get_initial_floor_address().get("floor_id", "G")
+		"G"
 	)
+	_zone_tool.configure_district_runtime(_district_runtime)
 	_zone_tool.is_active = false
 	_zone_tool.active_zone_type = ZoneData.ZONE_TYPE_NAMES[0]  # Retail by default.
 
 	print("MainGame: ZoneTool initialized — idle until a zone type is chosen.")
 
 
-# ── Walls ──────────────────────────────────────────────────────────────
-
-func _on_district_delta_committed(envelope: Dictionary) -> void:
-	if String(envelope.get("delta", {}).get("operation", "")) != DistrictRuntime.OP_SET_MANUAL_DOOR:
+func _initialize_construction_tool() -> void:
+	if _construction_tool == null or _district_runtime == null or _projection_coordinator == null:
+		push_error("MainGame: ConstructionTool dependencies are required.")
 		return
-	var projection_result: Dictionary = _rebuild_loaded_projections()
-	if not bool(projection_result.get("valid", false)):
-		push_warning("MainGame: manual-door projection refresh failed: %s" % projection_result.get("diagnostics", []))
+	var game_ui: GameUI = $GameUI as GameUI
+	if game_ui == null:
+		push_error("MainGame: GameUI is required for construction intent routing.")
+		return
+	_construction_intent_gateway = load("res://scripts/construction/construction_intent_gateway.gd").new() as ConstructionIntentGateway
+	var gateway_setup: Dictionary = _construction_intent_gateway.initialize(_district_runtime)
+	if not bool(gateway_setup.get("valid", false)):
+		push_error("MainGame: Construction intent gateway initialization failed: %s" % gateway_setup.get("diagnostics", []))
+		_construction_intent_gateway = null
+		return
+	if not game_ui.register_intent_owner(ConstructionIntentGateway.OWNER_ID, _construction_intent_gateway):
+		push_error("MainGame: Construction intent owner registration failed.")
+		_construction_intent_gateway = null
+		return
+	var tool_setup: Dictionary = _construction_tool.configure(
+		_district_runtime,
+		_projection_coordinator,
+		game_ui,
+		_get_initial_floor_address(),
+	)
+	if not bool(tool_setup.get("valid", false)):
+		push_error("MainGame: ConstructionTool initialization failed: %s" % tool_setup.get("diagnostics", []))
+		_construction_intent_gateway = null
+		return
+	_construction_tool.deactivate()
+	print("MainGame: ConstructionTool initialized — ground acquisition and corridors available through Build.")
 
+
+# ── Walls ──────────────────────────────────────────────────────────────
 
 func _on_road_graph_published(snapshot: RoadGraphSnapshot) -> void:
 	if _traffic_manager == null or snapshot == null:

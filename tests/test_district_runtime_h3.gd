@@ -449,23 +449,24 @@ func _test_atomic_rejection_and_fault_isolation() -> void:
 	_economy.fail_reserve = false
 	_assert(not bool(reserve_failure.get("valid", false)) and _has_code(reserve_failure.get("diagnostics", []), "FAKE_RESERVE_FAILED"), "economy reservation rejection is observable as diagnostics")
 	_assert(_runtime.get_revision() == 4 and _runtime.get_journal().get_entry_count() == 4, "economy rejection leaves district and journal unchanged")
+	var zone_call_count: int = _zone.calls.size()
 	_zone.mutate_revision_on_prepare = true
-	var stale_zone: Dictionary = _runtime.commit_transaction({"operation": "ACQUIRE_SPACE", "runtime_plot_id": plot["id"], "floor_id": floor["id"], "elevation": 0, "cells": [next_cell], "expected_district_revision": 4})
+	var acquired_without_zone: Dictionary = _runtime.commit_transaction({"operation": "ACQUIRE_SPACE", "runtime_plot_id": plot["id"], "floor_id": floor["id"], "elevation": 0, "cells": [next_cell], "expected_district_revision": 4})
 	_zone.mutate_revision_on_prepare = false
-	_assert(not bool(stale_zone.get("valid", false)) and _has_code(stale_zone.get("diagnostics", []), "STALE_ZONE_REVISION"), "zone revision drift rejects before authority swap")
-	_assert(_runtime.get_revision() == 4 and _runtime.get_journal().get_entry_count() == 4, "revision rejection leaves sparse state unchanged")
+	_assert(bool(acquired_without_zone.get("valid", false)), "space acquisition commits through the approved Zone no-op path")
+	_assert(_zone.calls.size() == zone_call_count and _zone.revision == 1, "Zone no-op acquisition bypasses Zone prepare and revision coupling")
 	var source: Dictionary = data["arrival_source_attachments"][0]
 	_runtime.subscribe_committed(Callable(self, "_on_fault_subscriber"))
 	_runtime.subscribe_committed(Callable(self, "_on_second_subscriber"))
-	var source_commit: Dictionary = _runtime.commit_transaction({"operation": "SET_SOURCE_ENABLED", "arrival_source_id": source["authored_id"], "enabled": false, "expected_district_revision": 4})
+	var source_commit: Dictionary = _runtime.commit_transaction({"operation": "SET_SOURCE_ENABLED", "arrival_source_id": source["authored_id"], "enabled": false, "expected_district_revision": 5})
 	_assert(bool(source_commit.get("valid", false)), "source state mutation commits through the same coordinator")
-	_assert(_runtime.get_revision() == 5 and _runtime.get_journal().get_entry_count() == 5, "source mutation appends one complete envelope")
+	_assert(_runtime.get_revision() == 6 and _runtime.get_journal().get_entry_count() == 6, "source mutation appends one complete envelope")
 	_assert(_fault_subscriber_called and _second_subscriber_called and source_commit.get("subscriber_diagnostics", []).size() == 1, "subscriber faults are isolated without suppressing ordered fan-out")
 	_runtime.get_journal().append_preflight_enabled = false
-	var preflight_failure: Dictionary = _runtime.commit_transaction({"operation": "DEMOLISH_FIXED_OCCUPANT", "fixed_occupant_id": data["fixed_occupants"][0]["id"], "expected_district_revision": 5})
+	var preflight_failure: Dictionary = _runtime.commit_transaction({"operation": "DEMOLISH_FIXED_OCCUPANT", "fixed_occupant_id": data["fixed_occupants"][0]["id"], "expected_district_revision": 6})
 	_runtime.get_journal().append_preflight_enabled = true
 	_assert(not bool(preflight_failure.get("valid", false)) and _has_code(preflight_failure.get("diagnostics", []), "JOURNAL_PREFLIGHT_FAILED"), "journal preflight rejects before the commit point")
-	_assert(_runtime.get_revision() == 5 and _runtime.get_journal().get_entry_count() == 5, "journal preflight failure leaves authority references unchanged")
+	_assert(_runtime.get_revision() == 6 and _runtime.get_journal().get_entry_count() == 6, "journal preflight failure leaves authority references unchanged")
 
 
 func _test_sparse_state_boundary() -> void:

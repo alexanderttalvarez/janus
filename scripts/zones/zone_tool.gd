@@ -56,6 +56,7 @@ var can_finish: bool = false
 ## Red perimeter feedback for invalid pending geometry.
 var _invalid_perimeter_root: Node3D
 var _projection_coordinator: ProjectionCoordinator
+var _district_runtime: DistrictRuntime
 var _active_floor_address: Dictionary = {}
 var _source_plot_id: String = ""
 var _source_floor_label: String = ""
@@ -71,6 +72,11 @@ func configure_projection(
 	_active_floor_address = floor_address.duplicate(true)
 	_source_plot_id = source_plot_id
 	_source_floor_label = source_floor_label
+
+
+## Inject the District Runtime used for read-only spatial eligibility checks.
+func configure_district_runtime(runtime: DistrictRuntime) -> void:
+	_district_runtime = runtime
 
 
 func _ready() -> void:
@@ -395,14 +401,18 @@ func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
 	if tile_pos.x < 0 or tile_pos.y < 0:
 		return false
 	var zm := _get_zone_manager()
-	if zm == null:
+	if zm == null or _district_runtime == null:
+		return false
+	var spatial_snapshot: DistrictZoneSpatialSnapshot = _district_runtime.get_zone_spatial_snapshot(_active_floor_address)
+	if spatial_snapshot == null:
 		return false
 	return zm.can_paint_tile_for_tool(
 		tile_pos,
 		_preview_floor(),
 		_preview_plot_id(),
 		_preview_zone_type(),
-		_none_mode
+		_none_mode,
+		spatial_snapshot
 	)
 
 

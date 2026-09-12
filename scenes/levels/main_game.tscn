@@ -19,6 +19,7 @@
 [ext_resource type="Script" uid="uid://bdbijwelo76ye" path="res://scripts/simulation/synergy_manager.gd" id="13_synergy_manager"]
 [ext_resource type="PackedScene" uid="uid://bh40r23u87png" path="res://scenes/ui/game_ui.tscn" id="14_game_ui"]
 [ext_resource type="Script" uid="uid://b147v2i3hemjr" path="res://scripts/walls/door_tool.gd" id="19_8c1vm"]
+[ext_resource type="Script" uid="uid://d2gnmb45ovjfr" path="res://scripts/construction/construction_tool.gd" id="20_mwvdt"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_wg31f"]
 size = Vector3(25, 0.1, 5)
@@ -354,3 +355,6 @@ shadow_enabled = true
 
 [node name="DoorTool" type="Node" parent="." unique_id=1180338646]
 script = ExtResource("19_8c1vm")
+
+[node name="ConstructionTool" type="Node" parent="." unique_id=1717839006]
+script = ExtResource("20_mwvdt")

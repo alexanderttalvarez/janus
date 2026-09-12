@@ -7,7 +7,7 @@ signal parcel_labels_visibility_changed(is_visible: bool)
 signal zone_labels_visibility_changed(is_visible: bool)
 
 
-var god_mode: bool = false
+var god_mode: bool = not OS.has_feature("release")
 var infinite_money: bool = false
 var instant_construction: bool = false
 var time_warp: bool = false

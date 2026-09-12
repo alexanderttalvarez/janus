@@ -139,17 +139,18 @@ func _test_runtime_transactions() -> void:
 	var stale_confirm: Dictionary = gateway.confirm(stale_preview)
 	_assert(not bool(stale_confirm.get("valid", false)) and _has_code(stale_confirm.get("diagnostics", []), "STALE_DISTRICT_REVISION"), "confirm revalidates a stale preview and leaves committed state unchanged")
 
+	var before_zone_noop_balance: int = economy.balance
+	zone.reject = true
+	var zone_noop_commit: Dictionary = gateway.confirm(_intent("zone_noop", "corridor", runtime.get_revision(), [_cell(floor_ground, 4, 1)]))
+	zone.reject = false
+	_assert(bool(zone_noop_commit.get("valid", false)), "corridor construction uses the approved Zone no-op path")
+	_assert(economy.balance == before_zone_noop_balance and runtime.get_state()["plot_states"][0]["floor_states"][0].get("explicit_circulation_cells", []).has([4, 1]), "Zone no-op corridor commit preserves zero-cost atomic construction")
+
 	var before_failure_state: Dictionary = runtime.get_state()
 	var before_failure_balance: int = economy.balance
-	zone.reject = true
-	var zone_failure: Dictionary = gateway.confirm(_intent("zone_failure", "corridor", runtime.get_revision(), [_cell(floor_ground, 4, 1)]))
-	zone.reject = false
-	_assert(not bool(zone_failure.get("valid", false)) and _has_code(zone_failure.get("diagnostics", []), "ZONE_CONSTRUCTION_REJECTED"), "Zone rejection is atomic and returns construction diagnostics")
-	_assert(runtime.get_state() == before_failure_state and economy.balance == before_failure_balance, "Zone rejection leaves District and Economy committed values unchanged")
-
 	var journal: DistrictCommitJournal = runtime.get_journal()
 	journal.append_preflight_enabled = false
-	var append_failure: Dictionary = gateway.confirm(_intent("append_failure", "corridor", runtime.get_revision(), [_cell(floor_ground, 4, 1)]))
+	var append_failure: Dictionary = gateway.confirm(_intent("append_failure", "corridor", runtime.get_revision(), [_cell(floor_ground, 5, 1)]))
 	journal.append_preflight_enabled = true
 	_assert(not bool(append_failure.get("valid", false)) and _has_code(append_failure.get("diagnostics", []), "JOURNAL_PREFLIGHT_FAILED"), "append preflight failure occurs before the construction commit point")
 	_assert(runtime.get_state() == before_failure_state and economy.balance == before_failure_balance, "append preflight failure restores all committed authority values")

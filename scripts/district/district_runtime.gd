@@ -640,23 +640,29 @@ func _apply_acquire_space(intent: Dictionary, state: Dictionary, policy: Diction
 	var cells: Array = intent.get("cells", [])
 	if floor.is_empty() or String(floor.get("plot_id", "")) != plot_id or int(floor.get("elevation", 999)) != elevation:
 		diagnostics.append({"code": "FLOOR_ADDRESS_INVALID", "message": "explicit floor address is invalid"})
-	if cells.size() != 1:
-		diagnostics.append({"code": "SEQUENTIAL_ACQUISITION_REQUIRED", "message": "vertical space is acquired one tile at a time"})
+	if cells.is_empty():
+		diagnostics.append({"code": "ACQUISITION_CELLS_REQUIRED", "message": "space acquisition requires at least one target cell"})
 	var physical_range: Dictionary = _physical_range_for_floor(floor, plot_id)
 	if elevation < int(physical_range.get("minimum_elevation", -5)) or elevation > int(physical_range.get("maximum_elevation", 9)):
 		diagnostics.append({"code": "PHYSICAL_CAP", "message": "requested elevation exceeds the resolved physical Plot cap"})
 	if not (policy.get("elevation_eligibility", []) as Array).has(elevation):
 		diagnostics.append({"code": "ELEVATION_UNAVAILABLE", "message": "Progression does not permit this elevation"})
 	if diagnostics.is_empty():
-		var cell: Array = cells[0]
 		var floor_state: Dictionary = _floor_state(state, String(intent["floor_id"]), elevation)
-		if _contains_cell(floor_state["acquired_cells"], cell):
-			diagnostics.append({"code": "CELL_ALREADY_ACQUIRED", "message": "cell is already acquired"})
-		elif elevation != 0 and not _cell_acquired_at_adjacent_elevation(state, plot_id, elevation, cell):
-			diagnostics.append({"code": "VERTICAL_SEQUENCE_REQUIRED", "message": "adjacent elevation must be acquired first"})
-		else:
-			floor_state["acquired_cells"].append([int(cell[0]), int(cell[1])])
-			floor_state["acquired_cells"] = _sort_cells(floor_state["acquired_cells"])
+		var acquired_pairs: Array = floor_state["acquired_cells"].duplicate(true)
+		for cell_value: Variant in cells:
+			var cell: Array = cell_value if cell_value is Array else []
+			if cell.size() < 2:
+				diagnostics.append({"code": "ACQUISITION_CELL_INVALID", "message": "each acquisition cell must contain x and y"})
+				continue
+			if _contains_cell(acquired_pairs, cell):
+				diagnostics.append({"code": "CELL_ALREADY_ACQUIRED", "message": "cell is already acquired"})
+			elif elevation != 0 and not _cell_acquired_at_adjacent_elevation(state, plot_id, elevation, cell):
+				diagnostics.append({"code": "VERTICAL_SEQUENCE_REQUIRED", "message": "adjacent elevation must be acquired first"})
+			else:
+				acquired_pairs.append([int(cell[0]), int(cell[1])])
+		if diagnostics.is_empty():
+			floor_state["acquired_cells"] = _sort_cells(acquired_pairs)
 			_upsert_floor_state(state, plot_id, floor_state)
 			delta["affected_ids"].append(String(intent["floor_id"]))
 			delta["kind"] = "space_acquired"
@@ -959,6 +965,8 @@ func _flush_authority_notifications() -> Array[Dictionary]:
 
 
 func _zone_preview(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	if _zone_transaction_is_noop(intent):
+		return {"accepted": true, "preview": null, "district_effects": {}, "diagnostics": []}
 	if _ports == null or _ports.zone == null:
 		return {"accepted": true, "preview": null, "district_effects": {}, "diagnostics": []}
 	var spatial_result: Dictionary = _derive_zone_spatial_snapshot(intent, candidate_state)
@@ -998,6 +1006,12 @@ func _publish_zone_door_access(zone_commit: Dictionary) -> void:
 
 
 func _zone_prepare(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
+	if _zone_transaction_is_noop(intent):
+		return {
+			"accepted": true,
+			"prepare_token": {"kind": "ZONE_NOOP", "operation": String(intent.get("operation", "")), "mutated": false},
+			"diagnostics": [],
+		}
 	if _ports == null or _ports.zone == null:
 		return {"accepted": true, "prepare_token": {}, "diagnostics": []}
 	var base_spatial_result: Dictionary = _derive_zone_spatial_snapshot(intent, candidate_state)
@@ -1120,6 +1134,31 @@ func _zone_effect_cell(value: Variant, intent_cells: Dictionary) -> Dictionary:
 	return {"valid": true, "pair": [int(value["x"]), int(value["y"])]}
 
 
+## Return the current immutable zone-painting spatial context for a floor.
+## This is read-only and keeps tool eligibility checks on the District Runtime path.
+func get_zone_spatial_snapshot(address: Dictionary) -> DistrictZoneSpatialSnapshot:
+	if not has_session() or address.is_empty():
+		return null
+	var runtime_plot_id: String = String(address.get("runtime_plot_id", ""))
+	var floor_id: String = String(address.get("floor_id", ""))
+	if runtime_plot_id.is_empty() or floor_id.is_empty() or not address.has("elevation"):
+		return null
+	var elevation: int = int(address.get("elevation", 0))
+	var floor_label: String = "G" if elevation == 0 else ("F%d" % elevation if elevation > 0 else "B%d" % absi(elevation))
+	var captured: Dictionary = get_state_read()
+	var candidate_state: Dictionary = captured.get("state", {}) as Dictionary
+	var intent: Dictionary = {
+		"operation": OP_PAINT_ZONE,
+		"runtime_plot_id": runtime_plot_id,
+		"floor_id": floor_id,
+		"elevation": elevation,
+		"zone_plot_id": runtime_plot_id,
+		"zone_floor_label": floor_label,
+	}
+	var result: Dictionary = _derive_zone_spatial_snapshot(intent, candidate_state)
+	return result.get("snapshot") as DistrictZoneSpatialSnapshot if bool(result.get("valid", false)) else null
+
+
 func _derive_zone_spatial_snapshot(intent: Dictionary, candidate_state: Dictionary) -> Dictionary:
 	if String(intent.get("operation", "")) != OP_PAINT_ZONE and String(intent.get("operation", "")) != OP_SET_MANUAL_DOOR:
 		return {"valid": true, "snapshot": null, "diagnostics": []}
@@ -1136,15 +1175,29 @@ func _derive_zone_spatial_snapshot(intent: Dictionary, candidate_state: Dictiona
 	)
 
 
-func _zone_commit(prepare_token: Dictionary) -> Dictionary:
+static func _zone_transaction_is_noop(intent: Dictionary) -> bool:
+	var operation: String = String(intent.get("operation", ""))
+	return operation == OP_ACQUIRE_SPACE or (
+		operation == OP_CONSTRUCT
+		and String(intent.get("construction_kind", "")) == "corridor"
+	)
+
+
+func _zone_commit(prepare_result: Dictionary) -> Dictionary:
+	var prepare_token: Dictionary = prepare_result.get("prepare_token", prepare_result)
+	if String(prepare_token.get("kind", "")) == "ZONE_NOOP":
+		return {"accepted": true, "diagnostics": []}
 	if _ports == null or _ports.zone == null:
 		return {"accepted": true, "diagnostics": []}
-	return _ports.zone.commit(prepare_token)
+	return _ports.zone.commit(prepare_result)
 
 
-func _zone_undo(prepare_token: Dictionary) -> void:
-	if _ports != null and _ports.zone != null and not prepare_token.is_empty():
-		_ports.zone.undo(prepare_token)
+func _zone_undo(prepare_result: Dictionary) -> void:
+	var prepare_token: Dictionary = prepare_result.get("prepare_token", prepare_result)
+	if String(prepare_token.get("kind", "")) == "ZONE_NOOP":
+		return
+	if _ports != null and _ports.zone != null and not prepare_result.is_empty():
+		_ports.zone.undo(prepare_result)
 
 
 func _policy_snapshot() -> Dictionary:

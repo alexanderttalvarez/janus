@@ -18,6 +18,7 @@ Start at [Architecture](./_index.md). The [old district blueprint](design_handof
 - [ADR 35](decisions/35_public_band_access_snapshot_and_zone_injection.md) accepts the exact transient H5 `PublicBandAccessSnapshot`, District-to-Zone prospective injection, and current-schema stable public-door provenance. It adds no owner, save root, migration, persisted graph, or implementation evidence.
 - [ADR 36](decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) accepts DistrictState local schema v3 inside unchanged Save V2, the exact transient floor-scoped `DistrictZoneSpatialSnapshot`, and coordinated District/Zone paint transactions. It adds no manager or generalized spatial authority; implementation and new evidence are not asserted.
 - [ADR 37](decisions/37_district_construction_annex_schema.md) corrects ADR 36's accidental exact-root omission by retaining the Construction H1 annex inside DistrictState v3 without corridor records or an independent concurrency authority. Save V2 and the authority registry remain unchanged; implementation and new evidence are not asserted.
+- [ADR 38](decisions/38_construction_tool_and_affected_scope_invalidation.md) accepts the P03 scene-owned ground acquisition/corridor tool and operation-scoped synchronous District invalidation. It adds no authority or save root; `ACQUIRE_SPACE` performs no H4-H7 or wall rebuild.
 
 ## Decisions
 
@@ -60,6 +61,7 @@ Start at [Architecture](./_index.md). The [old district blueprint](design_handof
 | 35 | Public Band Access Snapshot and Zone Injection | [35_public_band_access_snapshot_and_zone_injection.md](decisions/35_public_band_access_snapshot_and_zone_injection.md) |
 | 36 | District-Zone Spatial Snapshot and Zone Mutation Transaction | [36_district_zone_spatial_snapshot_and_zone_mutation.md](decisions/36_district_zone_spatial_snapshot_and_zone_mutation.md) |
 | 37 | District Construction Annex Schema | [37_district_construction_annex_schema.md](decisions/37_district_construction_annex_schema.md) |
+| 38 | Construction Tool and Affected-Scope District Invalidation | [38_construction_tool_and_affected_scope_invalidation.md](decisions/38_construction_tool_and_affected_scope_invalidation.md) |
 
 ## Pending Decisions
 - Future player-facing production-layout selection policy is intentionally deferred; Decision 29 fixes only the explicit initial layout bootstrap.

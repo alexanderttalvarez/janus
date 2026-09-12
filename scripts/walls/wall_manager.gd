@@ -99,8 +99,20 @@ func configure_production(runtime: DistrictRuntime, floor_address: Dictionary) -
 		_district_runtime.district_delta_committed.connect(_on_district_delta_committed)
 
 
-func _on_district_delta_committed(_envelope: Dictionary) -> void:
-	rebuild()
+static func invalidates_district_operation(operation: String) -> bool:
+	return operation in [
+		DistrictRuntime.OP_CONSTRUCT,
+		DistrictRuntime.OP_DEMOLISH_CONSTRUCTION,
+		DistrictRuntime.OP_DEMOLISH_FIXED_OCCUPANT,
+		DistrictRuntime.OP_PAINT_ZONE,
+		DistrictRuntime.OP_SET_MANUAL_DOOR,
+	]
+
+
+func _on_district_delta_committed(envelope: Dictionary) -> void:
+	var operation: String = String(envelope.get("delta", {}).get("operation", ""))
+	if invalidates_district_operation(operation):
+		rebuild()
 
 
 ## Regenerate all wall meshes from the current district and zone snapshots.

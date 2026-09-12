@@ -6,6 +6,8 @@ extends Control
 @onready var _mode_label: Label = $ModeLabel
 @onready var _buttons: HBoxContainer = $Buttons
 var _painting: bool = false
+var _construction_mode: bool = false
+var _construction_confirm_button: Button
 var _finish_button: Button
 var _remove_button: Button
 var _transit_button: Button
@@ -14,6 +16,15 @@ var _notification_button: Button
 
 
 func _ready() -> void:
+	# Reserve a dedicated status row above the action rail so diagnostics never
+	# cover the world preview or get hidden behind dynamic buttons.
+	set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	offset_top = -80.0
+	offset_bottom = 0.0
+	_mode_label.position = Vector2(8.0, 4.0)
+	_mode_label.size = Vector2(maxf(0.0, size.x - 16.0), 28.0)
+	_buttons.position = Vector2(8.0, 40.0)
+	_buttons.size = Vector2(maxf(0.0, size.x - 16.0), 36.0)
 	GameManager.ui_mode_changed.connect(_on_mode_changed)
 	if GameManager.ui_mode == GameManager.UIMode.OBSERVE:
 		_build_observe_mode()
@@ -25,11 +36,14 @@ func _build_build_mode() -> void:
 	_clear_buttons()
 	_door_mode = false
 	_mode_label.text = "Build"
+	_add_button("Acquire Ground Space", func(): _enter_construction_mode(ConstructionTool.MODE_ACQUIRE))
+	_add_button("Build Corridor", func(): _enter_construction_mode(ConstructionTool.MODE_CORRIDOR))
 	for zone_type: String in ZoneData.ZONE_TYPE_NAMES:
 		_add_button(zone_type, func(): _enter_paint_mode(zone_type))
 	_add_button("Remove", func(): _enter_remove_mode())
 	_add_button("Place Door", func(): _enter_door_mode(false))
 	_add_button("Remove Door", func(): _enter_door_mode(true))
+	_add_button("Back", func(): GameManager.enter_observe_mode())
 
 
 func _build_observe_mode() -> void:
@@ -66,6 +80,7 @@ func _open_notification_log() -> void:
 
 
 func _enter_paint_mode(zone_type: String) -> void:
+	_deactivate_construction_tool()
 	_painting = true
 	GameManager.enter_build_mode()
 	_clear_buttons()
@@ -95,6 +110,67 @@ func _enter_paint_mode(zone_type: String) -> void:
 		var zone_tool := root.get_node_or_null("ZoneTool") as ZoneTool
 		if zone_tool:
 			_finish_button.disabled = not zone_tool.can_finish
+
+
+func _enter_construction_mode(mode: String) -> void:
+	_painting = false
+	_door_mode = false
+	_construction_mode = true
+	_clear_buttons()
+	var root: Node = get_tree().current_scene
+	if root == null:
+		_build_build_mode()
+		return
+	var zone_tool: ZoneTool = root.get_node_or_null("ZoneTool") as ZoneTool
+	if zone_tool != null:
+		zone_tool.cancel()
+		zone_tool.is_active = false
+	var door_tool: DoorTool = root.get_node_or_null("DoorTool") as DoorTool
+	if door_tool != null:
+		door_tool.set_active(false)
+	var construction_tool: ConstructionTool = root.get_node_or_null("ConstructionTool") as ConstructionTool
+	if construction_tool == null or not construction_tool.activate(mode):
+		_build_build_mode()
+		return
+	if not construction_tool.preview_changed.is_connected(_on_construction_preview_changed):
+		construction_tool.preview_changed.connect(_on_construction_preview_changed)
+	_mode_label.text = construction_tool.get_status_text()
+	_construction_confirm_button = _add_button("Confirm", func(): _confirm_construction())
+	_construction_confirm_button.disabled = true
+	_configure_finish_button(_construction_confirm_button)
+	_add_button("Cancel Selection", func(): construction_tool.clear_selection())
+	_add_button("Back", func(): _exit_construction_mode())
+
+
+func _on_construction_preview_changed(can_confirm: bool, status_text: String, _result: Dictionary) -> void:
+	if not _construction_mode:
+		return
+	_mode_label.text = status_text
+	if _construction_confirm_button != null:
+		_construction_confirm_button.disabled = not can_confirm
+
+
+func _confirm_construction() -> void:
+	var root: Node = get_tree().current_scene
+	var construction_tool: ConstructionTool = root.get_node_or_null("ConstructionTool") as ConstructionTool if root != null else null
+	if construction_tool == null:
+		return
+	var result: Dictionary = construction_tool.confirm_selected()
+	if bool(result.get("valid", result.get("accepted", false))):
+		_exit_construction_mode()
+
+
+func _exit_construction_mode() -> void:
+	_deactivate_construction_tool()
+	_build_build_mode()
+
+
+func _deactivate_construction_tool() -> void:
+	var root: Node = get_tree().current_scene
+	var construction_tool: ConstructionTool = root.get_node_or_null("ConstructionTool") as ConstructionTool if root != null else null
+	if construction_tool != null:
+		construction_tool.deactivate()
+	_construction_mode = false
 
 
 func _enter_remove_mode() -> void:
@@ -179,6 +255,7 @@ func _preview_mode_label(can_finish: bool, status: int) -> String:
 
 
 func _enter_door_mode(remove_mode: bool) -> void:
+	_deactivate_construction_tool()
 	_painting = false
 	_door_mode = true
 	_clear_buttons()
@@ -276,16 +353,18 @@ func _add_button(text: String, callback: Callable) -> Button:
 
 
 func _clear_buttons() -> void:
+	_construction_confirm_button = null
 	_finish_button = null
 	_notification_button = null
 	_remove_button = null
 	_transit_button = null
-	for child in _buttons.get_children():
+	for child: Node in _buttons.get_children():
+		_buttons.remove_child(child)
 		child.queue_free()
 
 
 func _on_mode_changed(mode: String) -> void:
-	if _painting:
+	if _painting or _construction_mode:
 		return
 	match mode:
 		"Build": _build_build_mode()

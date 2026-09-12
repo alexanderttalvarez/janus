@@ -82,7 +82,14 @@ func dispose() -> void:
 	_subscribed = false
 
 
-func _on_district_delta_committed(_envelope: Dictionary) -> void:
+static func invalidates_district_operation(operation: String) -> bool:
+	return operation == DistrictRuntime.OP_ACQUIRE_SECTION or operation == DistrictRuntime.OP_CONVERT_STREET
+
+
+func _on_district_delta_committed(envelope: Dictionary) -> void:
+	var operation: String = String(envelope.get("delta", {}).get("operation", ""))
+	if not invalidates_district_operation(operation):
+		return
 	var result: Dictionary = rebuild()
 	if not bool(result.get("valid", false)):
 		push_error("H7 rebuild rejected committed district delta: %s" % result.get("diagnostics", []))

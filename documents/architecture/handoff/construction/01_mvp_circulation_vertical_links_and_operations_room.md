@@ -14,6 +14,10 @@
 
 **ADR 37 correction, 2026-09-10:** [ADR 37](../../decisions/37_district_construction_annex_schema.md) is binding for the exact DistrictState v3 annex. It retains stairs, elevators, and Operations Rooms as records, represents corridors only through `explicit_circulation_cells`, and defines `construction_revision` as District-owned content versioning rather than a second concurrency authority. Save V2, the authority registry, and evidence status are unchanged.
 
+**ADR 38 production presentation amendment, 2026-09-12:** P03 exposes separate G rectangle acquisition and corridor controls through a scene-owned `ConstructionTool` and the existing `UIIntentGateway`. Each drag is one atomic operation with per-cell pricing summed once. `ACQUIRE_SPACE` is not corridor construction and invalidates no projection/topology/wall consumer. A corridor commit refreshes committed traversal and the configured floor's walls without globally replacing H4 or rebuilding H7 traffic. A god-mode-only, non-persistent status-label overlay is permitted as interim feedback.
+
+For these two P03 actions only, Zone preparation is an explicit transaction no-op: acquisition cannot overlap Zone state, and corridor legality requires acquired unconstructed space that cannot already be zoned. Stairs, elevators, Operations Rooms, and future geometry retain Zone coordination wherever prospective facts can conflict.
+
 Define the smallest authoritative construction program for player-built circulation and Operations Rooms. It accepts typed player intents, provides non-mutating previews, and commits legal placements atomically on acquired, buildable District cells.
 
 The MVP construction catalog is limited to corridors, adjacent-floor stairs, elevator shafts with per-floor lobbies, and Operations Rooms. A successful committed placement updates the owning District state, coordinates with Zone where required, captures an approved Economy charge where applicable, and publishes committed topology/vertical-link facts for Spatial H1. Presentation renders previews and results but never places elements itself.

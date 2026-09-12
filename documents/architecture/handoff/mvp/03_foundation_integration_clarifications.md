@@ -8,6 +8,8 @@ Approved, 2026-09-08 documentation consistency pass under delegated authority. A
 
 ## Purpose
 
+**ADR 38 amendment, 2026-09-11:** The required non-debug build controls use one scene-owned `ConstructionTool` for separate one-cell G `ACQUIRE_SPACE` and corridor preview/confirm transactions through the existing `UIIntentGateway`. District post-commit consumers invalidate by operation scope; `ACQUIRE_SPACE` triggers no H4-H7 or wall rebuild. Protected fan-out remains synchronous.
+
 Close the minimal owner, input, failure and player-action gaps needed to implement the approved foundation without inventing policy or building deferred systems.
 
 ## In-Scope Behavior

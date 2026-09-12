@@ -41,7 +41,7 @@ func initialize(
 	return {"valid": true, "diagnostics": []}
 
 
-func rebuild() -> Dictionary:
+func rebuild(allow_unchanged_graph_revision: bool = false) -> Dictionary:
 	if _district_runtime != null and _public_realm_projection != null and _camera_bounds != null and _gateway_eligibility != null and _public_realm_projection.get_graph_snapshot() != null and _last_built_district_revision == _district_runtime.get_revision() and _last_built_topology_revision == _public_realm_projection.get_graph_snapshot().zone_revision:
 		return {"valid": true, "camera_bounds": _camera_bounds, "gateway_eligibility": _gateway_eligibility, "skipped": true, "diagnostics": []}
 	if _district_runtime == null or not _district_runtime.has_session():
@@ -53,7 +53,8 @@ func rebuild() -> Dictionary:
 	var traversal: DistrictTraversalReadView = _district_runtime.get_traversal_read_view()
 	if graph == null or traversal == null:
 		return {"valid": false, "diagnostics": [{"code": "H5_GRAPH_REQUIRED", "message": "H6 requires the committed H5 pedestrian graph"}]}
-	if graph.definition_fingerprint != snapshot.get_fingerprint() or graph.district_revision != int(state.get("district_revision", -1)) or graph.zone_revision != traversal.zone_revision:
+	var graph_district_matches: bool = graph.district_revision == int(state.get("district_revision", -1))
+	if graph.definition_fingerprint != snapshot.get_fingerprint() or (not graph_district_matches and not allow_unchanged_graph_revision) or graph.zone_revision != traversal.zone_revision:
 		return {"valid": false, "diagnostics": [{"code": "H6_REVISION_MISMATCH", "message": "H5 graph does not match the committed district/topology revisions"}]}
 	var margin_result: Dictionary = _margin_policy.calculate(road_profile, _metrics.grid_unit_size)
 	if not bool(margin_result.get("valid", false)):
@@ -116,8 +117,25 @@ func dispose() -> void:
 	_session_handler = Callable()
 
 
-func _on_district_delta_committed(_envelope: Dictionary) -> void:
-	var result: Dictionary = rebuild()
+static func invalidates_district_operation(operation: String) -> bool:
+	return operation in [
+		DistrictRuntime.OP_ACQUIRE_SECTION,
+		DistrictRuntime.OP_SET_SOURCE_ENABLED,
+		DistrictRuntime.OP_CONVERT_STREET,
+		DistrictRuntime.OP_CONSTRUCT,
+		DistrictRuntime.OP_DEMOLISH_CONSTRUCTION,
+		DistrictRuntime.OP_DEMOLISH_FIXED_OCCUPANT,
+		DistrictRuntime.OP_PAINT_ZONE,
+		DistrictRuntime.OP_SET_MANUAL_DOOR,
+	]
+
+
+func _on_district_delta_committed(envelope: Dictionary) -> void:
+	var operation: String = String(envelope.get("delta", {}).get("operation", ""))
+	if not invalidates_district_operation(operation):
+		return
+	# Source enablement changes gateway eligibility but not H5 graph content.
+	var result: Dictionary = rebuild(operation == DistrictRuntime.OP_SET_SOURCE_ENABLED)
 	if not bool(result.get("valid", false)):
 		push_error("H6 rebuild rejected committed district delta: %s" % result.get("diagnostics", []))
 

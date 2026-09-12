@@ -41,6 +41,26 @@ func get_hud_model() -> Dictionary:
 	return _hud_model.duplicate(true)
 
 
+## Register a presentation intent owner without exposing gateway ownership.
+func register_intent_owner(owner_id: String, owner: Object) -> bool:
+	if _intent_gateway == null or owner_id.is_empty() or owner == null:
+		return false
+	_intent_gateway.register_owner(owner_id, owner)
+	return true
+
+
+func submit_intent_preview(request: Dictionary) -> Dictionary:
+	if _intent_gateway == null:
+		return {"valid": false, "diagnostics": [{"code": "UI_INTENT_GATEWAY_UNAVAILABLE"}]}
+	return _intent_gateway.submit_preview(request)
+
+
+func submit_intent_confirm(request: Dictionary) -> Dictionary:
+	if _intent_gateway == null:
+		return {"valid": false, "diagnostics": [{"code": "UI_INTENT_GATEWAY_UNAVAILABLE"}]}
+	return _intent_gateway.submit_confirm(request)
+
+
 func open_primary_panel(panel_name: String) -> bool:
 	if _presentation_coordinator == null:
 		return false
