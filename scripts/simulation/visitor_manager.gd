@@ -41,6 +41,10 @@ const MAX_VISITORS: int = 200
 
 ## Maximum visible visitor Node3Ds supported by the architecture.
 const MAX_VISIBLE_VISITORS: int = 60
+const PERSISTENCE_SCHEMA_VERSION: int = 2
+const PERSISTENCE_FIELDS: Array[String] = ["schema_version", "visitor_counter", "visitors", "purchase_results", "metrics"]
+const VISITOR_RECORD_FIELDS: Array[String] = ["id", "lifecycle_state", "arrival_source_id", "destination_reference", "purpose", "budget", "needs", "patience", "satisfaction", "floor_level", "location_type"]
+const DURABLE_LIFECYCLE_STATES: Array[String] = ["moving", "moving_to_proxy", "queued", "leaving", "leaving_waiting"]
 
 ## Visitors are dimmed while the player is in Building mode.
 const BUILDING_MODE_VISITOR_OPACITY: float = 0.5
@@ -690,69 +694,142 @@ func _next_id() -> String:
 # ── Serialization ──────────────────────────────────────────────────────
 
 func serialize() -> Dictionary:
-	_sync_data_positions()
-	var data: Array[Dictionary] = []
+	var records: Array[Dictionary] = []
 	for visitor: VisitorData in all_visitors:
-		data.append({
+		records.append({
 			"id": visitor.id,
-			"position": {"x": visitor.position.x, "y": visitor.position.y, "z": visitor.position.z},
+			"lifecycle_state": visitor.current_state if DURABLE_LIFECYCLE_STATES.has(visitor.current_state) else "moving",
+			"arrival_source_id": visitor.arrival_source_id,
+			"destination_reference": visitor.target_proxy_id,
+			"purpose": int(visitor.purpose),
+			"budget": visitor.budget,
+			"needs": visitor.needs.duplicate(true),
+			"patience": visitor.patience,
+			"satisfaction": visitor.satisfaction,
 			"floor_level": visitor.floor_level,
 			"location_type": visitor.location_type,
-			"entry_door_side": visitor.entry_door_side,
-			"arrival_source_id": visitor.arrival_source_id,
-			"waypoint_index": visitor.waypoint_index,
-			"current_state": "moving",
-			"budget": visitor.budget,
-			"satisfaction": visitor.satisfaction,
 		})
+	records.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left["id"]) < String(right["id"]))
 	var purchase_results: Array[Dictionary] = []
 	for result: Dictionary in _purchase_results.values():
 		purchase_results.append(result.duplicate(true))
-	return {"visitors": data, "counter": _visitor_counter, "purchase_results": purchase_results, "metric_day": _metric_day, "daily_arrivals": _daily_arrivals, "finalized_arrival_total": _finalized_arrival_total, "finalized_day_count": _finalized_day_count, "metric_revision": _metric_revision}
+	purchase_results.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return String(left.get("visitor_id", "")) < String(right.get("visitor_id", "")))
+	return {
+		"schema_version": PERSISTENCE_SCHEMA_VERSION,
+		"visitor_counter": _visitor_counter,
+		"visitors": records,
+		"purchase_results": purchase_results,
+		"metrics": {
+			"metric_day": _metric_day,
+			"daily_arrivals": _daily_arrivals,
+			"finalized_arrival_total": _finalized_arrival_total,
+			"finalized_day_count": _finalized_day_count,
+			"metric_revision": _metric_revision,
+		},
+	}
 
 
-func deserialize(data: Dictionary) -> void:
+func validate_serialized(data: Dictionary) -> Dictionary:
+	var diagnostics: Array[Dictionary] = []
+	if data.keys().size() != PERSISTENCE_FIELDS.size():
+		diagnostics.append({"code": "VISITOR_FIELDS_INVALID", "path": "$"})
+	for field: String in PERSISTENCE_FIELDS:
+		if not data.has(field):
+			diagnostics.append({"code": "VISITOR_FIELD_MISSING", "path": "$.%s" % field})
+	if typeof(data.get("schema_version")) != TYPE_INT or int(data.get("schema_version", -1)) != PERSISTENCE_SCHEMA_VERSION:
+		diagnostics.append({"code": "VISITOR_SCHEMA_INVALID", "path": "$.schema_version"})
+	if typeof(data.get("visitor_counter")) != TYPE_INT or int(data.get("visitor_counter", -1)) < 0:
+		diagnostics.append({"code": "VISITOR_COUNTER_INVALID", "path": "$.visitor_counter"})
+	if not data.get("visitors") is Array or not data.get("purchase_results") is Array or not data.get("metrics") is Dictionary:
+		diagnostics.append({"code": "VISITOR_SNAPSHOT_INVALID", "path": "$"})
+		return {"valid": false, "diagnostics": diagnostics}
+	var seen: Dictionary = {}
+	var previous_id: String = ""
+	var maximum_ordinal: int = 0
+	for index: int in range((data["visitors"] as Array).size()):
+		var path: String = "$.visitors[%d]" % index
+		var value: Variant = data["visitors"][index]
+		if not value is Dictionary:
+			diagnostics.append({"code": "VISITOR_RECORD_INVALID", "path": path})
+			continue
+		var record: Dictionary = value
+		if record.keys().size() != VISITOR_RECORD_FIELDS.size():
+			diagnostics.append({"code": "VISITOR_RECORD_FIELDS_INVALID", "path": path})
+		for field: String in VISITOR_RECORD_FIELDS:
+			if not record.has(field):
+				diagnostics.append({"code": "VISITOR_RECORD_FIELD_MISSING", "path": "%s.%s" % [path, field]})
+		var visitor_id: String = String(record.get("id", ""))
+		var ordinal: int = _visitor_ordinal(visitor_id)
+		if ordinal < 1 or seen.has(visitor_id) or (not previous_id.is_empty() and previous_id >= visitor_id):
+			diagnostics.append({"code": "VISITOR_ID_INVALID", "path": "%s.id" % path})
+		seen[visitor_id] = true
+		previous_id = visitor_id
+		maximum_ordinal = maxi(maximum_ordinal, ordinal)
+		if String(record.get("arrival_source_id", "")).is_empty() or not DURABLE_LIFECYCLE_STATES.has(String(record.get("lifecycle_state", ""))):
+			diagnostics.append({"code": "VISITOR_REFERENCE_INVALID", "path": path})
+		if typeof(record.get("destination_reference")) != TYPE_STRING or typeof(record.get("purpose")) != TYPE_INT or not record.get("needs") is Dictionary:
+			diagnostics.append({"code": "VISITOR_RECORD_INVALID", "path": path})
+		for numeric_field: String in ["budget", "patience", "satisfaction"]:
+			if typeof(record.get(numeric_field)) != TYPE_INT:
+				diagnostics.append({"code": "VISITOR_RECORD_INVALID", "path": "%s.%s" % [path, numeric_field]})
+	if (data["visitors"] as Array).size() > MAX_VISITORS or maximum_ordinal > int(data.get("visitor_counter", -1)):
+		diagnostics.append({"code": "VISITOR_COUNTER_INVALID", "path": "$.visitor_counter"})
+	return {"valid": diagnostics.is_empty(), "diagnostics": diagnostics}
+
+
+func deserialize(data: Dictionary) -> Dictionary:
+	var validation: Dictionary = validate_serialized(data)
+	if not bool(validation.get("valid", false)):
+		return validation
 	for visitor: VisitorData in all_visitors:
 		_hide_visitor(visitor)
 	all_visitors.clear()
 	_proxy_queues.clear()
 	_purchase_results.clear()
 	_route_counter = 0
-	_visitor_counter = data.get("counter", 0)
-	_metric_revision = int(data.get("metric_revision", 0))
-	_metric_day = int(data.get("metric_day", 0))
+	_visitor_counter = int(data["visitor_counter"])
+	var metrics: Dictionary = data["metrics"]
+	_metric_revision = int(metrics.get("metric_revision", 0))
+	_metric_day = int(metrics.get("metric_day", 0))
 	_metrics_initialized = true
-	_daily_arrivals = int(data.get("daily_arrivals", 0))
-	_finalized_arrival_total = int(data.get("finalized_arrival_total", 0))
-	_finalized_day_count = int(data.get("finalized_day_count", 0))
-
-	for result_data: Dictionary in data.get("purchase_results", []):
-		if result_data is Dictionary and result_data.has("visitor_id"):
-			_purchase_results[String(result_data["visitor_id"])] = result_data.duplicate(true)
-
-	for visitor_data: Dictionary in data.get("visitors", []):
-		if all_visitors.size() >= MAX_VISITORS:
-			break
+	_daily_arrivals = int(metrics.get("daily_arrivals", 0))
+	_finalized_arrival_total = int(metrics.get("finalized_arrival_total", 0))
+	_finalized_day_count = int(metrics.get("finalized_day_count", 0))
+	for result_data: Dictionary in data["purchase_results"]:
+		_purchase_results[String(result_data.get("visitor_id", ""))] = result_data.duplicate(true)
+	for record: Dictionary in data["visitors"]:
 		var visitor := VisitorData.new()
-		if visitor_data.has("id"):
-			visitor.id = String(visitor_data["id"])
-		else:
-			visitor.id = _next_id()
-		var position_data: Dictionary = visitor_data.get("position", {})
-		visitor.position = Vector3(
-			position_data.get("x", 0.0),
-			position_data.get("y", 0.0),
-			position_data.get("z", 0.0)
-		)
-		visitor.floor_level = visitor_data.get("floor_level", "G")
-		visitor.location_type = "pedestrian_area"
-		visitor.entry_door_side = visitor_data.get("entry_door_side", 0)
-		visitor.arrival_source_id = visitor_data.get("arrival_source_id", "")
-		visitor.waypoint_index = visitor_data.get("waypoint_index", 0)
-		visitor.current_state = "moving"
-		visitor.budget = visitor_data.get("budget", 0)
-		visitor.satisfaction = visitor_data.get("satisfaction", 50)
-		visitor.target_position = _pedestrian_area.get_waypoint(visitor.waypoint_index) if _pedestrian_area else visitor.position
+		visitor.id = String(record["id"])
+		visitor.current_state = String(record["lifecycle_state"])
+		visitor.arrival_source_id = String(record["arrival_source_id"])
+		visitor.target_proxy_id = String(record["destination_reference"])
+		visitor.purpose = int(record["purpose"]) as VisitorData.VisitPurpose
+		visitor.budget = int(record["budget"])
+		visitor.needs = record["needs"].duplicate(true)
+		visitor.patience = int(record["patience"])
+		visitor.satisfaction = int(record["satisfaction"])
+		visitor.floor_level = String(record["floor_level"])
+		visitor.location_type = String(record["location_type"])
 		all_visitors.append(visitor)
+	return {"valid": true, "diagnostics": []}
 
-	_apply_culling()
+
+## Resolve transient positions from committed source projections before publication.
+func prepare_restored_visitors(source_positions: Dictionary) -> Dictionary:
+	for visitor: VisitorData in all_visitors:
+		if not source_positions.has(visitor.arrival_source_id) or not source_positions[visitor.arrival_source_id] is Vector3:
+			return {"valid": false, "diagnostics": [{"code": "VISITOR_ARRIVAL_SOURCE_INVALID", "visitor_id": visitor.id, "arrival_source_id": visitor.arrival_source_id}]}
+		visitor.position = source_positions[visitor.arrival_source_id]
+		visitor.target_position = visitor.position
+		visitor.waypoint_index = 0
+		visitor.route_request_id = ""
+		visitor.route_repath_attempts = 0
+		visitor.queued_proxy_id = ""
+	return {"valid": true, "diagnostics": []}
+
+
+func _visitor_ordinal(visitor_id: String) -> int:
+	if not visitor_id.begins_with("visitor_"):
+		return -1
+	var suffix: String = visitor_id.trim_prefix("visitor_")
+	return int(suffix) if suffix.is_valid_int() and int(suffix) > 0 and visitor_id == "visitor_%d" % int(suffix) else -1

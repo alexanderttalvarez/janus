@@ -5,6 +5,7 @@ extends Node
 
 signal parcel_labels_visibility_changed(is_visible: bool)
 signal zone_labels_visibility_changed(is_visible: bool)
+signal god_mode_changed(is_enabled: bool)
 
 
 var god_mode: bool = not OS.has_feature("release")
@@ -19,6 +20,13 @@ var show_zone_labels: bool = not OS.has_feature("release")
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
+
+
+func set_god_mode(is_enabled: bool) -> void:
+	if god_mode == is_enabled:
+		return
+	god_mode = is_enabled
+	god_mode_changed.emit(god_mode)
 
 
 func set_show_parcel_labels(is_visible: bool) -> void:

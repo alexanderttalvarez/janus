@@ -7,14 +7,22 @@ signal staff_fired(staff_id: String, operations_room_id: String)
 signal staff_cleaning_task_committed(task_id: String, staff_id: String, task_kind: String)
 signal staff_snapshot_changed(snapshot: Dictionary)
 
-const SCHEMA_VERSION: int = 1
+const SCHEMA_VERSION: int = 2
 const MAX_PER_TYPE_PER_ROOM: int = 2
 const STAFF_TYPES: Array[String] = ["Cleaner", "Security"]
 const CLEANING_TASK_KINDS: Array[String] = ["garbage_removal", "bathroom_cleaning"]
+const WAGE_POLICY_ID: String = "element_03_staff_wage"
+const WAGE_POLICY_REVISION: int = 1
+const PERSISTENCE_FIELDS: Array[String] = ["schema_version", "staff_revision", "staff_counter", "rooms", "staff", "pending_payroll", "cleaning_tasks"]
+const ROOM_FIELDS: Array[String] = ["operations_room_id", "building_id", "floor_id", "elevation", "building_floor_ids", "committed_valid_for_staffing", "source_revision"]
+const STAFF_FIELDS: Array[String] = ["staff_id", "staff_type", "operations_room_id", "building_id", "floor_id", "schema_version", "hired_revision"]
+const PAYROLL_FIELDS: Array[String] = ["schema_version", "simulation_week", "staff_revision", "wage_policy_id", "wage_policy_revision", "entries", "provenance"]
+const PAYROLL_ENTRY_FIELDS: Array[String] = ["staff_id", "staff_type", "operations_room_id", "wage_kreds"]
 
 var operations_rooms: Dictionary = {}
 var all_staff: Array[Dictionary] = []
 var cleaning_tasks: Array[Dictionary] = []
+var pending_payroll: Array[Dictionary] = []
 var authority_revision: int = 0
 var _staff_counter: int = 0
 
@@ -137,11 +145,40 @@ func commit_cleaning_task(task: Dictionary) -> Dictionary:
 
 
 func paid_staff_weekly_snapshot(simulation_week: int) -> Dictionary:
+	var capture := capture_due_payroll(simulation_week)
+	return capture.get("snapshot", {}).duplicate(true) if bool(capture.get("valid", false)) else {}
+
+
+func capture_due_payroll(simulation_week: int) -> Dictionary:
+	if simulation_week < 0:
+		return {"valid": false, "diagnostics": [{"code": "PAID_STAFF_SNAPSHOT_INVALID", "path": "$.simulation_week"}]}
+	for due: Dictionary in pending_payroll:
+		if int(due["simulation_week"]) == simulation_week:
+			return {"valid": true, "snapshot": due.duplicate(true), "diagnostics": []}
+	if not pending_payroll.is_empty():
+		return {"valid": false, "diagnostics": [{"code": "PAYROLL_WEEK_BLOCKED", "pending_simulation_week": int(pending_payroll[0]["simulation_week"])}]}
 	var entries: Array[Dictionary] = []
 	for record: Dictionary in all_staff:
 		entries.append({"staff_id": String(record["staff_id"]), "staff_type": String(record["staff_type"]), "operations_room_id": String(record["operations_room_id"]), "wage_kreds": PaidStaffWeeklySnapshot.WAGE_KREDS})
 	entries.sort_custom(func(first: Dictionary, second: Dictionary) -> bool: return String(first["staff_id"]) < String(second["staff_id"]))
-	return {"schema_version": PaidStaffWeeklySnapshot.SCHEMA_VERSION, "simulation_week": simulation_week, "staff_revision": authority_revision, "entries": entries, "provenance": "staff_authority_revision_%d" % authority_revision}
+	var due := {
+		"schema_version": PaidStaffWeeklySnapshot.SCHEMA_VERSION,
+		"simulation_week": simulation_week,
+		"staff_revision": authority_revision,
+		"wage_policy_id": WAGE_POLICY_ID,
+		"wage_policy_revision": WAGE_POLICY_REVISION,
+		"entries": entries,
+		"provenance": "staff_authority_revision_%d" % authority_revision,
+	}
+	pending_payroll.append(due)
+	return {"valid": true, "snapshot": due.duplicate(true), "diagnostics": []}
+
+
+func acknowledge_payroll_settled(simulation_week: int) -> Dictionary:
+	if pending_payroll.is_empty() or int(pending_payroll[0]["simulation_week"]) != simulation_week:
+		return {"valid": false, "diagnostics": [{"code": "PAYROLL_WEEK_NOT_PENDING"}]}
+	pending_payroll.remove_at(0)
+	return {"valid": true, "diagnostics": []}
 
 
 func snapshot() -> Dictionary:
@@ -153,32 +190,184 @@ func snapshot() -> Dictionary:
 
 
 func serialize() -> Dictionary:
-	return {"schema_version": SCHEMA_VERSION, "staff_revision": authority_revision, "staff_counter": _staff_counter, "rooms": operations_rooms.duplicate(true), "staff": all_staff.duplicate(true), "cleaning_tasks": cleaning_tasks.duplicate(true)}
+	return {"schema_version": SCHEMA_VERSION, "staff_revision": authority_revision, "staff_counter": _staff_counter, "rooms": operations_rooms.duplicate(true), "staff": all_staff.duplicate(true), "pending_payroll": pending_payroll.duplicate(true), "cleaning_tasks": []}
 
 
-func deserialize(data: Dictionary) -> void:
-	if int(data.get("schema_version", -1)) != SCHEMA_VERSION or not data.get("rooms", {}) is Dictionary or not data.get("staff", []) is Array:
-		return
-	operations_rooms = data["rooms"].duplicate(true)
-	var records_valid: bool = true
+func validate_serialized(data: Dictionary) -> Dictionary:
+	var diagnostics: Array[Dictionary] = []
+	_validate_exact_fields(data, PERSISTENCE_FIELDS, "$", diagnostics)
+	if not _is_json_integer(data.get("schema_version"), SCHEMA_VERSION) or int(data.get("schema_version", -1)) != SCHEMA_VERSION:
+		diagnostics.append({"code": "STAFF_SCHEMA_INVALID", "path": "$.schema_version"})
+	if not _is_json_integer(data.get("staff_revision"), 0):
+		diagnostics.append({"code": "STAFF_REVISION_INVALID", "path": "$.staff_revision"})
+	if not _is_json_integer(data.get("staff_counter"), 0):
+		diagnostics.append({"code": "STAFF_COUNTER_INVALID", "path": "$.staff_counter"})
+	if not data.get("rooms") is Dictionary:
+		diagnostics.append({"code": "STAFF_ROOMS_INVALID", "path": "$.rooms"})
+	if not data.get("staff") is Array:
+		diagnostics.append({"code": "STAFF_RECORD_INVALID", "path": "$.staff"})
+	if not data.get("pending_payroll") is Array:
+		diagnostics.append({"code": "STAFF_PAYROLL_INVALID", "path": "$.pending_payroll"})
+	if not data.get("cleaning_tasks") is Array or not (data.get("cleaning_tasks", []) as Array).is_empty():
+		diagnostics.append({"code": "STAFF_TASKS_NOT_SUPPORTED", "path": "$.cleaning_tasks"})
+	if not diagnostics.is_empty():
+		return {"valid": false, "diagnostics": diagnostics}
+	var rooms: Dictionary = data["rooms"]
+	for room_key: Variant in rooms:
+		var room_path := "$.rooms.%s" % String(room_key)
+		if typeof(room_key) != TYPE_STRING or not rooms[room_key] is Dictionary:
+			diagnostics.append({"code": "STAFF_ROOM_INVALID", "path": room_path})
+			continue
+		var room: Dictionary = rooms[room_key]
+		_validate_exact_fields(room, ROOM_FIELDS, room_path, diagnostics)
+		if String(room_key).is_empty() or String(room.get("operations_room_id", "")) != String(room_key) or String(room.get("building_id", "")).is_empty() or String(room.get("floor_id", "")).is_empty():
+			diagnostics.append({"code": "STAFF_ROOM_ID_INVALID", "path": room_path})
+		if not _is_json_integer(room.get("elevation")) or not _is_json_integer(room.get("source_revision"), 0) or typeof(room.get("committed_valid_for_staffing")) != TYPE_BOOL or not bool(room.get("committed_valid_for_staffing", false)):
+			diagnostics.append({"code": "STAFF_ROOM_REVISION_INVALID", "path": room_path})
+		if not room.get("building_floor_ids") is Dictionary:
+			diagnostics.append({"code": "STAFF_ROOM_FLOORS_INVALID", "path": "%s.building_floor_ids" % room_path})
+		else:
+			var building_floor_ids: Dictionary = room["building_floor_ids"]
+			for elevation_key: Variant in building_floor_ids:
+				var floor_value: Variant = building_floor_ids[elevation_key]
+				if not str(elevation_key).is_valid_int() or typeof(floor_value) != TYPE_STRING or str(floor_value).is_empty():
+					diagnostics.append({"code": "STAFF_ROOM_FLOORS_INVALID", "path": "%s.building_floor_ids" % room_path})
+	var staff_records: Array = data["staff"]
+	var seen_staff: Dictionary = {}
+	var counts: Dictionary = {}
+	var previous_staff_id: String = ""
+	var max_staff_ordinal: int = 0
+	for index: int in range(staff_records.size()):
+		var record_path := "$.staff[%d]" % index
+		if not staff_records[index] is Dictionary:
+			diagnostics.append({"code": "STAFF_RECORD_INVALID", "path": record_path})
+			continue
+		var record: Dictionary = staff_records[index]
+		_validate_exact_fields(record, STAFF_FIELDS, record_path, diagnostics)
+		var staff_id := String(record.get("staff_id", ""))
+		var ordinal := _stable_ordinal(staff_id, "staff_")
+		if ordinal < 1 or seen_staff.has(staff_id) or (not previous_staff_id.is_empty() and previous_staff_id >= staff_id):
+			diagnostics.append({"code": "STAFF_ID_INVALID", "path": "%s.staff_id" % record_path})
+		seen_staff[staff_id] = true
+		previous_staff_id = staff_id
+		max_staff_ordinal = maxi(max_staff_ordinal, ordinal)
+		var room_id := String(record.get("operations_room_id", ""))
+		var room: Dictionary = rooms.get(room_id, {})
+		if room.is_empty() or String(record.get("building_id", "")) != String(room.get("building_id", "")) or String(record.get("floor_id", "")) != String(room.get("floor_id", "")):
+			diagnostics.append({"code": "STAFF_REFERENCE_INVALID", "path": record_path})
+		if not STAFF_TYPES.has(String(record.get("staff_type", ""))) or not _is_json_integer(record.get("schema_version"), SCHEMA_VERSION) or int(record.get("schema_version", -1)) != SCHEMA_VERSION or not _is_json_integer(record.get("hired_revision"), 1) or int(record.get("hired_revision", -1)) > int(data["staff_revision"]):
+			diagnostics.append({"code": "STAFF_RECORD_INVALID", "path": record_path})
+		var count_key := "%s|%s" % [room_id, String(record.get("staff_type", ""))]
+		counts[count_key] = int(counts.get(count_key, 0)) + 1
+		if int(counts[count_key]) > MAX_PER_TYPE_PER_ROOM:
+			diagnostics.append({"code": "STAFF_CAPACITY_INVALID", "path": record_path})
+	if max_staff_ordinal > int(data["staff_counter"]):
+		diagnostics.append({"code": "STAFF_COUNTER_INVALID", "path": "$.staff_counter"})
+	_validate_pending_payroll(data["pending_payroll"], rooms, int(data["staff_revision"]), int(data["staff_counter"]), diagnostics)
+	return {"valid": diagnostics.is_empty(), "diagnostics": diagnostics}
+
+
+func deserialize(data: Dictionary) -> Dictionary:
+	var validation := validate_serialized(data)
+	if not bool(validation["valid"]):
+		return validation
+	operations_rooms.clear()
+	for room_id: String in data["rooms"]:
+		var room: Dictionary = data["rooms"][room_id].duplicate(true)
+		room["elevation"] = int(room["elevation"])
+		room["source_revision"] = int(room["source_revision"])
+		operations_rooms[room_id] = room
 	all_staff.clear()
-	for record: Variant in data["staff"]:
-		if not record is Dictionary:
-			records_valid = false
-			break
-		all_staff.append((record as Dictionary).duplicate(true))
+	for record_value: Dictionary in data["staff"]:
+		var record := record_value.duplicate(true)
+		record["schema_version"] = int(record["schema_version"])
+		record["hired_revision"] = int(record["hired_revision"])
+		all_staff.append(record)
+	pending_payroll.clear()
+	for due_value: Dictionary in data["pending_payroll"]:
+		var due := due_value.duplicate(true)
+		due["schema_version"] = int(due["schema_version"])
+		due["simulation_week"] = int(due["simulation_week"])
+		due["staff_revision"] = int(due["staff_revision"])
+		due["wage_policy_revision"] = int(due["wage_policy_revision"])
+		for entry: Dictionary in due["entries"]:
+			entry["wage_kreds"] = int(entry["wage_kreds"])
+		pending_payroll.append(due)
 	cleaning_tasks.clear()
-	for task: Variant in data.get("cleaning_tasks", []):
-		if not task is Dictionary:
-			records_valid = false
-			break
-		cleaning_tasks.append((task as Dictionary).duplicate(true))
-	_staff_counter = int(data.get("staff_counter", 0))
-	authority_revision = int(data.get("staff_revision", 0))
-	if not records_valid or not _validate_restored_staff():
-		operations_rooms.clear()
-		all_staff.clear()
-		cleaning_tasks.clear()
+	_staff_counter = int(data["staff_counter"])
+	authority_revision = int(data["staff_revision"])
+	return {"valid": true, "diagnostics": []}
+
+
+func _validate_pending_payroll(values: Array, rooms: Dictionary, current_revision: int, staff_counter: int, diagnostics: Array[Dictionary]) -> void:
+	var previous_week: int = -1
+	for index: int in range(values.size()):
+		var payroll_path := "$.pending_payroll[%d]" % index
+		if not values[index] is Dictionary:
+			diagnostics.append({"code": "STAFF_PAYROLL_INVALID", "path": payroll_path})
+			continue
+		var payroll: Dictionary = values[index]
+		_validate_exact_fields(payroll, PAYROLL_FIELDS, payroll_path, diagnostics)
+		var week_valid: bool = _is_json_integer(payroll.get("simulation_week"), 0)
+		var captured_revision_valid: bool = _is_json_integer(payroll.get("staff_revision"), 0) and int(payroll.get("staff_revision", -1)) <= current_revision
+		if not _is_json_integer(payroll.get("schema_version"), PaidStaffWeeklySnapshot.SCHEMA_VERSION) or int(payroll.get("schema_version", -1)) != PaidStaffWeeklySnapshot.SCHEMA_VERSION or not week_valid or not captured_revision_valid:
+			diagnostics.append({"code": "STAFF_PAYROLL_INVALID", "path": payroll_path})
+		if week_valid and int(payroll["simulation_week"]) <= previous_week:
+			diagnostics.append({"code": "STAFF_PAYROLL_ORDER_INVALID", "path": payroll_path})
+		if week_valid:
+			previous_week = int(payroll["simulation_week"])
+		if typeof(payroll.get("wage_policy_id")) != TYPE_STRING or String(payroll.get("wage_policy_id", "")) != WAGE_POLICY_ID or not _is_json_integer(payroll.get("wage_policy_revision"), WAGE_POLICY_REVISION) or int(payroll.get("wage_policy_revision", -1)) != WAGE_POLICY_REVISION:
+			diagnostics.append({"code": "STAFF_PAYROLL_POLICY_INVALID", "path": payroll_path})
+		if not captured_revision_valid or typeof(payroll.get("provenance")) != TYPE_STRING or String(payroll.get("provenance", "")) != "staff_authority_revision_%d" % int(payroll.get("staff_revision", -1)):
+			diagnostics.append({"code": "STAFF_PAYROLL_PROVENANCE_INVALID", "path": payroll_path})
+		if not payroll.get("entries") is Array:
+			diagnostics.append({"code": "STAFF_PAYROLL_INVALID", "path": "%s.entries" % payroll_path})
+			continue
+		var seen_entries: Dictionary = {}
+		var previous_staff_id: String = ""
+		for entry_index: int in range((payroll["entries"] as Array).size()):
+			var entry_path := "%s.entries[%d]" % [payroll_path, entry_index]
+			var entry_value: Variant = payroll["entries"][entry_index]
+			if not entry_value is Dictionary:
+				diagnostics.append({"code": "STAFF_PAYROLL_ENTRY_INVALID", "path": entry_path})
+				continue
+			var entry: Dictionary = entry_value
+			_validate_exact_fields(entry, PAYROLL_ENTRY_FIELDS, entry_path, diagnostics)
+			var staff_id := String(entry.get("staff_id", ""))
+			var ordinal: int = _stable_ordinal(staff_id, "staff_")
+			if ordinal < 1 or ordinal > staff_counter or seen_entries.has(staff_id) or (not previous_staff_id.is_empty() and previous_staff_id >= staff_id):
+				diagnostics.append({"code": "STAFF_PAYROLL_STAFF_ID_INVALID", "path": "%s.staff_id" % entry_path})
+			seen_entries[staff_id] = true
+			previous_staff_id = staff_id
+			if not STAFF_TYPES.has(String(entry.get("staff_type", ""))) or String(entry.get("operations_room_id", "")).is_empty() or not rooms.has(String(entry.get("operations_room_id", ""))) or not _is_json_integer(entry.get("wage_kreds"), PaidStaffWeeklySnapshot.WAGE_KREDS) or int(entry.get("wage_kreds", -1)) != PaidStaffWeeklySnapshot.WAGE_KREDS:
+				diagnostics.append({"code": "STAFF_PAYROLL_ENTRY_INVALID", "path": entry_path})
+
+
+func _validate_exact_fields(value: Dictionary, fields: Array[String], path: String, diagnostics: Array[Dictionary]) -> void:
+	if value.size() != fields.size():
+		diagnostics.append({"code": "STAFF_FIELDS_INVALID", "path": path})
+	for field: String in fields:
+		if not value.has(field):
+			diagnostics.append({"code": "STAFF_FIELD_MISSING", "path": "%s.%s" % [path, field]})
+
+
+func _is_json_integer(value: Variant, minimum: int = -2147483648) -> bool:
+	if typeof(value) == TYPE_INT:
+		return int(value) >= minimum
+	if typeof(value) != TYPE_FLOAT:
+		return false
+	var numeric := float(value)
+	return is_finite(numeric) and numeric == floor(numeric) and numeric >= minimum
+
+
+func _stable_ordinal(stable_id: String, prefix: String) -> int:
+	if not stable_id.begins_with(prefix):
+		return -1
+	var suffix := stable_id.trim_prefix(prefix)
+	if not suffix.is_valid_int():
+		return -1
+	var ordinal := int(suffix)
+	return ordinal if ordinal > 0 and stable_id == "%s%d" % [prefix, ordinal] else -1
 
 
 func _covered_floor_ids(building_id: String, base_elevation: int) -> Array[String]:
@@ -211,20 +400,6 @@ func _staff_by_id(staff_id: String) -> Dictionary:
 		if String(record.get("staff_id", "")) == staff_id:
 			return record
 	return {}
-
-
-func _validate_restored_staff() -> bool:
-	var counts: Dictionary = {}
-	for record: Dictionary in all_staff:
-		var room_id := String(record.get("operations_room_id", ""))
-		var room: Dictionary = operations_rooms.get(room_id, {})
-		if room.is_empty() or not bool(room.get("committed_valid_for_staffing", false)) or String(record.get("building_id", "")) != String(room.get("building_id", "")) or String(record.get("floor_id", "")) != String(room.get("floor_id", "")) or not STAFF_TYPES.has(String(record.get("staff_type", ""))):
-			return false
-		var key := "%s|%s" % [room_id, String(record["staff_type"])]
-		counts[key] = int(counts.get(key, 0)) + 1
-		if counts[key] > MAX_PER_TYPE_PER_ROOM:
-			return false
-	return true
 
 
 static func _sort_staff(first: Dictionary, second: Dictionary) -> bool:

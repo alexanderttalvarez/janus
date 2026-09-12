@@ -83,6 +83,7 @@ func _setup() -> void:
 	var h6_result: Dictionary = _h6.rebuild()
 	_assert(bool(h6_result.get("valid", false)), "H8 builds H6 gateway eligibility")
 	_visitor_manager = VisitorManager.new()
+	_assert(bool(_visitor_manager.configure_projection_metrics(metrics).get("valid", false)), "H8 configures Visitor projection metrics")
 	_coordinator = load("res://scripts/simulation/arrival_coordinator.gd").new() as ArrivalCoordinator
 	_assert(bool(_coordinator.initialize(_runtime, _public_projection.get_graph_snapshot(), h6_result.get("gateway_eligibility"), _visitor_manager, _runtime.get_session_gate()).get("valid", false)), "H8 configures the immediate arrival coordinator")
 	_demand = ArrivalDemandSnapshot.new()
@@ -243,6 +244,8 @@ func _test_exit_selection() -> void:
 	_assert(bool(source_state.get("valid", false)), "H3 source state change commits before exit revalidation")
 	for state: Dictionary in _runtime.get_state().get("arrival_source_states", []):
 		_assert(not state.has("source_revision") and not state.has("concurrency_revision"), "source state exposes no source-specific revision authority")
+	var refreshed_h5: Dictionary = _public_projection.rebuild()
+	_assert(bool(refreshed_h5.get("valid", false)), "H5 snapshot refreshes after committed source state changes")
 	var refreshed_h6: Dictionary = _h6.rebuild()
 	_coordinator.set_snapshots(_public_projection.get_graph_snapshot(), refreshed_h6.get("gateway_eligibility"))
 	var revalidated: Dictionary = _coordinator.revalidate_exit_source(visitor.arrival_source_id)

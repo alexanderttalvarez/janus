@@ -41,6 +41,7 @@ var _session_bootstrap: SessionBootstrapCoordinator
 var _session_gate: SessionMutationGate
 var _authority_initialization_results: Dictionary = {}
 var _projection_initialization_results: Dictionary = {}
+var _published_restore_candidate: SessionRestoreCandidate
 
 
 func _ready() -> void:
@@ -529,14 +530,22 @@ func _initialize_synergy() -> void:
 	if _synergy_manager == null:
 		push_error("MainGame: SynergyManager not found.")
 		return
-
 	_synergy_manager.initialize(_zone_manager)
-
-	# Recalculate synergy when zones change.
-	EventBus.zone_created.connect(func(_z: String, _t: String, _c: int): _synergy_manager.recalculate())
-	EventBus.zone_modified.connect(func(_z: String): _synergy_manager.recalculate())
-
+	if not EventBus.zone_created.is_connected(_on_synergy_zone_created):
+		EventBus.zone_created.connect(_on_synergy_zone_created)
+	if not EventBus.zone_modified.is_connected(_on_synergy_zone_modified):
+		EventBus.zone_modified.connect(_on_synergy_zone_modified)
 	print("MainGame: Synergy system initialized — zone relationships.")
+
+
+func _on_synergy_zone_created(_zone_id: String, _zone_type: String, _tile_count: int) -> void:
+	if _synergy_manager != null:
+		_synergy_manager.recalculate()
+
+
+func _on_synergy_zone_modified(_zone_id: String) -> void:
+	if _synergy_manager != null:
+		_synergy_manager.recalculate()
 
 
 # ── Visitor Service Proxy Composition ─────────────────────────────────
@@ -778,155 +787,380 @@ func _initialize_save_manager() -> void:
 	if _district_runtime == null or not _district_runtime.has_session():
 		push_error("MainGame: SaveManager requires an active District Runtime session.")
 		return
-	SaveManager.configure_runtime(
-		Callable(self, "_serialize_v2_authorities"),
+	var participants: Array[Dictionary] = []
+	for key: String in SaveManager.get_v2_authority_fields():
+		participants.append({
+			"key": key,
+			"export_snapshot": Callable(self, "_export_restore_participant").bind(key),
+			"validate_snapshot": Callable(self, "_validate_restore_participant").bind(key),
+			"import_snapshot": Callable(self, "_import_restore_participant").bind(key),
+			"cross_validate": Callable(self, "_cross_validate_restore_participant").bind(key),
+		})
+	var projections: Array[Dictionary] = [
+		{"key": "district_world", "prepare": Callable(self, "_prepare_candidate_district_world")},
+		{"key": "public_realm_topology", "prepare": Callable(self, "_prepare_candidate_public_realm")},
+		{"key": "camera_gateway", "prepare": Callable(self, "_prepare_candidate_camera_gateway")},
+		{"key": "traffic", "prepare": Callable(self, "_prepare_candidate_traffic")},
+		{"key": "tenant_visitor", "prepare": Callable(self, "_prepare_candidate_tenant_visitor")},
+	]
+	var registry_setup: Dictionary = SaveManager.configure_runtime(
+		participants,
 		Callable(self, "_get_v2_layout_ref"),
-		Callable(self, "_validate_v2_authorities"),
-		Callable(self, "_commit_v2_authorities")
+		Callable(self, "_resolve_restore_layout"),
+		Callable(self, "_create_restore_candidate"),
+		projections,
+		Callable(self, "_publish_restore_candidate"),
 	)
+	if not bool(registry_setup.get("valid", false)):
+		_record_authority_result("save", registry_setup)
+		return
 	var setup: Dictionary = SaveManager.configure_session_boundary(_session_gate, Callable(self, "_session_operations_available"))
 	_record_authority_result("save", setup)
 
 
-func _serialize_v2_authorities() -> Dictionary:
-	return {
-		"district": _district_runtime.get_state() if _district_runtime != null and _district_runtime.has_session() else {},
-		"zone_parcel": _zone_manager.serialize() if _zone_manager != null else {},
-		"tenant": _tenant_manager.serialize() if _tenant_manager != null else {},
-		"visitor": _visitor_manager.serialize() if _visitor_manager != null else {},
-		"economy": _economy_manager.serialize() if _economy_manager != null else {},
-		"progression": _tech_tree_manager.serialize() if _tech_tree_manager != null else {},
-		"prestige": _prestige_manager.serialize() if _prestige_manager != null else {},
-		"staff": _staff_manager.serialize() if _staff_manager != null else {},
-		"synergy": _synergy_manager.serialize() if _synergy_manager != null else {},
-		"time": _time_manager.serialize() if _time_manager != null else {},
-	}
+func _export_restore_participant(key: String) -> Dictionary:
+	match key:
+		"district": return _district_runtime.get_state()
+		"zone_parcel": return _zone_manager.serialize()
+		"economy": return _economy_manager.serialize()
+		"progression": return _tech_tree_manager.serialize()
+		"prestige": return _prestige_manager.serialize()
+		"staff": return _staff_manager.serialize()
+		"synergy": return _synergy_manager.serialize()
+		"tenant": return _tenant_manager.serialize()
+		"visitor": return _visitor_manager.serialize()
+		"time": return _time_manager.serialize()
+	return {}
 
 
 func _get_v2_layout_ref() -> Dictionary:
 	if _district_runtime == null or not _district_runtime.has_session():
 		return {}
 	var snapshot: ResolvedDistrictSnapshot = _district_runtime.get_snapshot()
-	return {
-		"layout_id": snapshot.get_layout_id(),
-		"layout_definition_version": int(snapshot.get_data().get("layout_definition_version", 0)),
-		"definition_fingerprint": snapshot.get_fingerprint(),
-	}
+	return {"layout_id": snapshot.get_layout_id(), "layout_definition_version": int(snapshot.get_data().get("layout_definition_version", 0)), "definition_fingerprint": snapshot.get_fingerprint()}
 
 
-func _validate_v2_authorities(authorities: Dictionary, _layout_ref: Dictionary) -> Dictionary:
-	var required: Dictionary = {
-		"zone_parcel": ["zones", "parcel_counter", "parcel_display_number_counter"],
-		"tenant": ["tenants", "tenant_counter"],
-		"visitor": ["visitors", "counter"],
-		"economy": ["balance", "loans", "loan_counter"],
-		"progression": ["unlocked", "available_points", "total_earned", "selected_plot_ids", "plot_access_grants_earned", "plot_access_grants_consumed", "awarded_milestone_ids"],
-		"prestige": OfficialPrestigeSnapshot.FIELDS,
-		"staff": ["rooms", "staff", "staff_counter"],
-		"synergy": ["zone_scores"],
-		"time": ["sim_time", "visual_time"],
-	}
-	var diagnostics: Array[Dictionary] = []
-	for authority_name: String in SaveManager.get_v2_authority_fields():
-		if not authorities.has(authority_name) or not authorities[authority_name] is Dictionary:
-			diagnostics.append({"code": "AUTHORITY_SNAPSHOT_INVALID", "path": "$.authorities.%s" % authority_name, "message": "authority snapshot must be an object"})
-			continue
-		if not required.has(authority_name):
-			continue
-		var authority: Dictionary = authorities[authority_name]
-		for field: String in required[authority_name]:
-			if not authority.has(field):
-				diagnostics.append({"code": "AUTHORITY_FIELD_MISSING", "path": "$.authorities.%s.%s" % [authority_name, field], "message": "required authority field is missing"})
-	if authorities.get("progression", {}) is Dictionary and _tech_tree_manager != null:
-		var progression_validation: Dictionary = _tech_tree_manager.validate_serialized_state(authorities["progression"])
-		if not bool(progression_validation.get("valid", false)):
-			diagnostics.append_array(progression_validation.get("diagnostics", []))
-	if authorities.get("prestige", {}) is Dictionary and _prestige_manager != null:
-		var prestige_validation: Dictionary = _prestige_manager.validate_serialized_state(authorities["prestige"])
-		if not bool(prestige_validation.get("valid", false)):
-			diagnostics.append_array(prestige_validation.get("diagnostics", []))
-	if _district_runtime == null or not _district_runtime.has_session():
-		diagnostics.append({"code": "DISTRICT_RUNTIME_REQUIRED", "path": "$.authorities.district", "message": "district validation requires an active session"})
-	else:
-		var district_state: Dictionary = authorities.get("district", {})
-		var district_validation: Dictionary = DistrictStateRecords.new().validate(district_state, _district_runtime.get_snapshot())
-		if not bool(district_validation.get("valid", false)):
-			diagnostics.append_array(district_validation.get("diagnostics", []))
-		else:
-			var access_result: Dictionary = PublicBandAccessSnapshot.derive(_district_runtime.get_snapshot(), district_state, int(district_state.get("district_revision", -1)))
-			if not bool(access_result.get("valid", false)):
-				diagnostics.append_array(access_result.get("diagnostics", []))
-			elif authorities.get("zone_parcel", {}) is Dictionary and _zone_manager != null:
-				var zone_validation: Dictionary = _zone_manager.validate_serialized_state(authorities["zone_parcel"], access_result.get("snapshot") as PublicBandAccessSnapshot)
-				if not bool(zone_validation.get("valid", false)):
-					diagnostics.append_array(zone_validation.get("diagnostics", []))
-	return {"valid": diagnostics.is_empty(), "diagnostics": diagnostics}
+func _resolve_restore_layout(layout_ref: Dictionary) -> Dictionary:
+	return _content_registry.validate_layout_ref(layout_ref) if _content_registry != null else {"valid": false, "diagnostics": [{"code": "CONTENT_REGISTRY_NOT_READY"}]}
 
 
-func _commit_v2_authorities(authorities: Dictionary, _layout_ref: Dictionary) -> Dictionary:
-	if _district_runtime == null or not _district_runtime.has_session():
-		return {"valid": false, "diagnostics": [{"code": "DISTRICT_RUNTIME_REQUIRED", "message": "cannot commit without an active District Runtime session"}]}
-	var previous: Dictionary = _serialize_v2_authorities()
-	var applied: Dictionary = _apply_v2_authorities(authorities)
-	if bool(applied.get("valid", false)):
-		return applied
-	_apply_v2_authorities(previous)
-	return applied
+func _create_restore_candidate(resolved_layout: Dictionary) -> SessionRestoreCandidate:
+	var candidate := SessionRestoreCandidate.new()
+	var result: Dictionary = candidate.initialize(resolved_layout)
+	return candidate if bool(result.get("valid", false)) else null
 
 
-func _apply_v2_authorities(authorities: Dictionary) -> Dictionary:
-	var district_load: Dictionary = _district_runtime.replace_session(_district_runtime.get_snapshot(), authorities.get("district", {}))
-	if not bool(district_load.get("valid", false)):
-		return district_load
-	# Import in the fixed Session H2 registry order.
-	_zone_manager.deserialize(authorities["zone_parcel"])
-	_economy_manager.deserialize(authorities["economy"])
-	_tech_tree_manager.deserialize(authorities["progression"], false)
-	var prestige_load: Dictionary = _prestige_manager.deserialize(authorities["prestige"])
-	if not bool(prestige_load.get("valid", false)):
-		return prestige_load
-	_staff_manager.deserialize(authorities["staff"])
-	_synergy_manager.deserialize(authorities["synergy"])
-	_tenant_manager.deserialize(authorities["tenant"])
-	_visitor_manager.deserialize(authorities["visitor"])
-	_time_manager.deserialize(authorities["time"])
-	var loaded_snapshot: OfficialPrestigeSnapshot = _prestige_manager.get_committed_snapshot()
-	_tech_tree_manager.sync_official_tier(
-		loaded_snapshot.get_tier_id(),
-		_prestige_manager.get_mall_level_name(),
-		_prestige_manager.get_mall_level_index(),
-		loaded_snapshot.get_policy_revision()
-	)
-	var projection_result: Dictionary = _rebuild_loaded_projections()
-	if not bool(projection_result.get("valid", false)):
-		return projection_result
-	if _wall_manager != null:
-		_wall_manager.rebuild()
-	_refresh_service_proxy_snapshot()
-	if _parcel_label_renderer:
-		_parcel_label_renderer.hydrate_active_floor()
-	if _zone_label_renderer:
-		_zone_label_renderer.hydrate_active_floor()
+func _validate_restore_participant(snapshot: Dictionary, resolved_layout: Dictionary, key: String) -> Dictionary:
+	var resolved_snapshot: ResolvedDistrictSnapshot = resolved_layout.get("snapshot") as ResolvedDistrictSnapshot
+	match key:
+		"district":
+			return DistrictStateRecords.new().validate(snapshot, resolved_snapshot)
+		"zone_parcel":
+			return {"valid": snapshot.keys().size() == 4 and snapshot.has_all(["zones", "zone_counter", "parcel_counter", "parcel_display_number_counter"]), "diagnostics": [] if snapshot.keys().size() == 4 else [{"code": "ZONE_SNAPSHOT_INVALID"}]}
+		"economy":
+			var fields: Array[String] = ["balance", "loans", "loan_counter", "authority_revision", "economy_policy_revision", "settled_staff_weeks"]
+			return {"valid": snapshot.keys().size() == fields.size() and snapshot.has_all(fields), "diagnostics": [] if snapshot.keys().size() == fields.size() and snapshot.has_all(fields) else [{"code": "ECONOMY_SNAPSHOT_INVALID"}]}
+		"progression":
+			var progression := TechTreeManager.new()
+			var setup: Dictionary = progression.set_policy_catalog(_content_registry.get_progression_policy_catalog())
+			var result: Dictionary = progression.validate_serialized_state(snapshot) if bool(setup.get("valid", false)) else setup
+			progression.free()
+			return result
+		"prestige":
+			var prestige := PrestigeManager.new()
+			var setup: Dictionary = prestige.initialize(String(snapshot.get("calendar_identity", "")), _content_registry.get_prestige_policy())
+			var result: Dictionary = prestige.validate_serialized_state(snapshot) if bool(setup.get("valid", false)) else setup
+			prestige.free()
+			return result
+		"staff":
+			var staff := StaffManager.new()
+			var result: Dictionary = staff.validate_serialized(snapshot)
+			staff.free()
+			return result
+		"synergy":
+			var synergy := SynergyManager.new()
+			var result: Dictionary = synergy.validate_serialized(snapshot)
+			synergy.free()
+			return result
+		"tenant":
+			var tenant_snapshot := TenantAuthoritySnapshot.new()
+			tenant_snapshot.configure(snapshot)
+			return tenant_snapshot.validate()
+		"visitor":
+			var visitor := VisitorManager.new()
+			var result: Dictionary = visitor.validate_serialized(snapshot)
+			visitor.free()
+			return result
+		"time":
+			var valid: bool = snapshot.keys().size() == 2 and snapshot.has_all(["sim_time", "visual_time"]) and (snapshot["sim_time"] is int or snapshot["sim_time"] is float) and (snapshot["visual_time"] is int or snapshot["visual_time"] is float) and float(snapshot["sim_time"]) >= 0.0 and float(snapshot["visual_time"]) >= 0.0
+			return {"valid": valid, "diagnostics": [] if valid else [{"code": "TIME_SNAPSHOT_INVALID"}]}
+	return {"valid": false, "diagnostics": [{"code": "REGISTRY_PARTICIPANT_UNKNOWN"}]}
+
+
+func _import_restore_participant(snapshot: Dictionary, candidate: SessionRestoreCandidate, key: String) -> Dictionary:
+	return candidate.import_authority_snapshot(key, snapshot)
+
+
+func _cross_validate_restore_participant(candidate: SessionRestoreCandidate, key: String) -> Dictionary:
+	if key == "zone_parcel":
+		var district_state: Dictionary = candidate.authority_snapshots["district"]
+		var access: Dictionary = PublicBandAccessSnapshot.derive(candidate.layout_snapshot, district_state, int(district_state.get("district_revision", -1)))
+		if not bool(access.get("valid", false)):
+			return access
+		var zone := ZoneManager.new()
+		var result: Dictionary = zone.validate_serialized_state(candidate.authority_snapshots[key], access.get("snapshot") as PublicBandAccessSnapshot)
+		zone.free()
+		return result
+	if key == "staff":
+		return _validate_candidate_staff_construction(candidate)
+	if key == "visitor":
+		var valid_sources: Dictionary = {}
+		for source: Dictionary in candidate.layout_snapshot.get_data().get("arrival_source_attachments", []):
+			valid_sources[String(source.get("authored_id", ""))] = true
+		for record: Dictionary in candidate.authority_snapshots[key].get("visitors", []):
+			if not valid_sources.has(String(record.get("arrival_source_id", ""))):
+				return {"valid": false, "diagnostics": [{"code": "VISITOR_ARRIVAL_SOURCE_INVALID", "visitor_id": record.get("id", "")}]}
 	return {"valid": true, "diagnostics": []}
 
 
-func _rebuild_loaded_projections() -> Dictionary:
-	if _projection_coordinator != null:
-		var projection_result: Dictionary = _projection_coordinator.rebuild()
-		if not bool(projection_result.get("valid", false)):
-			return projection_result
-	if _public_realm_projection != null:
-		var public_result: Dictionary = _public_realm_projection.rebuild()
-		if not bool(public_result.get("valid", false)):
-			return public_result
+func _validate_candidate_staff_construction(candidate: SessionRestoreCandidate) -> Dictionary:
+	var operation_rooms: Dictionary = {}
+	for record: Dictionary in candidate.authority_snapshots["district"].get("construction_records", []):
+		if String(record.get("kind", "")) == "operations_room":
+			operation_rooms[String(record.get("construction_id", ""))] = record
+	for room_id: String in candidate.authority_snapshots["staff"].get("rooms", {}):
+		var room: Dictionary = candidate.authority_snapshots["staff"]["rooms"][room_id]
+		if not operation_rooms.has(room_id) or String(room.get("building_id", "")) != String(operation_rooms[room_id].get("plot_id", "")):
+			return {"valid": false, "diagnostics": [{"code": "STAFF_CONSTRUCTION_REFERENCE_INVALID", "operations_room_id": room_id}]}
+	return {"valid": true, "diagnostics": []}
+
+
+func _candidate_metrics() -> ProjectionMetrics:
+	var metrics := ProjectionMetrics.new()
+	metrics.identity = bootstrap_config.projection_metrics_identity
+	metrics.revision = bootstrap_config.projection_metrics_revision
+	metrics.grid_unit_size = bootstrap_config.grid_unit_size
+	metrics.floor_height = bootstrap_config.floor_height
+	metrics.origin = bootstrap_config.origin
+	return metrics
+
+
+func _prepare_candidate_district_world(candidate: SessionRestoreCandidate) -> Dictionary:
+	var zone := ZoneManager.new()
+	var economy := EconomyManager.new()
+	var progression := TechTreeManager.new()
+	var prestige := PrestigeManager.new()
+	var staff := StaffManager.new()
+	var synergy := SynergyManager.new()
+	var tenant := TenantManager.new()
+	var visitor := VisitorManager.new()
+	var time := TimeManager.new()
+	var district := DistrictRuntime.new()
+	var setup: Dictionary = {}
+	for pair: Array in [["district", district], ["zone_parcel", zone], ["economy", economy], ["progression", progression], ["prestige", prestige], ["staff", staff], ["synergy", synergy], ["tenant", tenant], ["visitor", visitor], ["time", time]]:
+		setup = candidate.set_authority(String(pair[0]), pair[1])
+		if not bool(setup.get("valid", false)): return setup
+	setup = economy.set_policy_snapshot(_content_registry.get_economy_policy_snapshot())
+	if not bool(setup.get("valid", false)): return setup
+	setup = progression.set_policy_catalog(_content_registry.get_progression_policy_catalog())
+	if not bool(setup.get("valid", false)): return setup
+	setup = prestige.initialize(String(candidate.authority_snapshots["prestige"].get("calendar_identity", "")), _content_registry.get_prestige_policy())
+	if not bool(setup.get("valid", false)): return setup
+	tenant.initialize(zone)
+	economy.initialize(zone, tenant, staff)
+	synergy.initialize(zone)
+	setup = visitor.configure_projection_metrics(_candidate_metrics())
+	if not bool(setup.get("valid", false)): return setup
+	var ports_script: Script = load("res://scripts/district/district_runtime_ports.gd")
+	var ports: DistrictRuntimePorts.DistrictRuntimePortsBundle = ports_script.DistrictRuntimePortsBundle.new()
+	var economy_port: DistrictRuntimePorts.EconomyManagerPort = ports_script.EconomyManagerPort.new()
+	var zone_port: DistrictRuntimePorts.ZoneManagerPort = ports_script.ZoneManagerPort.new()
+	var progression_port: DistrictRuntimePorts.ProgressionManagerPort = ports_script.ProgressionManagerPort.new()
+	economy_port.initialize(economy); zone_port.initialize(zone); progression_port.initialize(progression)
+	setup = ports.initialize(economy_port, zone_port, progression_port)
+	if not bool(setup.get("valid", false)): return setup
+	district.configure_ports(ports)
+	setup = district.configure_session_gate(SessionMutationGate.new())
+	if not bool(setup.get("valid", false)): return setup
+	setup = district.create_session(candidate.layout_snapshot, candidate.authority_snapshots["district"])
+	if not bool(setup.get("valid", false)): return setup
+	zone.deserialize(candidate.authority_snapshots["zone_parcel"])
+	economy.deserialize(candidate.authority_snapshots["economy"])
+	progression.deserialize(candidate.authority_snapshots["progression"], false)
+	setup = prestige.deserialize(candidate.authority_snapshots["prestige"])
+	if not bool(setup.get("valid", false)): return setup
+	setup = staff.deserialize(candidate.authority_snapshots["staff"])
+	if not bool(setup.get("valid", false)): return setup
+	setup = synergy.deserialize(candidate.authority_snapshots["synergy"])
+	if not bool(setup.get("valid", false)): return setup
+	tenant.deserialize(candidate.authority_snapshots["tenant"])
+	setup = visitor.deserialize(candidate.authority_snapshots["visitor"])
+	if not bool(setup.get("valid", false)): return setup
+	time.deserialize(candidate.authority_snapshots["time"])
+	var coordinator := ProjectionCoordinator.new()
+	setup = candidate.set_projection("district_world", coordinator)
+	if not bool(setup.get("valid", false)): return setup
+	setup = coordinator.configure(district, _candidate_metrics())
+	if not bool(setup.get("valid", false)): return setup
+	setup = coordinator.rebuild()
+	if not bool(setup.get("valid", false)): return setup
+	candidate.projection_manifests["district_world"] = setup.get("manifest", {}).duplicate(true)
+	return {"valid": true, "diagnostics": []}
+
+
+func _prepare_candidate_public_realm(candidate: SessionRestoreCandidate) -> Dictionary:
+	var projection := PublicRealmProjection.new()
+	var setup: Dictionary = candidate.set_projection("public_realm_topology", projection)
+	if not bool(setup.get("valid", false)): return setup
+	setup = projection.initialize(candidate.authorities["district"], candidate.projections["district_world"], _candidate_metrics())
+	if not bool(setup.get("valid", false)): return setup
+	var result: Dictionary = projection.rebuild()
+	if not bool(result.get("valid", false)): return result
+	candidate.projection_manifests["public_realm_topology"] = result.get("manifest", {}).duplicate(true)
+	return {"valid": true, "diagnostics": []}
+
+
+func _prepare_candidate_camera_gateway(candidate: SessionRestoreCandidate) -> Dictionary:
+	var projection := CameraGatewayProjection.new()
+	var setup: Dictionary = candidate.set_projection("camera_gateway", projection)
+	if not bool(setup.get("valid", false)): return setup
+	setup = projection.initialize(candidate.authorities["district"], candidate.projections["public_realm_topology"], null, _candidate_metrics())
+	if not bool(setup.get("valid", false)): return setup
+	var result: Dictionary = projection.rebuild()
+	if not bool(result.get("valid", false)): return result
+	candidate.projection_manifests["camera_gateway"] = {"district_revision": candidate.authority_snapshots["district"].get("district_revision", -1)}
+	return {"valid": true, "diagnostics": []}
+
+
+func _prepare_candidate_traffic(candidate: SessionRestoreCandidate) -> Dictionary:
+	var topology := TrafficTopology.new()
+	var setup: Dictionary = candidate.set_projection("traffic", topology)
+	if not bool(setup.get("valid", false)): return setup
+	setup = topology.initialize(candidate.authorities["district"], candidate.projections["public_realm_topology"], _candidate_metrics())
+	if not bool(setup.get("valid", false)): return setup
+	var result: Dictionary = topology.rebuild()
+	if not bool(result.get("valid", false)): return result
+	candidate.projection_manifests["traffic"] = {"graph_revision": topology.get_graph_revision()}
+	return {"valid": true, "diagnostics": []}
+
+
+func _prepare_candidate_tenant_visitor(candidate: SessionRestoreCandidate) -> Dictionary:
+	var prestige: PrestigeManager = candidate.authorities["prestige"]
+	var progression: TechTreeManager = candidate.authorities["progression"]
+	var official: OfficialPrestigeSnapshot = prestige.get_committed_snapshot()
+	var binding: Dictionary = progression.restore_official_tier_source(official.get_tier_id(), prestige.get_mall_level_name(), prestige.get_mall_level_index(), official.get_policy_revision())
+	if not bool(binding.get("valid", false)): return binding
+	var tenant: TenantManager = candidate.authorities["tenant"]
+	var public_realm: PublicRealmProjection = candidate.projections["public_realm_topology"]
+	var proxies: Dictionary = tenant.publish_service_proxy_snapshot(public_realm.get_service_proxy_attachments())
+	if not bool(proxies.get("valid", false)): return proxies
+	var visitor: VisitorManager = candidate.authorities["visitor"]
+	visitor.consume_service_proxies(proxies.get("snapshots", []))
+	var positions: Dictionary = {}
+	for source: Dictionary in candidate.layout_snapshot.get_data().get("arrival_source_attachments", []):
+		var pose: Dictionary = source.get("pose", source.get("gateway_projection", {}).get("baseline_pose", {}))
+		positions[String(source.get("authored_id", ""))] = Vector3(float(pose.get("x4", 0)) / 4.0, float(pose.get("elevation", 0)) * bootstrap_config.floor_height, float(pose.get("z4", 0)) / 4.0)
+	var restored: Dictionary = visitor.prepare_restored_visitors(positions)
+	if not bool(restored.get("valid", false)): return restored
+	return candidate.set_projection("tenant_visitor", RefCounted.new(), {"visitor_count": visitor.get_active_visitor_count(), "proxy_count": proxies.get("snapshots", []).size()})
+
+
+## Publication contains no validation, import, graph construction, or recoverable branch.
+func _publish_restore_candidate(candidate: SessionRestoreCandidate) -> void:
+	var first_publication: bool = _published_restore_candidate == null
+	var retired_nodes: Array[Node] = []
+	var retired_public_realm: PublicRealmProjection
+	var retired_camera_gateway: CameraGatewayProjection
+	if first_publication:
+		retired_nodes = [_district_runtime, _zone_manager, _economy_manager, _tech_tree_manager, _prestige_manager, _staff_manager, _synergy_manager, _tenant_manager, _visitor_manager, _time_manager, _projection_coordinator, _traffic_topology]
+		retired_public_realm = _public_realm_projection
+		retired_camera_gateway = _camera_gateway_projection
+	# Retired camera projections must not clear the newly rebound shared camera.
 	if _camera_gateway_projection != null:
-		var camera_result: Dictionary = _camera_gateway_projection.rebuild()
-		if not bool(camera_result.get("valid", false)):
-			return camera_result
-	if _traffic_topology != null:
-		var traffic_result: Dictionary = _traffic_topology.rebuild()
-		if not bool(traffic_result.get("valid", false)):
-			return traffic_result
+		_camera_gateway_projection._camera_manager = null
+	_district_runtime = candidate.authorities["district"]
+	_zone_manager = candidate.authorities["zone_parcel"]
+	_economy_manager = candidate.authorities["economy"]
+	_tech_tree_manager = candidate.authorities["progression"]
+	_prestige_manager = candidate.authorities["prestige"]
+	_staff_manager = candidate.authorities["staff"]
+	_synergy_manager = candidate.authorities["synergy"]
+	_tenant_manager = candidate.authorities["tenant"]
+	_visitor_manager = candidate.authorities["visitor"]
+	_time_manager = candidate.authorities["time"]
+	_projection_coordinator = candidate.projections["district_world"]
+	_public_realm_projection = candidate.projections["public_realm_topology"]
+	_camera_gateway_projection = candidate.projections["camera_gateway"]
+	_traffic_topology = candidate.projections["traffic"]
+	_initial_snapshot = candidate.layout_snapshot
+	_attach_candidate_node(_district_runtime, self, "DistrictRuntime")
+	_attach_candidate_node(_zone_manager, _world, "ZoneManager")
+	_attach_candidate_node(_economy_manager, $Simulation, "EconomyManager")
+	_attach_candidate_node(_tech_tree_manager, $Simulation, "TechTreeManager")
+	_attach_candidate_node(_prestige_manager, $Simulation, "PrestigeManager")
+	_attach_candidate_node(_staff_manager, $Simulation, "StaffManager")
+	_attach_candidate_node(_synergy_manager, $Simulation, "SynergyManager")
+	_attach_candidate_node(_tenant_manager, $Simulation, "TenantManager")
+	_attach_candidate_node(_visitor_manager, $Simulation, "VisitorManager")
+	_attach_candidate_node(_time_manager, $Simulation, "TimeManager")
+	_attach_candidate_node(_projection_coordinator, _world, "ProjectionCoordinator")
+	_attach_candidate_node(_traffic_topology, _world, "TrafficTopology")
+	_rebind_published_session()
+	_published_restore_candidate = candidate
+	if retired_public_realm != null: retired_public_realm.dispose()
+	if retired_camera_gateway != null: retired_camera_gateway.dispose()
+	for node: Node in retired_nodes:
+		if node != null and is_instance_valid(node) and node.get_parent() != null:
+			node.get_parent().remove_child(node)
+			node.queue_free()
+
+
+func _attach_candidate_node(node: Node, parent: Node, published_name: String) -> void:
+	if parent.has_node(published_name):
+		parent.get_node(published_name).name = "Retired%s" % published_name
+	node.name = published_name
+	if node.get_parent() == null:
+		parent.add_child(node)
+
+
+func _rebind_published_session() -> void:
+	_initialize_construction_tool()
+	_economy_manager.initialize(_zone_manager, _tenant_manager, _staff_manager)
+	_synergy_manager.initialize(_zone_manager)
+	_time_manager.configure_boundary_delivery(_session_gate, Callable(_session_bootstrap, "deliver_boundary"))
+	if not GameManager.speed_changed.is_connected(_time_manager.set_speed): GameManager.speed_changed.connect(_time_manager.set_speed)
+	if not _camera_manager.floor_changed.is_connected(_visitor_manager.on_floor_changed): _camera_manager.floor_changed.connect(_visitor_manager.on_floor_changed)
+	if not _camera_manager.zoomed.is_connected(_visitor_manager.on_zoom_changed): _camera_manager.zoomed.connect(_visitor_manager.on_zoom_changed)
+	if not _prestige_manager.official_tier_changed.is_connected(_on_official_tier_changed): _prestige_manager.official_tier_changed.connect(_on_official_tier_changed)
+	_camera_gateway_projection.initialize(_district_runtime, _public_realm_projection, _camera_manager, _candidate_metrics())
+	_camera_manager.set_camera_bounds_snapshot(_camera_gateway_projection.get_camera_bounds_snapshot())
+	# Rebind floor presentation to the newly published projection before the
+	# loaded event is emitted; otherwise restored floors retain their default
+	# visibility mode instead of the camera's current floor policy.
+	_camera_manager.configure_floor_visibility(_projection_coordinator)
+	_initialize_service_proxies()
+	_initialize_arrivals()
+	_initialize_calendar_delivery()
+	_manual_door_authority.configure(_district_runtime, _zone_manager)
+	_traversal_topology_source.configure(_zone_manager)
+	_zone_tool.configure_district_runtime(_district_runtime)
+	if _wall_manager != null:
+		_wall_manager.configure_production(_district_runtime, _get_initial_floor_address())
+		_wall_manager.rebuild()
+	_parcel_label_renderer.zone_manager = _zone_manager
+	_zone_label_renderer.zone_manager = _zone_manager
+	_parcel_label_renderer.configure_plot_mapping(_get_initial_projection_plot_id(), _get_initial_projection_plot_id())
+	_zone_label_renderer.configure_plot_mapping(_get_initial_projection_plot_id(), _get_initial_projection_plot_id())
+	_parcel_label_renderer.hydrate_active_floor()
+	_zone_label_renderer.hydrate_active_floor()
+
+
+func _rebuild_loaded_projections() -> Dictionary:
+	for projection: Variant in [_projection_coordinator, _public_realm_projection, _camera_gateway_projection, _traffic_topology]:
+		if projection != null:
+			var result: Dictionary = projection.rebuild()
+			if not bool(result.get("valid", false)):
+				return result
 	return {"valid": true, "diagnostics": []}
 
 

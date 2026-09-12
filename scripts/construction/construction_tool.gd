@@ -435,8 +435,8 @@ func _add_status_label(component: Array[Vector2i], is_acquired: bool) -> void:
 	label.outline_size = 2
 	label.outline_modulate = Color(0.05, 0.05, 0.05, 0.2)
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	label.global_position = center + Vector3(0.0, 0.55, 0.0)
 	_status_overlay_root.add_child(label)
+	label.global_position = center + Vector3(0.0, 0.55, 0.0)
 
 
 func _god_mode_active() -> bool:

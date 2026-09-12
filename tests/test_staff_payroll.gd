@@ -17,6 +17,7 @@ func _init() -> void:
 	_assert(economy.balance == 4000, "weekly payroll debits 500 Kreds per eligible employee")
 	economy.on_sim_week_passed(1)
 	_assert(economy.balance == 4000, "replayed week does not debit payroll twice")
+	_assert(bool(staff.acknowledge_payroll_settled(1).get("valid", false)), "coordinated settlement acknowledgement clears the retained due week")
 	staff.fire("staff_1")
 	economy.on_sim_week_passed(2)
 	_assert(economy.balance == 3500, "boundary payroll includes only currently employed staff")

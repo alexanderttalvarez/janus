@@ -110,13 +110,23 @@ func get_district_revision() -> int:
 ## Capture the committed tier facts supplied by PrestigeManager's typed event.
 func sync_official_tier(tier_id: String, tier_name: String, tier_index: int, policy_revision: int) -> void:
 	var source_changed: bool = _official_tier_id != tier_id or _official_policy_revision != policy_revision or _official_tier_name != tier_name or _official_tier_index != tier_index
+	restore_official_tier_source(tier_id, tier_name, tier_index, policy_revision)
+	if source_changed:
+		sync_mall_level(tier_index)
+		progression_changed.emit(get_policy_snapshot())
+
+
+## Bind restored Prestige facts without awarding milestones or notifying observers.
+func restore_official_tier_source(tier_id: String, tier_name: String, tier_index: int, policy_revision: int) -> Dictionary:
+	if _policy_catalog == null or tier_id.is_empty() or policy_revision < 1:
+		return _progression_failure("PROGRESSION_PRESTIGE_SOURCE_INVALID", "restored Prestige source must match approved policy content")
+	if _policy_catalog.get_tier_id(tier_index) != tier_id:
+		return _progression_failure("PROGRESSION_PRESTIGE_SOURCE_INVALID", "restored Prestige tier identity and index do not match")
 	_official_tier_id = tier_id
 	_official_tier_name = tier_name
 	_official_tier_index = tier_index
 	_official_policy_revision = policy_revision
-	if source_changed:
-		sync_mall_level(tier_index)
-		progression_changed.emit(get_policy_snapshot())
+	return {"valid": true, "diagnostics": []}
 
 
 func sync_mall_level(level_index: int) -> void:

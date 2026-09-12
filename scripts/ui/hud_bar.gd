@@ -14,6 +14,7 @@ signal load_requested
 @onready var _camera_label: Label = $CameraLabel
 @onready var _save_button: Button = $SaveLoadButtons/SaveButton
 @onready var _load_button: Button = $SaveLoadButtons/LoadButton
+@onready var _god_mode_button: Button = $GodModeButton
 
 var _presentation_root: GameUI
 var _model: Dictionary = {}
@@ -34,6 +35,9 @@ func _ready() -> void:
 		_on_floor_changed(camera_manager.get_current_floor())
 	_save_button.pressed.connect(func() -> void: save_requested.emit())
 	_load_button.pressed.connect(func() -> void: load_requested.emit())
+	_god_mode_button.pressed.connect(_on_god_mode_button_pressed)
+	DebugManager.god_mode_changed.connect(_on_god_mode_changed)
+	_on_god_mode_changed(DebugManager.god_mode)
 	_money_label.size = Vector2(160.0, 23.0)
 	_visitors_label.position = Vector2(180.0, 8.0)
 	_visitors_label.size = Vector2(180.0, 23.0)
@@ -70,6 +74,15 @@ func set_save_status(success: bool, message: String) -> void:
 func set_load_status(success: bool, message: String) -> void:
 	_load_button.tooltip_text = message
 	_load_button.modulate = Color.WHITE if success else Color(1.0, 0.5, 0.5)
+
+
+func _on_god_mode_button_pressed() -> void:
+	DebugManager.set_god_mode(not DebugManager.god_mode)
+
+
+func _on_god_mode_changed(is_enabled: bool) -> void:
+	_god_mode_button.text = "God: ON" if is_enabled else "God: OFF"
+	_god_mode_button.tooltip_text = "Disable God Mode" if is_enabled else "Enable God Mode"
 
 
 func _on_speed_changed(speed: int) -> void:

@@ -46,7 +46,7 @@ func _test_proxy_contract_and_ordering() -> void:
 
 
 func _test_route_staleness_and_cancellation() -> void:
-	var visitor := _add_visitor("visitor_route")
+	var visitor := _add_visitor("visitor_1")
 	var snapshot: Dictionary = _manager.capture_service_proxy_snapshot(visitor.id)
 	var route: Dictionary = _manager.request_proxy_route(visitor.id, snapshot)
 	_assert(bool(route.get("valid", false)) and visitor.current_state == "moving_to_proxy" and visitor.target_proxy_id == "proxy_a", "proxy route stores stable target and captured revisions")
@@ -59,7 +59,7 @@ func _test_route_staleness_and_cancellation() -> void:
 
 
 func _test_fifo_queue_and_exactly_once_result() -> void:
-	var visitor := _add_visitor("visitor_purchase")
+	var visitor := _add_visitor("visitor_2")
 	var snapshot: Dictionary = _manager.capture_service_proxy_snapshot(visitor.id)
 	_manager.request_proxy_route(visitor.id, snapshot)
 	var queued: Dictionary = _manager.enqueue_service_proxy(visitor.id, "proxy_a")
@@ -77,7 +77,8 @@ func _test_fifo_queue_and_exactly_once_result() -> void:
 
 func _test_metrics_and_persistence() -> void:
 	var arriving := VisitorData.new()
-	arriving.initialize("visitor_metric", "G", Vector3.ZERO)
+	arriving.initialize("visitor_3", "G", Vector3.ZERO)
+	arriving.arrival_source_id = "gateway_east"
 	var prepared: Dictionary = {"visitor": arriving, "visitor_id": arriving.id}
 	_assert(bool(_manager.commit_prepared_visitor(prepared).get("valid", false)), "committed arrivals increment VisitorManager metrics")
 	var before_boundary: Dictionary = _manager.get_metrics_snapshot()
@@ -85,12 +86,13 @@ func _test_metrics_and_persistence() -> void:
 	_manager.on_sim_day_passed(1)
 	var after_boundary: Dictionary = _manager.get_metrics_snapshot()
 	_assert(bool(after_boundary.get("average_available", false)) and int(after_boundary.get("finalized_day_count", 0)) == 1 and is_equal_approx(float(after_boundary.get("daily_average_arrivals", -1.0)), 1.0), "day rollover finalizes the observed daily-arrival average")
+	_manager._visitor_counter = 3
 	var saved: Dictionary = _manager.serialize()
-	_assert(saved.has("purchase_results") and saved.has("finalized_arrival_total") and not saved.has("proxy_queues"), "persistence stores committed history and metric provenance, not transient queues")
+	_assert(saved.has("purchase_results") and saved.has("metrics") and saved["metrics"].has("finalized_arrival_total") and not saved.has("proxy_queues") and not saved["visitors"][0].has("position"), "persistence stores committed history and metric provenance, not transient queues or positions")
 	var restored := VisitorManager.new()
 	restored.deserialize(saved)
 	var restored_metrics: Dictionary = restored.get_metrics_snapshot()
-	_assert(int(restored_metrics.get("daily_arrivals", -1)) == 0 and int(restored_metrics.get("finalized_arrival_total", -1)) == 1 and restored._purchase_results.has("visitor_purchase"), "metrics and committed result history restore without replaying transient work")
+	_assert(int(restored_metrics.get("daily_arrivals", -1)) == 0 and int(restored_metrics.get("finalized_arrival_total", -1)) == 1 and restored._purchase_results.has("visitor_2"), "metrics and committed result history restore without replaying transient work")
 	restored.all_visitors.clear()
 	restored.free()
 
@@ -122,6 +124,7 @@ func _resolve_proxy_anchor(anchor_id: String) -> Dictionary:
 func _add_visitor(visitor_id: String) -> VisitorData:
 	var visitor := VisitorData.new()
 	visitor.initialize(visitor_id, "G", Vector3.ZERO)
+	visitor.arrival_source_id = "gateway_east"
 	_manager.all_visitors.append(visitor)
 	return visitor
 

@@ -102,6 +102,15 @@ layout_mode = 2
 tooltip_text = "Load the district from slot 1"
 text = "Load"
 
+[node name="GodModeButton" type="Button" parent="HUDLayer/HUDBar" unique_id=941464653]
+layout_mode = 0
+offset_left = 1690.0
+offset_top = 4.0
+offset_right = 1800.0
+offset_bottom = 35.0
+tooltip_text = "Toggle God Mode"
+text = "God: ON"
+
 [node name="IsometricCompass" parent="HUDLayer" unique_id=1349840615 instance=ExtResource("3_v1bdg")]
 grow_horizontal = 0
 grow_vertical = 0
