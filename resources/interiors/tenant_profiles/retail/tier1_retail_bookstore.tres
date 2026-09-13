@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://blxbg3sqjb3rp"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_14cx8"]
+
+[resource]
+script = ExtResource("1_14cx8")
+profile_id = "tier1.retail.bookstore"
+theme_id = "retail.bookstore"
+subtype_id = "bookstore"
+zone_type = "Retail"
+operational_profile_id = "tenant_interiors.operational.bookstore"

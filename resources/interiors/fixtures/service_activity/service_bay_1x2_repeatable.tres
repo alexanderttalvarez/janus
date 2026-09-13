@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://byy6lf3dsi6qo"]
+
+[ext_resource type="Resource" uid="uid://q5wr5pvdmna5" path="res://resources/interiors/visuals/display_1x2.tres" id="1_8qn4b"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_jr765"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_pmpth"]
+
+[resource]
+script = ExtResource("2_jr765")
+fixture_id = "tenant_interiors.fixture.service_bay_1x2.repeatable"
+occupied_cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(0, 1)])
+clearance_cells = Array[Vector2i]([Vector2i(1, 0)])
+allowed_rotations = Array[int]([0, 90, 180, 270])
+interaction_face = "EAST"
+tags = Array[String](["service_bay"])
+capacity = 1
+capacity_token = "SERVICE_BAY"
+program_role = 3
+placement_priority = 40
+default_visual = ExtResource("1_8qn4b")

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://ckurs08v1e1du"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_ic1e3"]
+
+[resource]
+script = ExtResource("1_ic1e3")
+profile_id = "tier1.entertainment.cinema"
+theme_id = "entertainment.cinema"
+subtype_id = "cinema"
+zone_type = "Entertainment"
+operational_profile_id = "tenant_interiors.operational.cinema"

@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://f3vcpe6rg4bk"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_qgxyn"]
+
+[resource]
+script = ExtResource("1_qgxyn")
+operational_profile_id = "tenant_interiors.operational.vr_experience"
+subtype_id = "vr_experience"
+zone_type = "Entertainment"
+minimum_area = 12
+core_width = 3
+core_depth = 4
+target_area_min = 12
+target_area_max = 24
+queue_cap = 8
+queue_required = true
+service_policy_id = "tenant_interiors.service.vr_experience"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.reception_1x1",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.vr_2x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.vr_2x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

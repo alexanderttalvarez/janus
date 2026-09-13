@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://btj0oh1uphgqm"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_7a0nb"]
+
+[resource]
+script = ExtResource("1_7a0nb")
+service_policy_id = "tenant_interiors.service.cinema"
+typology = "SCHEDULED_BATCH"
+stages = Array[Dictionary]([{
+"duration_ticks": 6,
+"stage_id": "ACTIVE"
+}])
+cadence_ticks = 8
+turnover_ticks = 1
+queue_cap = 16
+capacity_tokens = Array[String](["BATCH_SEAT"])
+scheduler_mode = "NEXT_BATCH"

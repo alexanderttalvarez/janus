@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://byetjfw5hb0sq"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_c7u8p"]
+
+[resource]
+script = ExtResource("1_c7u8p")
+service_policy_id = "tenant_interiors.service.travel_agency"
+typology = "SERVICE_BAY"
+stages = Array[Dictionary]([{
+"duration_ticks": 6,
+"stage_id": "SERVICE"
+}])
+queue_cap = 4
+capacity_tokens = Array[String](["SERVICE_BAY"])

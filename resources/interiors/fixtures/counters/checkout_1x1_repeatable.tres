@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://c26acqr77cfvx"]
+
+[ext_resource type="Resource" uid="uid://l66dy03mjjpy" path="res://resources/interiors/visuals/counter_1x1.tres" id="1_bcpm7"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_m3mp6"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_ykdpn"]
+
+[resource]
+script = ExtResource("2_m3mp6")
+fixture_id = "tenant_interiors.fixture.checkout_1x1.repeatable"
+allowed_rotations = Array[int]([0, 90, 180, 270])
+interaction_face = "WEST"
+placement_rule = "FRONTAGE"
+tags = Array[String](["checkout"])
+capacity = 1
+capacity_token = "CHECKOUT_STATION"
+program_role = 3
+placement_priority = 40
+default_visual = ExtResource("1_bcpm7")

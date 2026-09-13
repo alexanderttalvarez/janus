@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://4vmcr0iif64a"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_o727u"]
+
+[resource]
+script = ExtResource("1_o727u")
+operational_profile_id = "tenant_interiors.operational.bookstore"
+subtype_id = "bookstore"
+zone_type = "Retail"
+minimum_area = 9
+core_width = 3
+core_depth = 3
+target_area_min = 9
+target_area_max = 18
+queue_cap = 4
+service_policy_id = "tenant_interiors.service.bookstore"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout_1x1.mandatory",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_1x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

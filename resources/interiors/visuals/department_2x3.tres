@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="FixtureVisualDefinition" format=3 uid="uid://dlgnubbv3513f"]
+
+[ext_resource type="PackedScene" uid="uid://d0wxc8vaxiths" path="res://scenes/interiors/fixtures/generic/department_2x3.tscn" id="1_uc4hk"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="2_l6xv7"]
+
+[resource]
+script = ExtResource("2_l6xv7")
+visual_id = "tenant_interiors.visual.department_2x3"
+scene = ExtResource("1_uc4hk")
+envelope_min_millimeters = Vector3i(-950, 0, -1450)
+envelope_max_millimeters = Vector3i(950, 1800, 1450)

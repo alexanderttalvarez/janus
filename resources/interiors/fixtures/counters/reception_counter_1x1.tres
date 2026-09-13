@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://cgkgiod5ahoef"]
+
+[ext_resource type="Resource" uid="uid://l66dy03mjjpy" path="res://resources/interiors/visuals/counter_1x1.tres" id="1_jpx7r"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_n3fyy"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_l0rqi"]
+
+[resource]
+script = ExtResource("2_n3fyy")
+fixture_id = "tenant_interiors.fixture.reception.counter_1x1"
+allowed_rotations = Array[int]([0, 90, 180, 270])
+interaction_face = "WEST"
+placement_rule = "FRONTAGE"
+tags = Array[String](["public_counter"])
+capacity = 1
+capacity_token = "COUNTER_STATION"
+program_role = 0
+placement_priority = 10
+default_visual = ExtResource("1_jpx7r")

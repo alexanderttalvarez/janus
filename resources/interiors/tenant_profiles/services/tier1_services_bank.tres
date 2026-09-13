@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://d1lvbsgolrtar"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_op5ry"]
+
+[resource]
+script = ExtResource("1_op5ry")
+profile_id = "tier1.services.bank"
+theme_id = "services.bank"
+subtype_id = "bank"
+zone_type = "Services"
+operational_profile_id = "tenant_interiors.operational.bank"

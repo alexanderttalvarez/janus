@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://ds5a0qu2mit1h"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_0pey8"]
+
+[resource]
+script = ExtResource("1_0pey8")
+service_policy_id = "tenant_interiors.service.sit_down_restaurant"
+typology = "HOST_SEATING"
+stages = Array[Dictionary]([{
+"duration_ticks": 6,
+"stage_id": "SEATED"
+}])
+queue_cap = 8
+capacity_tokens = Array[String](["TABLE_SEAT"])

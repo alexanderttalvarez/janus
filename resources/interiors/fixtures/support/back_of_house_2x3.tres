@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://ddtplos8c08ji"]
+
+[ext_resource type="Resource" uid="uid://c2thaorwclfkn" path="res://resources/interiors/visuals/room_2x3.tres" id="1_3ym2e"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_w5o5o"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_gfvxu"]
+
+[resource]
+script = ExtResource("2_w5o5o")
+fixture_id = "tenant_interiors.fixture.back_of_house_2x3"
+occupied_cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1), Vector2i(0, 2), Vector2i(1, 2)])
+allowed_rotations = Array[int]([0, 90, 180, 270])
+placement_rule = "WALL"
+tags = Array[String](["back_of_house"])
+program_role = 2
+placement_priority = 30
+default_visual = ExtResource("1_3ym2e")

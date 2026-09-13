@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://b44xlel7x31aq"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_w5kpd"]
+
+[resource]
+script = ExtResource("1_w5kpd")
+profile_id = "tier1.food.italian_restaurant"
+theme_id = "food.italian_restaurant"
+subtype_id = "sit_down_restaurant"
+zone_type = "Food & Beverage"
+operational_profile_id = "tenant_interiors.operational.sit_down_restaurant"

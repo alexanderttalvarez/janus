@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://fiipwgga7pg1"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_j56tk"]
+
+[resource]
+script = ExtResource("1_j56tk")
+profile_id = "tier1.food.takeaway_food"
+theme_id = "food.takeaway_food"
+subtype_id = "takeaway_food"
+zone_type = "Food & Beverage"
+operational_profile_id = "tenant_interiors.operational.takeaway_food"

@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://dtjiwuechsqmd"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_7ooyc"]
+
+[resource]
+script = ExtResource("1_7ooyc")
+operational_profile_id = "tenant_interiors.operational.supermarket"
+subtype_id = "supermarket"
+zone_type = "Anchor"
+minimum_area = 40
+core_width = 5
+core_depth = 8
+target_area_min = 40
+target_area_max = 80
+queue_cap = 12
+service_policy_id = "tenant_interiors.service.supermarket"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout_1x1.mandatory",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.back_of_house_3x3",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_1x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout_1x1.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])
+requires_circulation_loop = true

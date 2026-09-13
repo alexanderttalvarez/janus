@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://dc4dupoddearb"]
+
+[ext_resource type="Resource" uid="uid://q5wr5pvdmna5" path="res://resources/interiors/visuals/display_1x2.tres" id="1_qxmvy"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_40vwh"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_bmsja"]
+
+[resource]
+script = ExtResource("2_40vwh")
+fixture_id = "tenant_interiors.fixture.prep_1x2"
+occupied_cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(0, 1)])
+allowed_rotations = Array[int]([0, 90, 180, 270])
+placement_rule = "WALL"
+tags = Array[String](["food_prep"])
+program_role = 2
+placement_priority = 30
+default_visual = ExtResource("1_qxmvy")

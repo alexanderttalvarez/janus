@@ -139,7 +139,7 @@ func _evaluate_profile(request: Dictionary, profile: Dictionary, content: Dictio
 		var fixture: Dictionary = fixture_value
 		fixture_by_id[String(fixture["fixture_id"])] = fixture
 	var budget: int = int(content.get("planning_policy", {}).get("placement_validation_budget", 10000))
-	var state: Dictionary = {"validations": 0, "occupied": {}, "clearance": {_cell_key(request["selected_door_cell"]): true}, "placements": []}
+	var state: Dictionary = {"validations": 0, "occupied": {}, "clearance": {}, "placements": []}
 	var program: Array = profile.get("fixture_program", [])
 	var mandatory_fixtures: Array[Dictionary] = []
 	for entry_value: Variant in program:
@@ -170,10 +170,8 @@ func _evaluate_profile(request: Dictionary, profile: Dictionary, content: Dictio
 			return _profile_indeterminate(profile, state)
 		added_modules = int(repeatable_search.get("count", 0))
 	var circulation: Array[Array] = _reachable_free_cells(request.get("selected_door_cell", []), usable_set, state["occupied"])
-	if circulation.is_empty() or not _all_clearance_reachable(state["placements"], circulation):
-		return _profile_failure(profile, "CIRCULATION_FAILURE", {"placements": state["placements"], "circulation_cells": circulation})
-	if bool(profile.get("requires_circulation_loop", false)) and not _has_four_cell_loop(circulation):
-		return _profile_failure(profile, "CIRCULATION_FAILURE", {"loop_required": true})
+	if not _layout_constraints_valid(request, usable_set, state, bool(profile.get("requires_circulation_loop", false))):
+		return _profile_failure(profile, "CIRCULATION_FAILURE", {"placements": state["placements"], "circulation_cells": circulation, "loop_required": profile.get("requires_circulation_loop", false)})
 	if not _tags_compatible(state["placements"]):
 		return _profile_failure(profile, "FIXTURE_TAG_CONFLICT", {})
 	var capacity: int = 0
@@ -228,7 +226,7 @@ func _search_mandatory(fixtures: Array[Dictionary], fixture_index: int, usable: 
 			var clearance_cells: Array[Array] = _offset_cells(clearance_shape, origin)
 			if not _cells_available(occupied_cells, clearance_cells, usable_set, state["occupied"], state["clearance"]):
 				continue
-			if not _interaction_face_satisfied(fixture, rotation, occupied_cells, clearance_cells):
+			if not _interaction_face_satisfied(fixture, rotation, occupied_cells, clearance_cells, request, usable_set):
 				continue
 			if not _placement_rule_satisfied(fixture, occupied_cells, request):
 				continue
@@ -248,7 +246,17 @@ func _search_mandatory(fixtures: Array[Dictionary], fixture_index: int, usable: 
 
 func _layout_constraints_valid(request: Dictionary, usable_set: Dictionary, state: Dictionary, requires_loop: bool) -> bool:
 	var circulation: Array[Array] = _reachable_free_cells(request.get("selected_door_cell", []), usable_set, state["occupied"])
-	return not circulation.is_empty() and _all_clearance_reachable(state["placements"], circulation) and (not requires_loop or _has_four_cell_loop(circulation)) and _tags_compatible(state["placements"])
+	var needs_internal_circulation: bool = _requires_internal_circulation(state["placements"])
+	var access_valid: bool = not needs_internal_circulation or (not circulation.is_empty() and _all_clearance_reachable(state["placements"], circulation))
+	return access_valid and (not requires_loop or _has_four_cell_loop(circulation)) and _tags_compatible(state["placements"])
+
+
+func _requires_internal_circulation(placements: Array) -> bool:
+	for placement_value: Variant in placements:
+		var placement: Dictionary = placement_value
+		if String(placement.get("interaction_face", "NONE")) != "NONE" and not (placement.get("clearance_cells", []) as Array).is_empty():
+			return true
+	return false
 
 
 func _search_repeatable_modules(fixtures: Array[Dictionary], remaining: int, usable: Array, usable_set: Dictionary, request: Dictionary, requires_loop: bool, state: Dictionary, budget: int, area: int, ceiling_percent: int) -> Dictionary:
@@ -277,7 +285,7 @@ func _search_repeatable_modules(fixtures: Array[Dictionary], remaining: int, usa
 				var clearance_cells: Array[Array] = _offset_cells(clearance_shape, origin)
 				if not _cells_available(occupied_cells, clearance_cells, usable_set, state["occupied"], state["clearance"]):
 					continue
-				if not _interaction_face_satisfied(fixture, rotation, occupied_cells, clearance_cells):
+				if not _interaction_face_satisfied(fixture, rotation, occupied_cells, clearance_cells, request, usable_set):
 					continue
 				if not _placement_rule_satisfied(fixture, occupied_cells, request):
 					continue
@@ -383,13 +391,14 @@ func _record_placement(fixture: Dictionary, origin: Array, rotation: int, occupi
 		"rotation": rotation,
 		"occupied_cells": occupied_cells,
 		"clearance_cells": clearance_cells,
+		"interaction_face": fixture.get("interaction_face", "NONE"),
 		"capacity": fixture.get("capacity", 0),
 		"tags": fixture.get("tags", []).duplicate(),
 		"incompatible_neighbor_tags": fixture.get("incompatible_neighbor_tags", []).duplicate(),
 	})
 
 
-func _interaction_face_satisfied(fixture: Dictionary, rotation: int, occupied_cells: Array[Array], clearance_cells: Array[Array]) -> bool:
+func _interaction_face_satisfied(fixture: Dictionary, rotation: int, occupied_cells: Array[Array], clearance_cells: Array[Array], request: Dictionary = {}, usable_set: Dictionary = {}) -> bool:
 	var face: String = String(fixture.get("interaction_face", "NONE"))
 	if face == "NONE":
 		return true
@@ -397,8 +406,12 @@ func _interaction_face_satisfied(fixture: Dictionary, rotation: int, occupied_ce
 	for _turn: int in range((rotation / 90) % 4):
 		direction = Vector2i(-direction.y, direction.x)
 	var clearance_set: Dictionary = _cell_set(clearance_cells)
+	var frontage_set: Dictionary = _cell_set(request.get("frontage_cells", []))
 	for cell: Array in occupied_cells:
-		if clearance_set.has(_cell_key([int(cell[0]) + direction.x, int(cell[1]) + direction.y])):
+		var interaction_cell: Array[int] = [int(cell[0]) + direction.x, int(cell[1]) + direction.y]
+		if clearance_set.has(_cell_key(interaction_cell)):
+			return true
+		if String(fixture.get("placement_rule", "")) == "FRONTAGE" and frontage_set.has(_cell_key(cell)) and not usable_set.has(_cell_key(interaction_cell)):
 			return true
 	return false
 

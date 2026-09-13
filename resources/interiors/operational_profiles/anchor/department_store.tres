@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://d0gp8m2ft35pa"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_ngcnf"]
+
+[resource]
+script = ExtResource("1_ngcnf")
+operational_profile_id = "tenant_interiors.operational.department_store"
+subtype_id = "department_store"
+zone_type = "Anchor"
+minimum_area = 48
+core_width = 6
+core_depth = 8
+target_area_min = 48
+target_area_max = 96
+queue_cap = 12
+service_policy_id = "tenant_interiors.service.department_store"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout_1x1.mandatory",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.back_of_house_3x3",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.department_2x3.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.department_2x3.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])
+requires_circulation_loop = true

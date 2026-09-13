@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://dhcpjesi2wct6"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_2q820"]
+
+[resource]
+script = ExtResource("1_2q820")
+profile_id = "tier1.entertainment.vr_experience"
+theme_id = "entertainment.vr_experience"
+subtype_id = "vr_experience"
+zone_type = "Entertainment"
+operational_profile_id = "tenant_interiors.operational.vr_experience"

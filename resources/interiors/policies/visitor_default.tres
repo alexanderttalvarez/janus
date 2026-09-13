@@ -1,0 +1,7 @@
+[gd_resource type="Resource" script_class="VisitorServicePolicyDefinition" format=3 uid="uid://bkgmt1n6w1pww"]
+
+[ext_resource type="Script" uid="uid://7g3fb4mhik8a" path="res://scripts/interiors/visitor_service_policy_definition.gd" id="1_wjgyy"]
+
+[resource]
+script = ExtResource("1_wjgyy")
+visitor_policy_id = "tenant_interiors.visitor.default"

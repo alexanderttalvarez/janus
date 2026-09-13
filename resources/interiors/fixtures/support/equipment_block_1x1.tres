@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://c0oyf54m36aft"]
+
+[ext_resource type="Resource" uid="uid://dmdvqxcsigc8u" path="res://resources/interiors/visuals/display_1x1.tres" id="1_vv3dp"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_dapuj"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_uyx63"]
+
+[resource]
+script = ExtResource("2_dapuj")
+fixture_id = "tenant_interiors.fixture.equipment_block_1x1"
+allowed_rotations = Array[int]([0, 90, 180, 270])
+placement_rule = "WALL"
+tags = Array[String](["back_of_house"])
+program_role = 2
+placement_priority = 30
+default_visual = ExtResource("1_vv3dp")

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://t5rfpw1faj4v"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_3sx6g"]
+
+[resource]
+script = ExtResource("1_3sx6g")
+profile_id = "tier1.services.repair_shop"
+theme_id = "services.repair_shop"
+subtype_id = "repair_shop"
+zone_type = "Services"
+operational_profile_id = "tenant_interiors.operational.repair_shop"

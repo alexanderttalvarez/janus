@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://dx1b7q6uoro4r"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_0h3tx"]
+
+[resource]
+script = ExtResource("1_0h3tx")
+operational_profile_id = "tenant_interiors.operational.sit_down_restaurant"
+subtype_id = "sit_down_restaurant"
+zone_type = "Food & Beverage"
+minimum_area = 12
+core_width = 3
+core_depth = 4
+target_area_min = 12
+target_area_max = 24
+queue_cap = 8
+queue_required = true
+service_policy_id = "tenant_interiors.service.sit_down_restaurant"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.host_1x1",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.kitchen_2x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.table_2p_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.table_2p_1x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.table_4p_2x2",
+"kind": "REPEATABLE",
+"priority": 40
+}])

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://cp830w3jtdoln"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_2fd5r"]
+
+[resource]
+script = ExtResource("1_2fd5r")
+operational_profile_id = "tenant_interiors.operational.drinks_snack_kiosk"
+subtype_id = "drinks_snack_kiosk"
+zone_type = "Food & Beverage"
+minimum_area = 4
+core_width = 2
+core_depth = 2
+target_area_min = 4
+target_area_max = 6
+queue_cap = 4
+queue_required = true
+service_policy_id = "tenant_interiors.service.drinks_snack_kiosk"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.counter.frontage_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.prep_1x2",
+"kind": "MANDATORY",
+"priority": 30
+}])

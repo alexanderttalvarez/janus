@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://colp83jlv0wrk"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_o6wld"]
+
+[resource]
+script = ExtResource("1_o6wld")
+profile_id = "tier1.entertainment.escape_room"
+theme_id = "entertainment.escape_room"
+subtype_id = "escape_room"
+zone_type = "Entertainment"
+operational_profile_id = "tenant_interiors.operational.escape_room"

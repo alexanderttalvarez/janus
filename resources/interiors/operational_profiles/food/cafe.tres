@@ -1,0 +1,48 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://b1vwvyfrmy7q1"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_7n4ns"]
+
+[resource]
+script = ExtResource("1_7n4ns")
+operational_profile_id = "tenant_interiors.operational.cafe"
+subtype_id = "cafe"
+zone_type = "Food & Beverage"
+minimum_area = 9
+core_width = 3
+core_depth = 3
+target_area_min = 9
+target_area_max = 18
+queue_cap = 6
+queue_required = true
+service_policy_id = "tenant_interiors.service.cafe"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.counter.frontage_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.prep_1x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x1",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.table_2p_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.counter.frontage_1x1.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.table_2p_1x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

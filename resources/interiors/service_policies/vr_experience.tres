@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://clm7feqmr4x52"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_gguws"]
+
+[resource]
+script = ExtResource("1_gguws")
+service_policy_id = "tenant_interiors.service.vr_experience"
+typology = "DEVICE_POOL"
+stages = Array[Dictionary]([{
+"duration_ticks": 1,
+"stage_id": "PRE_DEVICE"
+}, {
+"duration_ticks": 4,
+"stage_id": "DEVICE"
+}])
+queue_cap = 8
+capacity_tokens = Array[String](["DEVICE"])

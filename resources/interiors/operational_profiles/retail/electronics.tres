@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://bvyidxvpuqw3"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_mults"]
+
+[resource]
+script = ExtResource("1_mults")
+operational_profile_id = "tenant_interiors.operational.electronics"
+subtype_id = "electronics"
+zone_type = "Retail"
+minimum_area = 12
+core_width = 3
+core_depth = 4
+target_area_min = 12
+target_area_max = 24
+queue_cap = 6
+service_policy_id = "tenant_interiors.service.electronics"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout.secure_1x2",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_1x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

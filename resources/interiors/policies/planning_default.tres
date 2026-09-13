@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="InteriorPlanningPolicy" format=3 uid="uid://c2kclpe0tuq1h"]
+
+[ext_resource type="Script" uid="uid://kuil00v4y804" path="res://scripts/interiors/interior_planning_policy.gd" id="1_e7rbr"]
+
+[resource]
+script = ExtResource("1_e7rbr")

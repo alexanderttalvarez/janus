@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://dat6mfvbqd1lj"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_m6vw0"]
+
+[resource]
+script = ExtResource("1_m6vw0")
+profile_id = "tier1.services.hair_salon"
+theme_id = "services.hair_salon"
+subtype_id = "hair_salon"
+zone_type = "Services"
+operational_profile_id = "tenant_interiors.operational.hair_salon"

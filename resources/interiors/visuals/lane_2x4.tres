@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="FixtureVisualDefinition" format=3 uid="uid://dgu8ya0mh4bqi"]
+
+[ext_resource type="PackedScene" uid="uid://b3uo74s6upfvg" path="res://scenes/interiors/fixtures/generic/lane_2x4.tscn" id="1_5fxlw"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="2_mhno1"]
+
+[resource]
+script = ExtResource("2_mhno1")
+visual_id = "tenant_interiors.visual.lane_2x4"
+scene = ExtResource("1_5fxlw")
+envelope_min_millimeters = Vector3i(-950, 0, -1950)
+envelope_max_millimeters = Vector3i(950, 1800, 1950)

@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://b6srjgracp4uw"]
+
+[ext_resource type="Resource" uid="uid://fgu3l05b1gfx" path="res://resources/interiors/visuals/device_1x1.tres" id="1_adt50"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_4s6nd"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_mdugh"]
+
+[resource]
+script = ExtResource("2_4s6nd")
+fixture_id = "tenant_interiors.fixture.device_1x1.mandatory"
+clearance_cells = Array[Vector2i]([Vector2i(1, 0)])
+allowed_rotations = Array[int]([0, 90, 180, 270])
+interaction_face = "EAST"
+tags = Array[String](["device", "noise_source"])
+capacity = 1
+capacity_token = "DEVICE"
+program_role = 1
+placement_priority = 20
+default_visual = ExtResource("1_adt50")

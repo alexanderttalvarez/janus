@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://dnkn2effdm5iv"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_rqerp"]
+
+[resource]
+script = ExtResource("1_rqerp")
+service_policy_id = "tenant_interiors.service.cafe"
+typology = "COUNTER_THEN_SEATING"
+stages = Array[Dictionary]([{
+"duration_ticks": 2,
+"stage_id": "COUNTER"
+}, {
+"duration_ticks": 6,
+"stage_id": "SEATED"
+}])
+queue_cap = 6
+capacity_tokens = Array[String](["COUNTER_STATION", "TABLE_SEAT"])

@@ -14,6 +14,7 @@ func _init() -> void:
 	_goal_planner = load("res://scripts/interiors/visitor_goal_planner.gd").new()
 	_test_canonical_fingerprint_golden()
 	_test_content_compilation_and_detachment()
+	_test_production_catalogue()
 	_test_visual_restrictions_and_missing_default()
 	_test_phase_a_and_phase_b()
 	_test_search_indeterminate()
@@ -53,6 +54,66 @@ func _test_content_compilation_and_detachment() -> void:
 	_assert(not bool(production_check.get("valid", false)) and _has_code(production_check.get("diagnostics", []), "VISUAL_NOT_PRODUCTION_RESOURCE"), "test-only visuals cannot satisfy production content compilation")
 	var completeness_check: Dictionary = _compiler.compile(_bundle(), false, true)
 	_assert(not bool(completeness_check.get("valid", false)) and _has_code(completeness_check.get("diagnostics", []), "REQUIRED_SUBTYPE_MISSING"), "production completeness requires every approved operational subtype")
+
+
+func _test_production_catalogue() -> void:
+	var path: String = "res://resources/interiors/catalog/tenant_interiors_default.tres"
+	var bundle: TenantInteriorContentBundle = load(path) as TenantInteriorContentBundle
+	_assert(bundle != null, "production Tenant Interiors catalogue loads as a typed bundle")
+	if bundle == null:
+		return
+	var compiled: Dictionary = _compiler.compile(bundle, true, true)
+	_assert(bool(compiled.get("valid", false)), "production catalogue passes production-path, completeness, and minimum-feasibility validation: %s" % JSON.stringify(compiled.get("diagnostics", [])))
+	_assert(bundle.fixtures.size() == 56 and bundle.service_policies.size() == 24 and bundle.operational_profiles.size() == 24 and bundle.tenant_profiles.size() == 27, "production catalogue contains 56 fixtures, 24 service policies, 24 operational profiles, and 27 Tier-1 candidates")
+	if not bool(compiled.get("valid", false)):
+		return
+	var content: Dictionary = compiled.get("content", {})
+	var subtype_ids: Array[String] = []
+	for profile: Dictionary in content.get("operational_profiles", []):
+		subtype_ids.append(String(profile.get("subtype_id", "")))
+	subtype_ids.sort()
+	var required_subtype_ids: Array[String] = TenantInteriorContentCompiler.REQUIRED_SUBTYPE_IDS.duplicate()
+	required_subtype_ids.sort()
+	_assert(subtype_ids == required_subtype_ids, "production catalogue contains exactly the 24 approved operational subtypes")
+	_assert(String(compiled.get("fingerprint", "")).length() == 64, "production catalogue compiles to a canonical SHA-256 fingerprint")
+	_test_production_planning_budget(compiled.get("snapshot") as CompiledTenantInteriorContent)
+
+
+func _test_production_planning_budget(content: CompiledTenantInteriorContent) -> void:
+	var failures: Array[String] = []
+	for profile: Dictionary in content.get_content().get("operational_profiles", []):
+		var width: int = int(profile.get("core_width", 0))
+		var depth: int = maxi(int(profile.get("core_depth", 0)), ceili(float(int(profile.get("minimum_area", 0))) / float(maxi(width, 1))))
+		var usable: Array[Array] = []
+		var core: Array[Array] = []
+		var frontage: Array[Array] = []
+		var walls: Array[Array] = []
+		for y: int in range(depth):
+			for x: int in range(width):
+				usable.append([x, y])
+				if x < int(profile.get("core_width", 0)) and y < int(profile.get("core_depth", 0)):
+					core.append([x, y])
+				if x == 0:
+					frontage.append([x, y])
+				if x == 0 or y == 0 or x == width - 1 or y == depth - 1:
+					walls.append([x, y])
+		var request: Dictionary = {
+			"plan_local_parcel_key": "production-budget/%s" % profile.get("operational_profile_id", ""),
+			"zone_type": profile.get("zone_type", ""),
+			"usable_cells": usable,
+			"core_cells": core,
+			"annex_cells": [],
+			"frontage_cells": frontage,
+			"wall_cells": walls,
+			"frontage_length": frontage.size(),
+			"selected_door_cell": [0, depth - 1],
+			"queue_cells": [[-1, depth - 1]] if bool(profile.get("queue_required", false)) else [],
+			"operational_profile_ids": [profile.get("operational_profile_id", "")],
+		}
+		var planned: Dictionary = _planner.plan_phase_a(request, content)
+		if planned.get("status", "") != InteriorLayoutPlanner.STATUS_VALID:
+			failures.append("%s:%s" % [profile.get("subtype_id", ""), planned.get("status", "")])
+	_assert(failures.is_empty(), "all production subtype minimum rectangles plan within the authored 10,000-attempt budget: %s" % JSON.stringify(failures))
 
 
 func _test_visual_restrictions_and_missing_default() -> void:

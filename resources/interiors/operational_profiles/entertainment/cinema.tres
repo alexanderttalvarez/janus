@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://b15asrb0expdx"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_tob3c"]
+
+[resource]
+script = ExtResource("1_tob3c")
+operational_profile_id = "tenant_interiors.operational.cinema"
+subtype_id = "cinema"
+zone_type = "Entertainment"
+minimum_area = 24
+core_width = 4
+core_depth = 6
+target_area_min = 24
+target_area_max = 48
+queue_cap = 16
+queue_required = true
+service_policy_id = "tenant_interiors.service.cinema"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.reception_ticket_1x2",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.auditorium_row_1x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.auditorium_row_1x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://dqbtshq0xvsac"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_80ptb"]
+
+[resource]
+script = ExtResource("1_80ptb")
+profile_id = "tier1.anchor.department_store"
+theme_id = "anchor.department_store"
+subtype_id = "department_store"
+zone_type = "Anchor"
+operational_profile_id = "tenant_interiors.operational.department_store"

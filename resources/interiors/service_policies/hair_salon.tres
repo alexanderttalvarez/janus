@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://cwtpn180rifj3"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_lw4v6"]
+
+[resource]
+script = ExtResource("1_lw4v6")
+service_policy_id = "tenant_interiors.service.hair_salon"
+typology = "SERVICE_BAY"
+stages = Array[Dictionary]([{
+"duration_ticks": 6,
+"stage_id": "SERVICE"
+}])
+queue_cap = 4
+capacity_tokens = Array[String](["SERVICE_BAY"])

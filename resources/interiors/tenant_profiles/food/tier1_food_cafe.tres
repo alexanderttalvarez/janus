@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://wi4ge4xpjbev"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_2eei3"]
+
+[resource]
+script = ExtResource("1_2eei3")
+profile_id = "tier1.food.cafe"
+theme_id = "food.cafe"
+subtype_id = "cafe"
+zone_type = "Food & Beverage"
+operational_profile_id = "tenant_interiors.operational.cafe"

@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://dp4fl4whdevfs"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_2kgr0"]
+
+[resource]
+script = ExtResource("1_2kgr0")
+operational_profile_id = "tenant_interiors.operational.home_goods"
+subtype_id = "home_goods"
+zone_type = "Retail"
+minimum_area = 12
+core_width = 3
+core_depth = 4
+target_area_min = 12
+target_area_max = 24
+queue_cap = 4
+service_policy_id = "tenant_interiors.service.home_goods"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout.secure_1x2",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_2x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.stock_2x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.browse_2x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

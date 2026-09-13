@@ -1,0 +1,27 @@
+[gd_scene format=3 uid="uid://byv5i7bkdl8mt"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_nud3v"]
+albedo_color = Color(0.9098039, 0.8745098, 0.8117647, 1)
+roughness = 0.82
+
+[sub_resource type="BoxMesh" id="BoxMesh_idam1"]
+size = Vector3(1.64, 1.25, 1.64)
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_kenwf"]
+albedo_color = Color(0.4509804, 0.7176471, 0.65882355, 1)
+roughness = 0.72
+
+[sub_resource type="BoxMesh" id="BoxMesh_fcwal"]
+size = Vector3(1.32, 0.08, 1.32)
+
+[node name="GenericFixtureVisual" type="Node3D" unique_id=950501040]
+
+[node name="Body" type="MeshInstance3D" parent="." unique_id=1719384689]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.625, 0)
+material_override = SubResource("StandardMaterial3D_nud3v")
+mesh = SubResource("BoxMesh_idam1")
+
+[node name="Accent" type="MeshInstance3D" parent="." unique_id=1790825549]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.29, 0)
+material_override = SubResource("StandardMaterial3D_kenwf")
+mesh = SubResource("BoxMesh_fcwal")

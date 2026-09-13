@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://guuq26wgnrum"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_kdqeg"]
+
+[resource]
+script = ExtResource("1_kdqeg")
+profile_id = "tier1.anchor.exhibition_hall"
+theme_id = "anchor.exhibition_hall"
+subtype_id = "exhibition_hall"
+zone_type = "Anchor"
+operational_profile_id = "tenant_interiors.operational.exhibition_hall"

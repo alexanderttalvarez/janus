@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://gxofldmhhca3"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_inq8m"]
+
+[resource]
+script = ExtResource("1_inq8m")
+operational_profile_id = "tenant_interiors.operational.gym"
+subtype_id = "gym"
+zone_type = "Anchor"
+minimum_area = 30
+core_width = 5
+core_depth = 6
+target_area_min = 30
+target_area_max = 60
+queue_cap = 8
+queue_required = true
+service_policy_id = "tenant_interiors.service.gym"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.reception_1x1",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.back_of_house_2x3",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.open_flow_2x2.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.open_flow_2x2.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

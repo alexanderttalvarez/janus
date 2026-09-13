@@ -1,0 +1,38 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://diuroq40sk80n"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_w5yy1"]
+
+[resource]
+script = ExtResource("1_w5yy1")
+operational_profile_id = "tenant_interiors.operational.repair_shop"
+subtype_id = "repair_shop"
+zone_type = "Services"
+minimum_area = 6
+core_width = 2
+core_depth = 3
+target_area_min = 6
+target_area_max = 12
+queue_cap = 4
+queue_required = true
+service_policy_id = "tenant_interiors.service.repair_shop"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.reception.counter_1x1",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.workshop_2x2",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x1",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.counter.service_lane_1x3",
+"kind": "REPEATABLE",
+"priority": 40
+}])

@@ -1,0 +1,19 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://bvme66vr65q1i"]
+
+[ext_resource type="Resource" uid="uid://d4nsc2scywurm" path="res://resources/interiors/visuals/counter_1x2.tres" id="1_jr174"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_eq86a"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_pg5hf"]
+
+[resource]
+script = ExtResource("2_eq86a")
+fixture_id = "tenant_interiors.fixture.counter.frontage_1x2.repeatable"
+occupied_cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(0, 1)])
+allowed_rotations = Array[int]([0, 90, 180, 270])
+interaction_face = "WEST"
+placement_rule = "FRONTAGE"
+tags = Array[String](["public_counter"])
+capacity = 1
+capacity_token = "COUNTER_STATION"
+program_role = 3
+placement_priority = 40
+default_visual = ExtResource("1_jr174")

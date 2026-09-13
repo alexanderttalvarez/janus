@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://b8k0iyehop5hl"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_5neqc"]
+
+[resource]
+script = ExtResource("1_5neqc")
+profile_id = "tier1.services.clinic"
+theme_id = "services.clinic"
+subtype_id = "clinic"
+zone_type = "Services"
+operational_profile_id = "tenant_interiors.operational.clinic"

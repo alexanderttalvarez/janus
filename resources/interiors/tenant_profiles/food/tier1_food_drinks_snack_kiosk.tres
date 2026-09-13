@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://csxsl04eqxnpu"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_pugot"]
+
+[resource]
+script = ExtResource("1_pugot")
+profile_id = "tier1.food.drinks_snack_kiosk"
+theme_id = "food.drinks_snack_kiosk"
+subtype_id = "drinks_snack_kiosk"
+zone_type = "Food & Beverage"
+operational_profile_id = "tenant_interiors.operational.drinks_snack_kiosk"

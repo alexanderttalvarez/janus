@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="OperationalProfileDefinition" format=3 uid="uid://6ongecfrr021"]
+
+[ext_resource type="Script" uid="uid://cnhro1ntc1jjy" path="res://scripts/interiors/operational_profile_definition.gd" id="1_qgmmw"]
+
+[resource]
+script = ExtResource("1_qgmmw")
+operational_profile_id = "tenant_interiors.operational.jewelry"
+subtype_id = "jewelry"
+zone_type = "Retail"
+minimum_area = 6
+core_width = 2
+core_depth = 3
+target_area_min = 6
+target_area_max = 12
+queue_cap = 4
+service_policy_id = "tenant_interiors.service.jewelry"
+fixture_program = Array[Dictionary]([{
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.checkout.secure_1x2",
+"kind": "MANDATORY",
+"priority": 10
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.display_1x1.mandatory",
+"kind": "MANDATORY",
+"priority": 20
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.storage_1x1",
+"kind": "MANDATORY",
+"priority": 30
+}, {
+"count": 1,
+"fixture_id": "tenant_interiors.fixture.display_1x1.repeatable",
+"kind": "REPEATABLE",
+"priority": 40
+}])

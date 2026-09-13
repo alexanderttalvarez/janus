@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://dwso8hf4gxnrg"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_v3o0t"]
+
+[resource]
+script = ExtResource("1_v3o0t")
+profile_id = "tier1.retail.jewelry"
+theme_id = "retail.jewelry"
+subtype_id = "jewelry"
+zone_type = "Retail"
+operational_profile_id = "tenant_interiors.operational.jewelry"

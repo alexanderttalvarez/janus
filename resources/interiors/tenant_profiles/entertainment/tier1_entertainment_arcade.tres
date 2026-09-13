@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://ce8anioudy3k1"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_8xjyr"]
+
+[resource]
+script = ExtResource("1_8xjyr")
+profile_id = "tier1.entertainment.arcade"
+theme_id = "entertainment.arcade"
+subtype_id = "arcade"
+zone_type = "Entertainment"
+operational_profile_id = "tenant_interiors.operational.arcade"

@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://bcnjc6h4frnqa"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_w27ng"]
+
+[resource]
+script = ExtResource("1_w27ng")
+service_policy_id = "tenant_interiors.service.arcade"
+typology = "DEVICE_POOL"
+stages = Array[Dictionary]([{
+"duration_ticks": 1,
+"stage_id": "PRE_DEVICE"
+}, {
+"duration_ticks": 4,
+"stage_id": "DEVICE"
+}])
+queue_cap = 8
+capacity_tokens = Array[String](["DEVICE"])

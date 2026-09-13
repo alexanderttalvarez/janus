@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="InteriorTenantProfileDefinition" format=3 uid="uid://dxiiq2cxm2ov5"]
+
+[ext_resource type="Script" uid="uid://nri2dr4uxgqd" path="res://scripts/interiors/interior_tenant_profile_definition.gd" id="1_d3inm"]
+
+[resource]
+script = ExtResource("1_d3inm")
+profile_id = "tier1.services.travel_agency"
+theme_id = "services.travel_agency"
+subtype_id = "travel_agency"
+zone_type = "Services"
+operational_profile_id = "tenant_interiors.operational.travel_agency"

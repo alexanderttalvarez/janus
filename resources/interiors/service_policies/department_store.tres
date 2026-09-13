@@ -1,0 +1,17 @@
+[gd_resource type="Resource" script_class="ServicePolicyDefinition" format=3 uid="uid://dn7ojookway4f"]
+
+[ext_resource type="Script" uid="uid://cepsltbf88ujp" path="res://scripts/interiors/service_policy_definition.gd" id="1_02uwv"]
+
+[resource]
+script = ExtResource("1_02uwv")
+service_policy_id = "tenant_interiors.service.department_store"
+typology = "BROWSE_CHECKOUT"
+stages = Array[Dictionary]([{
+"duration_ticks": 4,
+"stage_id": "BROWSE"
+}, {
+"duration_ticks": 2,
+"stage_id": "CHECKOUT"
+}])
+queue_cap = 12
+capacity_tokens = Array[String](["BROWSE_OCCUPANCY", "CHECKOUT_STATION"])

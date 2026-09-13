@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="InteriorFixtureDefinition" format=3 uid="uid://qljsgclat5td"]
+
+[ext_resource type="Resource" uid="uid://c7rwn71dqus53" path="res://resources/interiors/visuals/open_2x2.tres" id="1_46gts"]
+[ext_resource type="Script" uid="uid://d30dxfpqo76dc" path="res://scripts/interiors/interior_fixture_definition.gd" id="2_b33sw"]
+[ext_resource type="Script" uid="uid://cjj2s4om6giev" path="res://scripts/interiors/fixture_visual_definition.gd" id="3_7nrkm"]
+
+[resource]
+script = ExtResource("2_b33sw")
+fixture_id = "tenant_interiors.fixture.open_flow_2x2.mandatory"
+occupied_cells = Array[Vector2i]([Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)])
+clearance_cells = Array[Vector2i]([Vector2i(2, 0)])
+allowed_rotations = Array[int]([0, 90, 180, 270])
+interaction_face = "EAST"
+capacity = 2
+capacity_token = "OPEN_FLOW_OCCUPANCY"
+program_role = 1
+placement_priority = 20
+default_visual = ExtResource("1_46gts")
