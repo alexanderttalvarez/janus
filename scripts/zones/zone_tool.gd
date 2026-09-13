@@ -42,6 +42,10 @@ var _painting: bool = false
 var _paint_start_tile: Vector2i = Vector2i.ZERO
 var _remove_mode: bool = false
 var _none_mode: bool = false
+var _last_drag_preview_end_tile: Vector2i = Vector2i(-1, -1)
+var _has_drag_preview_tile: bool = false
+var _pending_drag_preview_tile: Vector2i = Vector2i(-1, -1)
+var _has_pending_drag_preview_tile: bool = false
 ## Node3D container for all tool visuals. MeshInstance3D children of a plain
 ## Node never reach the RenderingServer, so every mesh lives under this root.
 var _visual_root: Node3D
@@ -242,11 +246,11 @@ func _add_invalid_perimeter_segment(mesh: BoxMesh, material: StandardMaterial3D,
 	if projected_position == Vector3.INF:
 		segment.free()
 		return
+	_invalid_perimeter_root.add_child(segment)
 	segment.global_position = projected_position + Vector3(0.0, INVALID_PERIMETER_Y, 0.0)
 	var floor := _get_projected_floor()
 	if floor != null:
 		segment.global_rotation.y = floor.global_rotation.y
-	_invalid_perimeter_root.add_child(segment)
 
 
 func _clear_invalid_perimeter() -> void:
@@ -282,10 +286,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				if can_start:
 					_painting = true
 					_paint_start_tile = start_tile
+					_has_pending_drag_preview_tile = false
 					_update_drag_preview(start_tile)
 			else:
 				if _painting:
 					var end_tile := _get_tile_under_mouse()
+					_has_pending_drag_preview_tile = false
 					_painting = false
 					_clear_drag_preview()
 					if _remove_mode:
@@ -297,7 +303,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventMouseMotion:
 		if _painting:
-			_update_drag_preview(_get_tile_under_mouse())
+			_pending_drag_preview_tile = _get_tile_under_mouse()
+			_has_pending_drag_preview_tile = true
 		else:
 			_update_hover()
 
@@ -309,25 +316,40 @@ func _process(_delta: float) -> void:
 		return
 	if not _painting:
 		_update_hover()
+	elif _has_pending_drag_preview_tile:
+		var pending_tile: Vector2i = _pending_drag_preview_tile
+		_has_pending_drag_preview_tile = false
+		_update_drag_preview(pending_tile)
 
 
 func _update_drag_preview(end_tile: Vector2i) -> void:
-	_clear_drag_preview()
 	if _drag_preview_root == null:
 		return
+	if _has_drag_preview_tile and end_tile == _last_drag_preview_end_tile:
+		return
+	_clear_drag_preview()
+	_last_drag_preview_end_tile = end_tile
+	_has_drag_preview_tile = true
+	var spatial_snapshot: DistrictZoneSpatialSnapshot = null
+	var zone_manager: ZoneManager = null
+	if not _remove_mode:
+		var runtime := _get_district_runtime()
+		if runtime != null:
+			spatial_snapshot = runtime.get_zone_spatial_snapshot(_active_floor_address)
+		zone_manager = _get_zone_manager()
 	for tile_pos: Vector2i in rectangle_tiles(_paint_start_tile, end_tile):
 		if _remove_mode:
 			if not _painted_tiles.has(tile_pos):
 				continue
 		else:
-			if not _can_paint_tile_for_rectangle(tile_pos):
+			if not _can_paint_tile_for_rectangle(tile_pos, spatial_snapshot, zone_manager):
 				continue
 		var mesh := _make_tile_mesh(DRAG_PREVIEW_ALPHA)
 		var projected_position := _project_cell_center(tile_pos)
 		if projected_position == Vector3.INF:
 			continue
-		mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET + 0.01, 0.0)
 		_drag_preview_root.add_child(mesh)
+		mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET + 0.01, 0.0)
 
 
 func _clear_drag_preview() -> void:
@@ -335,6 +357,7 @@ func _clear_drag_preview() -> void:
 		return
 	for child: Node in _drag_preview_root.get_children():
 		child.free()
+	_has_drag_preview_tile = false
 
 
 func _remove_rectangle(start_tile: Vector2i, end_tile: Vector2i) -> void:
@@ -357,15 +380,22 @@ func _paint_at_mouse() -> void:
 
 
 func _paint_rectangle(start_tile: Vector2i, end_tile: Vector2i) -> void:
+	var spatial_snapshot: DistrictZoneSpatialSnapshot = null
+	var zone_manager: ZoneManager = null
+	if not _remove_mode:
+		var runtime := _get_district_runtime()
+		if runtime != null:
+			spatial_snapshot = runtime.get_zone_spatial_snapshot(_active_floor_address)
+		zone_manager = _get_zone_manager()
 	if not _remove_mode and not _none_mode:
 		for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
-			if not _can_paint_tile_for_rectangle(tile_pos):
+			if not _can_paint_tile_for_rectangle(tile_pos, spatial_snapshot, zone_manager):
 				_update_preview_validation()
 				return
 	var added_tiles := false
 	var changed := false
 	for tile_pos: Vector2i in rectangle_tiles(start_tile, end_tile):
-		if not _can_paint_tile_for_rectangle(tile_pos):
+		if not _can_paint_tile_for_rectangle(tile_pos, spatial_snapshot, zone_manager):
 			continue
 		if not _painted_tiles.has(tile_pos):
 			_painted_tiles.append(tile_pos)
@@ -397,14 +427,16 @@ static func rectangle_tiles(start_tile: Vector2i, end_tile: Vector2i) -> Array[V
 	return result
 
 
-func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
+func _can_paint_tile_for_rectangle(tile_pos: Vector2i, spatial_snapshot: DistrictZoneSpatialSnapshot = null, zone_manager: ZoneManager = null) -> bool:
 	if tile_pos.x < 0 or tile_pos.y < 0:
 		return false
-	var zm := _get_zone_manager()
+	var zm: ZoneManager = zone_manager if zone_manager != null else _get_zone_manager()
 	if zm == null or _district_runtime == null:
 		return false
-	var spatial_snapshot: DistrictZoneSpatialSnapshot = _district_runtime.get_zone_spatial_snapshot(_active_floor_address)
-	if spatial_snapshot == null:
+	var snapshot: DistrictZoneSpatialSnapshot = spatial_snapshot
+	if snapshot == null:
+		snapshot = _district_runtime.get_zone_spatial_snapshot(_active_floor_address)
+	if snapshot == null:
 		return false
 	return zm.can_paint_tile_for_tool(
 		tile_pos,
@@ -412,7 +444,7 @@ func _can_paint_tile_for_rectangle(tile_pos: Vector2i) -> bool:
 		_preview_plot_id(),
 		_preview_zone_type(),
 		_none_mode,
-		spatial_snapshot
+		snapshot
 	)
 
 
@@ -481,8 +513,8 @@ func _show_painted_tile(tile_pos: Vector2i) -> void:
 	if projected_position == Vector3.INF:
 		mesh.free()
 		return
-	mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET, 0.0)
 	_visual_root.add_child(mesh)
+	mesh.global_position = projected_position + Vector3(0.0, TILE_VISUAL_OFFSET, 0.0)
 	_painted_meshes[tile_pos] = mesh
 
 
@@ -541,6 +573,7 @@ func cancel() -> void:
 	for mesh: Node in _painted_meshes.values():
 		mesh.free()
 	_painted_meshes.clear()
+	_has_pending_drag_preview_tile = false
 
 
 func set_remove_mode(enabled: bool) -> void:
@@ -549,6 +582,7 @@ func set_remove_mode(enabled: bool) -> void:
 		_none_mode = false
 	if _painting:
 		_painting = false
+		_has_pending_drag_preview_tile = false
 		_clear_drag_preview()
 	_update_hover()
 
@@ -564,6 +598,7 @@ func set_none_mode(enabled: bool) -> void:
 		_typo_mode = ZoneData.TileTypology.TENANT
 	if _painting:
 		_painting = false
+		_has_pending_drag_preview_tile = false
 		_clear_drag_preview()
 	_update_hover()
 	_update_preview_validation()
