@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="ParcelFormationPolicy" format=3 uid="uid://cikihbg4ktaur"]
+
+[ext_resource type="Script" uid="uid://cvbvmc4wjybbp" path="res://scripts/interiors/parcel_formation_policy.gd" id="1_2aspu"]
+
+[resource]
+script = ExtResource("1_2aspu")

@@ -97,19 +97,10 @@ func _test_production_planning_budget(content: CompiledTenantInteriorContent) ->
 					frontage.append([x, y])
 				if x == 0 or y == 0 or x == width - 1 or y == depth - 1:
 					walls.append([x, y])
-		var request: Dictionary = {
-			"plan_local_parcel_key": "production-budget/%s" % profile.get("operational_profile_id", ""),
-			"zone_type": profile.get("zone_type", ""),
-			"usable_cells": usable,
-			"core_cells": core,
-			"annex_cells": [],
-			"frontage_cells": frontage,
-			"wall_cells": walls,
-			"frontage_length": frontage.size(),
-			"selected_door_cell": [0, depth - 1],
-			"queue_cells": [[-1, depth - 1]] if bool(profile.get("queue_required", false)) else [],
-			"operational_profile_ids": [profile.get("operational_profile_id", "")],
-		}
+		var door_cell: Array[int] = [0, depth - 1]
+		var edge := {"parcel_cell":{"x":door_cell[0],"y":door_cell[1]},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":door_cell[1]},"public_band_access_edge_id":null}
+		var core_record := {"core_key":"production/core","cells":core,"width":profile.get("core_width",0),"depth":profile.get("core_depth",0)}
+		var request: Dictionary = {"schema_id":"interior_phase_a_request","schema_version":2,"identity_mode":"PLAN_LOCAL","plan_local_parcel_key":"production-budget/%s"%profile.get("operational_profile_id",""),"parcel_id":null,"zone_type":profile.get("zone_type",""),"usable_cells":usable,"formation_core":core_record,"profile_core_options":[core_record],"frontage_edges":[{"parcel_cell":{"x":0,"y":0},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":0},"public_band_access_edge_id":null},{"parcel_cell":{"x":0,"y":1},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":1},"public_band_access_edge_id":null},edge],"wall_cells":walls,"operational_door_options":[{"door_semantic_key":"production/door","door_id":null,"edge":edge,"entrance_cell":door_cell,"queue_envelope_key":"production/envelope","queue_envelope_id":null,"queue_positions":[{"position_id":"production/position"}] if bool(profile.get("queue_required",false)) else [],"queue_policy_id":"tenant_exterior_queue_geometry","queue_policy_revision":1}],"operational_profile_ids":[profile.get("operational_profile_id","")],"zone_revision":null,"door_revision":null,"queue_revision":null}
 		var planned: Dictionary = _planner.plan_phase_a(request, content)
 		if planned.get("status", "") != InteriorLayoutPlanner.STATUS_VALID:
 			failures.append("%s:%s" % [profile.get("subtype_id", ""), planned.get("status", "")])
@@ -133,34 +124,25 @@ func _test_phase_a_and_phase_b() -> void:
 	var second: Dictionary = _planner.plan_phase_a(phase_a_request.duplicate(true), compiled)
 	_assert(first.get("status", "") == "VALID", "Phase A reports a physically feasible profile")
 	_assert(first == second, "Phase A is deterministic for equivalent detached inputs")
-	var stable_request: Dictionary = phase_a_request.duplicate(true)
-	stable_request.merge({"parcel_id": "parcel.1", "door_id": "door.1", "proxy_id": "proxy.1", "queue_envelope_id": "queue.1", "zone_revision": 3, "door_revision": 2, "queue_envelope_revision": 4}, true)
-	var stable_result: Dictionary = _planner.plan_phase_a_stable(stable_request, compiled, String(first.get("feasible_pool_fingerprint", "")))
+	var expected_parity: Dictionary = _parity_record(String(first.get("feasible_pool_fingerprint", "")))
+	var stable_request: Dictionary = _stable_request(phase_a_request, expected_parity)
+	var stable_result: Dictionary = _planner.plan_phase_a_stable(stable_request, compiled, expected_parity)
 	_assert(stable_result.get("status", "") == "VALID", "stable-identity Phase A reproduces the prospective feasible pool")
-	var mismatched_pool: Dictionary = _planner.plan_phase_a_stable(stable_request, compiled, "wrong")
+	var wrong_parity: Dictionary = expected_parity.duplicate(true)
+	wrong_parity["feasible_pool_fingerprint"] = "wrong"
+	var mismatched_pool: Dictionary = _planner.plan_phase_a_stable(stable_request, compiled, wrong_parity)
 	_assert(_has_code(mismatched_pool.get("diagnostics", []), "PHASE_A_POOL_MISMATCH"), "Zone publication is blocked when stable Phase A pool parity fails")
 	_assert(not first.has("final_fingerprint") and not _contains_key_recursive(first, "fixture_id"), "Phase A allocates no durable fixture identity or final fingerprint")
 	var illegal_phase_a: Dictionary = phase_a_request.duplicate(true)
 	illegal_phase_a["parcel_id"] = "parcel.1"
 	_assert(_planner.plan_phase_a(illegal_phase_a, compiled).get("status", "") == "CONTENT_INVALID", "Phase A rejects persistent identities")
-	var phase_b_request: Dictionary = phase_a_request.duplicate(true)
-	phase_b_request.merge({
-		"parcel_id": "parcel.1",
-		"door_id": "door.1",
-		"proxy_id": "proxy.1",
-		"queue_envelope_id": "queue.1",
-		"operational_profile_id": "profile.counter",
-		"tenant_profile_id": "tenant.kiosk",
-		"variation_id": "variation.1",
-		"zone_revision": 3,
-		"door_revision": 2,
-		"queue_envelope_revision": 4,
-	}, true)
+	var phase_b_request: Dictionary = stable_request.duplicate(true)
+	phase_b_request.merge({"proxy_id":"proxy.1","operational_profile_id":"profile.counter","tenant_profile_id":"tenant.kiosk","variation_id":"variation.1"}, true)
 	var phase_b: Dictionary = _planner.plan_phase_b(phase_b_request, compiled)
 	_assert(phase_b.get("status", "") == "VALID" and String(phase_b.get("final_fingerprint", "")).length() == 64, "Phase B requires stable identities and produces a final fingerprint")
 	_assert((phase_b.get("selected_layout", {}).get("placements", []) as Array).size() == 2, "Phase B proves mandatory fixture placement")
 	_assert(int(phase_b.get("selected_layout", {}).get("capacity", 0)) == 2, "capacity derives from fixture envelopes")
-	_assert(phase_b.get("selected_layout", {}).get("rating", "") == "EXCELLENT" and int(phase_b.get("selected_layout", {}).get("tickets", 0)) == 6, "no-repeatable profile receives Excellent within target and annex limits")
+	_assert(phase_b.get("selected_layout", {}).get("rating", "") == "GOOD" and int(phase_b.get("selected_layout", {}).get("tickets", 0)) == 3, "no-repeatable profile with an annex receives Good within its area target")
 	_assert(String(phase_b.get("selected_layout", {}).get("placements", [])[0].get("fixture_instance_id", "")).begins_with("interior_fixture/parcel.1/"), "Phase B assigns deterministic durable fixture identities")
 	var economic_noise: Dictionary = phase_b_request.duplicate(true)
 	economic_noise["rent"] = 999999
@@ -302,21 +284,23 @@ func _visual(id: String, forbidden_collision: bool) -> FixtureVisualDefinition:
 func _request() -> Dictionary:
 	var cells: Array[Array] = []
 	for y: int in range(3):
-		for x: int in range(3):
-			cells.append([x, y])
-	return {
-		"plan_local_parcel_key": "prospective.1",
-		"zone_type": "Food & Beverage",
-		"usable_cells": cells,
-		"core_cells": [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2], [1, 2]],
-		"annex_cells": [],
-		"frontage_cells": [[0, 0], [0, 1], [0, 2]],
-		"wall_cells": [[0, 0], [1, 0], [2, 0], [0, 2], [1, 2], [2, 2]],
-		"frontage_length": 3,
-		"selected_door_cell": [0, 2],
-		"queue_cells": [[-1, 1], [-1, 2]],
-		"operational_profile_ids": ["profile.counter"],
-	}
+		for x: int in range(3): cells.append([x, y])
+	var core := {"core_key":"jplan1/core/test","cells":[[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]],"width":2,"depth":3}
+	var edge := {"parcel_cell":{"x":0,"y":2},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":2},"public_band_access_edge_id":null}
+	var door := {"door_semantic_key":"jplan1/door/test","door_id":null,"edge":edge,"entrance_cell":[0,2],"queue_envelope_key":"jplan1/envelope/test","queue_envelope_id":null,"queue_positions":[{"position_id":"jplan1/position/0"},{"position_id":"jplan1/position/1"}],"queue_policy_id":"tenant_exterior_queue_geometry","queue_policy_revision":1}
+	return {"schema_id":"interior_phase_a_request","schema_version":2,"identity_mode":"PLAN_LOCAL","plan_local_parcel_key":"prospective.1","parcel_id":null,"zone_type":"Food & Beverage","usable_cells":cells,"formation_core":core,"profile_core_options":[core],"frontage_edges":[{"parcel_cell":{"x":0,"y":0},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":0},"public_band_access_edge_id":null},{"parcel_cell":{"x":0,"y":1},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":1},"public_band_access_edge_id":null},edge],"wall_cells":[[0,0],[1,0],[2,0],[0,2],[1,2],[2,2]],"operational_door_options":[door],"operational_profile_ids":["profile.counter"],"zone_revision":null,"door_revision":null,"queue_revision":null}
+
+
+func _parity_record(pool_fingerprint: String) -> Dictionary:
+	var made: Dictionary = PhaseAParityRecord.create({"formation_policy_id":"tenant_parcel_formation","formation_policy_revision":1,"queue_policy_id":"tenant_exterior_queue_geometry","queue_policy_revision":1,"selected_door_edges":[],"prospective_graph_fingerprint":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","queue_input_fingerprint":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","queue_envelopes":[],"feasible_pool_fingerprint":pool_fingerprint})
+	return made.get("record", {})
+
+
+func _stable_request(prospective: Dictionary, parity: Dictionary) -> Dictionary:
+	var stable: Dictionary = prospective.duplicate(true)
+	stable["identity_mode"] = "STABLE"; stable["parcel_id"] = "parcel.1"; stable["zone_revision"] = 3; stable["door_revision"] = 2; stable["queue_revision"] = 4; stable["phase_a_parity"] = parity.duplicate(true)
+	stable["operational_door_options"][0]["door_id"] = "door.1"; stable["operational_door_options"][0]["queue_envelope_id"] = "queue.1"
+	return stable
 
 
 func _contains_key_recursive(value: Variant, searched_key: String) -> bool:

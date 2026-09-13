@@ -268,18 +268,18 @@ func _validate_minimum_program_feasibility(semantic: Dictionary) -> Array[Dictio
 					walls.append([x, y])
 		var door: Array[int] = [0, depth - 1]
 		var queue: Array = [[-1, depth - 1]] if bool(profile.get("queue_required", false)) else []
+		var door_edge: Dictionary = {"parcel_cell":{"x":door[0],"y":door[1]},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":door[1]},"public_band_access_edge_id":null}
+		var frontage_edges: Array[Dictionary] = []
+		for frontage_cell: Array in frontage:
+			frontage_edges.append({"parcel_cell":{"x":frontage_cell[0],"y":frontage_cell[1]},"direction":"WEST","access_kind":"EXPLICIT_CIRCULATION","access_cell":{"x":-1,"y":frontage_cell[1]},"public_band_access_edge_id":null})
+		var core_record: Dictionary = {"core_key":"content-proof/core","cells":core,"width":profile.get("core_width",0),"depth":profile.get("core_depth",0)}
 		var request: Dictionary = {
-			"plan_local_parcel_key": "content-proof/%s" % profile.get("operational_profile_id", ""),
-			"zone_type": profile.get("zone_type", ""),
-			"usable_cells": usable,
-			"core_cells": core,
-			"annex_cells": [],
-			"frontage_cells": frontage,
-			"wall_cells": walls,
-			"frontage_length": frontage.size(),
-			"selected_door_cell": door,
-			"queue_cells": queue,
-			"operational_profile_ids": [profile.get("operational_profile_id", "")],
+			"schema_id":"interior_phase_a_request","schema_version":2,"identity_mode":"PLAN_LOCAL",
+			"plan_local_parcel_key": "content-proof/%s" % profile.get("operational_profile_id", ""), "parcel_id":null,
+			"zone_type": profile.get("zone_type", ""), "usable_cells": usable,
+			"formation_core":core_record,"profile_core_options":[core_record],"frontage_edges":frontage_edges,"wall_cells":walls,
+			"operational_door_options":[{"door_semantic_key":"content-proof/door","door_id":null,"edge":door_edge,"entrance_cell":door,"queue_envelope_key":"content-proof/envelope","queue_envelope_id":null,"queue_positions":[{"position_id":"content-proof/position"}] if bool(profile.get("queue_required",false)) else [],"queue_policy_id":"tenant_exterior_queue_geometry","queue_policy_revision":1}],
+			"operational_profile_ids": [profile.get("operational_profile_id", "")], "zone_revision":null,"door_revision":null,"queue_revision":null,
 		}
 		var proof: Dictionary = planner.plan_phase_a(request, proof_snapshot)
 		if String(proof.get("status", "")) != InteriorLayoutPlanner.STATUS_VALID:

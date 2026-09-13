@@ -13,10 +13,16 @@ func plan_phase_a(request: Dictionary, compiled_snapshot: CompiledTenantInterior
 	return _plan(request, compiled_snapshot, "A_PROSPECTIVE")
 
 
-func plan_phase_a_stable(request: Dictionary, compiled_snapshot: CompiledTenantInteriorContent, expected_pool_fingerprint: String) -> Dictionary:
+func plan_phase_a_stable(request: Dictionary, compiled_snapshot: CompiledTenantInteriorContent, expected_parity: Dictionary) -> Dictionary:
 	var result: Dictionary = _plan(request, compiled_snapshot, "A_STABLE")
-	if result.get("status", "") == STATUS_VALID and result.get("feasible_pool_fingerprint", "") != expected_pool_fingerprint:
-		return _result("A", STATUS_CONTENT_INVALID, result.get("feasible_profiles", []), result.get("rejected_profiles", []), [_diagnostic("PHASE_A_POOL_MISMATCH", "$", {"expected": expected_pool_fingerprint, "actual": result.get("feasible_pool_fingerprint", "")})])
+	if result.get("status", "") != STATUS_VALID:
+		return result
+	var actual_parity: Dictionary = request.get("phase_a_parity", {}).duplicate(true)
+	actual_parity["feasible_pool_fingerprint"] = result.get("feasible_pool_fingerprint", "")
+	var compared: Dictionary = PhaseAParityRecord.compare(expected_parity, actual_parity)
+	if not bool(compared.get("valid", false)):
+		return _result("A", STATUS_CONTENT_INVALID, result.get("feasible_profiles", []), result.get("rejected_profiles", []), compared.get("diagnostics", []))
+	result["phase_a_parity"] = actual_parity
 	return result
 
 
@@ -43,7 +49,7 @@ func _plan(request: Dictionary, compiled_snapshot: CompiledTenantInteriorContent
 			continue
 		if String(profile.get("zone_type", "")) != String(request.get("zone_type", "")):
 			continue
-		var profile_result: Dictionary = _evaluate_profile(request, profile, compiled_content, stable_phase)
+		var profile_result: Dictionary = _evaluate_profile_v2(request, profile, compiled_content, stable_phase)
 		match String(profile_result.get("status", "")):
 			STATUS_VALID:
 				feasible.append(profile_result)
@@ -82,17 +88,17 @@ func _plan(request: Dictionary, compiled_snapshot: CompiledTenantInteriorContent
 			return _result("B", STATUS_CONTENT_INVALID, feasible, rejected, [_diagnostic("TENANT_OPERATIONAL_PROFILE_MISMATCH", "$.tenant_profile_id", {})])
 		_assign_durable_fixture_ids(selected["placements"], String(request["parcel_id"]))
 		result["selected_layout"] = selected.duplicate(true)
-		result["final_proxy"] = {"proxy_id": request["proxy_id"], "door_id": request["door_id"], "queue_envelope_id": request["queue_envelope_id"], "capacity": selected["capacity"], "queue_capacity": selected["queue_capacity"]}
+		result["final_proxy"] = {"proxy_id": request["proxy_id"], "door_id": selected["selected_door_id"], "queue_envelope_id": selected["selected_queue_envelope_id"], "capacity": selected["capacity"], "queue_capacity": selected["queue_capacity"]}
 		var fingerprint_record: Dictionary = {
 			"parcel_id": request["parcel_id"],
-			"door_id": request["door_id"],
+			"door_id": selected["selected_door_id"],
 			"proxy_id": request["proxy_id"],
-			"queue_envelope_id": request["queue_envelope_id"],
+			"queue_envelope_id": selected["selected_queue_envelope_id"],
 			"zone_revision": request["zone_revision"],
 			"door_revision": request["door_revision"],
-			"queue_envelope_revision": request["queue_envelope_revision"],
-			"core_cells": _ordered_cells(request.get("core_cells", [])),
-			"annex_cells": _ordered_cells(request.get("annex_cells", [])),
+			"queue_envelope_revision": request["queue_revision"],
+			"selected_core_key": selected["selected_core_key"],
+			"selected_door_semantic_key": selected["selected_door_semantic_key"],
 			"operational_profile_id": selected_id,
 			"operational_profile_revision": selected["operational_profile_revision"],
 			"tenant_profile_id": tenant_profile["profile_id"],
@@ -104,7 +110,8 @@ func _plan(request: Dictionary, compiled_snapshot: CompiledTenantInteriorContent
 			"placements": selected["placements"],
 			"circulation_cells": selected["circulation_cells"],
 			"capacity": selected["capacity"],
-			"queue_cells": _ordered_cells(request.get("queue_cells", [])),
+			"queue_position_ids": selected["queue_position_ids"],
+			"phase_a_parity": request.get("phase_a_parity", {}),
 			"service_policy_id": selected["service_policy_id"],
 			"service_policy_revision": service_policy["revision"],
 			"visitor_policy_id": compiled_content["visitor_policy"]["visitor_policy_id"],
@@ -119,7 +126,49 @@ func _plan(request: Dictionary, compiled_snapshot: CompiledTenantInteriorContent
 	return result
 
 
-func _evaluate_profile(request: Dictionary, profile: Dictionary, content: Dictionary, stable_phase: bool) -> Dictionary:
+func _evaluate_profile_v2(request: Dictionary, profile: Dictionary, content: Dictionary, stable_phase: bool) -> Dictionary:
+	var best: Dictionary = {}
+	var indeterminate: Dictionary = {}
+	var last_failure: Dictionary = {}
+	var core_options: Array = request.get("profile_core_options", [])
+	for core_value: Variant in core_options:
+		var core: Dictionary = core_value
+		for door_value: Variant in request.get("operational_door_options", []):
+			var door: Dictionary = door_value
+			var edge: Dictionary = door.get("edge", {})
+			var frontage_cells: Array[Array] = []
+			for frontage_edge: Dictionary in request.get("frontage_edges", []):
+				var cell: Dictionary = frontage_edge.get("parcel_cell", {})
+				var array_cell: Array[int] = [int(cell.get("x", 0)), int(cell.get("y", 0))]
+				if not frontage_cells.has(array_cell): frontage_cells.append(array_cell)
+			var legacy := {
+				"usable_cells": request.get("usable_cells", []), "core_cells": core.get("cells", []),
+				"annex_cells": _set_difference(request.get("usable_cells", []), core.get("cells", [])),
+				"frontage_cells": frontage_cells, "wall_cells": request.get("wall_cells", []),
+				"selected_door_cell": door.get("entrance_cell", []), "queue_cells": door.get("queue_positions", []), "frontage_length": frontage_cells.size(),
+			}
+			var evaluated := _evaluate_profile_legacy(legacy, profile, content, stable_phase)
+			if evaluated.get("status") == STATUS_INDETERMINATE: indeterminate = evaluated; continue
+			if evaluated.get("status") != STATUS_VALID:
+				last_failure = evaluated
+				continue
+			evaluated["queue_capacity"] = mini(int(profile.get("queue_cap", 0)), (door.get("queue_positions", []) as Array).size())
+			if bool(profile.get("queue_required", false)) and int(evaluated["queue_capacity"]) <= 0: continue
+			evaluated["selected_core_key"] = core.get("core_key", "")
+			evaluated["selected_door_semantic_key"] = door.get("door_semantic_key", "")
+			evaluated["selected_door_id"] = door.get("door_id")
+			evaluated["selected_queue_envelope_key"] = door.get("queue_envelope_key", "")
+			evaluated["selected_queue_envelope_id"] = door.get("queue_envelope_id")
+			evaluated["queue_position_ids"] = []
+			for position: Dictionary in door.get("queue_positions", []): evaluated["queue_position_ids"].append(position.get("position_id", ""))
+			if best.is_empty() or int(evaluated["queue_capacity"]) > int(best["queue_capacity"]) or (evaluated["queue_capacity"] == best["queue_capacity"] and (String(evaluated["selected_core_key"]) < String(best["selected_core_key"]) or (evaluated["selected_core_key"] == best["selected_core_key"] and String(evaluated["selected_door_semantic_key"]) < String(best["selected_door_semantic_key"])))): best = evaluated
+	if not best.is_empty(): return best
+	if not indeterminate.is_empty(): return indeterminate
+	if not last_failure.is_empty(): return last_failure
+	return _profile_failure(profile, "CORE_DOOR_PAIR_UNMET", {})
+
+
+func _evaluate_profile_legacy(request: Dictionary, profile: Dictionary, content: Dictionary, stable_phase: bool) -> Dictionary:
 	var diagnostics: Array[Dictionary] = []
 	var usable: Array = _ordered_cells(request.get("usable_cells", []))
 	var usable_set: Dictionary = _cell_set(usable)
@@ -570,6 +619,14 @@ func _pool_values(feasible: Array) -> Array[Dictionary]:
 	return values
 
 
+func _set_difference(all_cells: Array, excluded_cells: Array) -> Array[Array]:
+	var excluded := _cell_set(excluded_cells)
+	var result: Array[Array] = []
+	for cell: Array in _ordered_cells(all_cells):
+		if not excluded.has(_cell_key(cell)): result.append(cell)
+	return result
+
+
 func _find_record(records: Array, id_field: String, id: String) -> Dictionary:
 	for record_value: Variant in records:
 		var record: Dictionary = record_value
@@ -584,6 +641,38 @@ func _assign_durable_fixture_ids(placements: Array, parcel_id: String) -> void:
 
 
 func _validate_request(request: Dictionary, mode: String) -> Array[Dictionary]:
+	var diagnostics: Array[Dictionary] = []
+	if request.get("schema_id") != "interior_phase_a_request" or request.get("schema_version") != 2:
+		return [_diagnostic("REQUEST_SCHEMA_UNSUPPORTED", "$", {})]
+	var required: Array[String] = ["identity_mode", "plan_local_parcel_key", "parcel_id", "zone_type", "usable_cells", "formation_core", "profile_core_options", "frontage_edges", "wall_cells", "operational_door_options", "operational_profile_ids", "zone_revision", "door_revision", "queue_revision"]
+	for field: String in required:
+		if not request.has(field): diagnostics.append(_diagnostic("REQUEST_FIELD_MISSING", "$.%s" % field, {}))
+	if not diagnostics.is_empty(): return diagnostics
+	var stable: bool = mode != "A_PROSPECTIVE"
+	if request["identity_mode"] != ("STABLE" if stable else "PLAN_LOCAL"):
+		diagnostics.append(_diagnostic("REQUEST_IDENTITY_MODE_INVALID", "$.identity_mode", {}))
+	if String(request.get("plan_local_parcel_key", "")).is_empty() or String(request.get("zone_type", "")).is_empty() or not request.get("usable_cells") is Array or not request.get("profile_core_options") is Array or (request["profile_core_options"] as Array).is_empty() or not request.get("operational_door_options") is Array or (request["operational_door_options"] as Array).is_empty():
+		diagnostics.append(_diagnostic("REQUEST_VALUE_INVALID", "$", {}))
+	if stable:
+		if String(request.get("parcel_id", "")).is_empty(): diagnostics.append(_diagnostic("STABLE_IDENTITY_REQUIRED", "$.parcel_id", {}))
+		for field: String in ["zone_revision", "door_revision", "queue_revision"]:
+			if not request.get(field) is int or int(request[field]) < 0: diagnostics.append(_diagnostic("SOURCE_REVISION_REQUIRED", "$.%s" % field, {}))
+		for door: Dictionary in request.get("operational_door_options", []):
+			if String(door.get("door_id", "")).is_empty() or String(door.get("queue_envelope_id", "")).is_empty(): diagnostics.append(_diagnostic("STABLE_IDENTITY_REQUIRED", "$.operational_door_options", {}))
+	else:
+		if request.get("parcel_id") != null or request.get("zone_revision") != null or request.get("door_revision") != null or request.get("queue_revision") != null:
+			diagnostics.append(_diagnostic("PHASE_A_PERSISTENT_IDENTITY_FORBIDDEN", "$", {}))
+		for door: Dictionary in request.get("operational_door_options", []):
+			if door.get("door_id") != null or door.get("queue_envelope_id") != null: diagnostics.append(_diagnostic("PHASE_A_PERSISTENT_IDENTITY_FORBIDDEN", "$.operational_door_options", {}))
+	if mode == "A_STABLE" and not request.get("phase_a_parity") is Dictionary:
+		diagnostics.append(_diagnostic("REQUEST_FIELD_MISSING", "$.phase_a_parity", {}))
+	if mode == "B":
+		for field: String in ["proxy_id", "operational_profile_id", "tenant_profile_id", "variation_id"]:
+			if String(request.get(field, "")).is_empty(): diagnostics.append(_diagnostic("STABLE_IDENTITY_REQUIRED", "$.%s" % field, {}))
+	return diagnostics
+
+
+func _validate_request_legacy(request: Dictionary, mode: String) -> Array[Dictionary]:
 	var diagnostics: Array[Dictionary] = []
 	for field: String in ["zone_type", "usable_cells", "core_cells", "annex_cells", "frontage_cells", "wall_cells", "selected_door_cell", "queue_cells", "frontage_length"]:
 		if not request.has(field):
